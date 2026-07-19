@@ -96,12 +96,12 @@ onMounted(load)
         <el-table-column label="学生" min-width="180">
           <template #default="{ row }">
             <div class="student-cell">
-              <el-avatar :size="32" :src="row.student.avatar || '/avatars/student.jpg'">
+              <el-avatar :size="32" :src="row?.student?.avatar || '/avatars/student.jpg'">
                 <el-icon><UserFilled /></el-icon>
               </el-avatar>
               <div>
-                <div class="name">{{ row.student.realName || row.student.username }}</div>
-                <div class="uname">{{ row.student.username }}</div>
+                <div class="name">{{ row.student?.realName || row.student?.username }}</div>
+                <div class="uname">{{ row.student?.username }}</div>
               </div>
             </div>
           </template>

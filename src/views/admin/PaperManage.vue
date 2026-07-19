@@ -22,7 +22,7 @@ const query = reactive({
   paperName: '',
   status: undefined as number | undefined,
   pageNum: 1,
-  pageSize: 10,
+  pageSize: 50,
 })
 const list = ref<Paper[]>([])
 const total = ref(0)
@@ -326,7 +326,7 @@ onMounted(async () => {
           v-model:page-size="query.pageSize"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
-          :page-sizes="[10, 20, 50]"
+          :page-sizes="[20, 50, 100]"
           @size-change="load"
           @current-change="load"
         />

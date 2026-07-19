@@ -24,7 +24,7 @@ const currentFeedback = computed(() => current.value ? feedbacks.value[current.v
 const loadCategories = async () => {
   try {
     const res = await getCategoryTree()
-    categories.value = res.data ?? []
+    categories.value = Array.isArray(res.data) ? res.data : []
   } catch { /* silent */ }
 }
 
@@ -46,7 +46,7 @@ const startPractice = async (catId: number) => {
   loading.value = true
   try {
     const res = await getPracticeQuestions(catId, 10)
-    questions.value = res.data ?? []
+    questions.value = Array.isArray(res.data) ? res.data : []
     currentIndex.value = 0
     userAnswers.value = {}
     feedbacks.value = {}

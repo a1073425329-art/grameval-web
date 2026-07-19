@@ -14,7 +14,7 @@ const load = async () => {
   loading.value = true
   try {
     const res = await getAvailableExams()
-    exams.value = res.data ?? []
+    exams.value = Array.isArray(res.data) ? res.data : []
   } finally {
     loading.value = false
   }

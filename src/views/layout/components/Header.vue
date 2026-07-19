@@ -9,15 +9,20 @@ const router = useRouter()
 const authStore = useAuthStore()
 const permissionStore = usePermissionStore()
 
-/** 根据用户名映射头像文件 */
+/** 头像来源优先级：login 返回的 avatar(base64/URL) > 用户名映射静态文件 > 角色默认 */
 const avatarUrl = computed(() => {
+  // 1. 优先使用后端返回的真实头像（可能是 base64 或 URL）
+  const realAvatar = authStore.userInfo?.avatar
+  if (realAvatar) return realAvatar
+
+  // 2. 预置演示账号 → 静态文件
   const username = authStore.userInfo?.username
-  if (!username) return ''
-  // 管理员头像
   if (username === 'admin')      return '/avatars/admin.jpeg'
   if (username === 'teacher01')  return '/avatars/teacher01.jpeg'
   if (username === 'student01')  return '/avatars/student01.jpg'
-  // 学生用学生默认头像，管理员用老师默认头像
+
+  // 3. 按角色兜底
+  if (!username) return ''
   return authStore.role === 'ADMIN'
     ? '/avatars/admin.jpeg'
     : '/avatars/student.jpg'

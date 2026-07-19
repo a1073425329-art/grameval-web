@@ -12,7 +12,7 @@ const load = async () => {
   loading.value = true
   try {
     const res = await listCategoryTree()
-    tree.value = res.data ?? []
+    tree.value = Array.isArray(res.data) ? res.data : []
   } finally {
     loading.value = false
   }

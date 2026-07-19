@@ -1,39 +1,39 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { getStudentStatistics } from '@/api/student'
+import { getStudentStatistics, getMyResults, listPractices, getDimensionAnalysis } from '@/api/student'
 import type { StudentStatistics, CategoryStat, DifficultyStat, TagStat } from '@/types/stats'
+import type { ExamResultItem } from '@/types/result'
+import type { PracticeRecord } from '@/types/question'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { BarChart } from 'echarts/charts'
-import {
-  TitleComponent,
-  TooltipComponent,
-  LegendComponent,
-  GridComponent,
-} from 'echarts/components'
+import { BarChart, LineChart } from 'echarts/charts'
+import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 
-use([CanvasRenderer, BarChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
+use([CanvasRenderer, BarChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
 const authStore = useAuthStore()
 const userId = computed(() => authStore.userInfo?.id as number)
-
-const stats = ref<StudentStatistics | null>(null)
 const loading = ref(false)
 
+const stats = ref<StudentStatistics | null>(null)
+const recentResults = ref<ExamResultItem[]>([])
+const recentPractices = ref<PracticeRecord[]>([])
+
+// 维度切换
 const currentModule = ref('all')
 const moduleOptions = [
   { label: '全部', value: 'all' },
-  { label: '基本 + 考试 + 练习', value: 'basic,exam,practice' },
-  { label: '考点弱点分析', value: 'tag' },
-  { label: '分语法大类', value: 'category' },
-  { label: '分难度', value: 'difficulty' },
+  { label: '考试+练习+错题', value: 'basic,exam,practice,wrong' },
+  { label: '考点弱点', value: 'tag' },
+  { label: '语法大类', value: 'category' },
+  { label: '难度分布', value: 'difficulty' },
 ]
 
 const includeMap: Record<string, string | undefined> = {
   all: undefined,
-  'basic,exam,practice': 'basic,exam,practice',
+  'basic,exam,practice,wrong': 'basic,exam,practice,wrong',
   tag: 'tag',
   category: 'category',
   difficulty: 'difficulty',
@@ -43,420 +43,313 @@ const load = async () => {
   if (!userId.value) return
   loading.value = true
   try {
-    const res = await getStudentStatistics(userId.value, includeMap[currentModule.value])
-    stats.value = res.data
-  } finally {
-    loading.value = false
-  }
+    const [s, r, p] = await Promise.allSettled([
+      getStudentStatistics(userId.value, includeMap[currentModule.value]),
+      getMyResults({ pageNum: 1, pageSize: 20 }),
+      listPractices({ pageNum: 1, pageSize: 10 }),
+    ])
+    if (s.status === 'fulfilled') stats.value = s.value.data
+    if (r.status === 'fulfilled') recentResults.value = r.value.data?.records ?? ([] as any)
+    if (p.status === 'fulfilled') recentPractices.value = p.value.data?.records ?? ([] as any)
+  } finally { loading.value = false }
 }
 
-const switchModule = (val: string) => {
-  currentModule.value = val
-  load()
-}
+const switchModule = (val: string) => { currentModule.value = val; load() }
+
+// 成绩趋势数据：取最近 10 次考试
+const scoreTrendData = computed(() => {
+  return [...recentResults.value].reverse().slice(0, 10).map(r => ({
+    name: (r.sessionName?.length ?? 0) > 8 ? r.sessionName!.slice(0, 8) + '…' : (r.sessionName || '-'),
+    score: r.scorePercentage ?? 0,
+    date: r.submitTime?.slice(0, 10) || '',
+  }))
+})
 
 onMounted(load)
 
-// ===== 计算属性 =====
-
-const genderText = computed(() => {
-  const g = stats.value?.gender
-  if (g === 1) return '男'
-  if (g === 2) return '女'
-  return '未知'
+// ===== Helpers =====
+const genderText = computed(() => { const g = stats.value?.gender; if (g === 1) return '男'; if (g === 2) return '女'; return '未知' })
+const accuracyColor = (v?: number) => { if (v == null) return '#909399'; if (v >= 80) return '#67c23a'; if (v >= 60) return '#e6a23c'; return '#f56c6c' }
+const weekDayNames: Record<string, string> = { '1': '周一', '2': '周二', '3': '周三', '4': '周四', '5': '周五', '6': '周六', '7': '周日' }
+const trainingDaysText = computed(() => {
+  const td = stats.value?.trainingSchedule?.trainingDays
+  if (!td) return '未设置'
+  return td.split(',').map(d => weekDayNames[d.trim()] || d).join('、')
 })
 
-// 按分类柱状图 (accuracy from low to high → 薄弱分类在左侧)
+// ===== 图表配置 =====
+
+// 成绩趋势折线图
+const scoreTrendOption = computed(() => {
+  const data = scoreTrendData.value
+  if (!data.length) return {}
+  return {
+    tooltip: { trigger: 'axis' as const, formatter: (p: any) => `${p[0].axisValue}<br/>得分：${p[0].value.toFixed(1)}%` },
+    grid: { left: 45, right: 20, top: 10, bottom: 40 },
+    xAxis: { type: 'category' as const, data: data.map(d => d.date), axisLabel: { rotate: 30, fontSize: 11 } },
+    yAxis: { type: 'value' as const, min: 0, max: 100, axisLabel: { formatter: '{value}%' } },
+    series: [{
+      type: 'line', smooth: true, data: data.map(d => d.score),
+      lineStyle: { color: '#409eff', width: 3 },
+      itemStyle: { color: '#409eff' },
+      markLine: { silent: true, data: [{ type: 'average', name: '均分', lineStyle: { color: '#e6a23c', type: 'dashed' } }] },
+      areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(64,158,255,0.3)' }, { offset: 1, color: 'rgba(64,158,255,0.02)' }] } },
+    }],
+  }
+})
+
+// 语法大类正确率（横向柱状图）
 const categoryChartOption = computed(() => {
   const list: CategoryStat[] = stats.value?.categoryStats ?? []
   if (!list.length) return {}
   const sorted = [...list].sort((a, b) => a.accuracy - b.accuracy)
   return {
     tooltip: { trigger: 'axis' as const, formatter: (p: any) => {
-      const d = p[0]
-      const item = sorted[d.dataIndex]
-      return `${d.name}<br/>正确率：${item.accuracy.toFixed(1)}%（${item.correct}/${item.total}）`
+      const item = sorted[p[0].dataIndex]
+      return `${item.categoryName}<br/>正确率：${item.accuracy.toFixed(1)}%（${item.correct}/${item.total}）`
     }},
-    grid: { left: 120, right: 30, top: 10, bottom: 20 },
+    grid: { left: 110, right: 30, top: 10, bottom: 20 },
     xAxis: { type: 'value' as const, max: 100, axisLabel: { formatter: '{value}%' } },
     yAxis: { type: 'category' as const, data: sorted.map(c => c.categoryName), axisLabel: { fontSize: 12 } },
     series: [{
-      type: 'bar',
-      data: sorted.map(c => c.accuracy),
-      itemStyle: {
-        color: (p: any) => {
-          const v = p.value ?? 0
-          if (v >= 80) return '#67c23a'
-          if (v >= 60) return '#e6a23c'
-          return '#f56c6c'
-        },
-      },
-      barMaxWidth: 32,
+      type: 'bar', data: sorted.map(c => c.accuracy), barMaxWidth: 28,
+      itemStyle: { color: (p: any) => { const v = p.value ?? 0; return v >= 80 ? '#67c23a' : v >= 60 ? '#e6a23c' : '#f56c6c' } },
     }],
   }
 })
 
-// 按难度柱状图
+// 难度正确率
 const difficultyChartOption = computed(() => {
   const list: DifficultyStat[] = stats.value?.difficultyStats ?? []
   if (!list.length) return {}
   const sorted = [...list].sort((a, b) => a.difficulty - b.difficulty)
   return {
-    tooltip: { trigger: 'axis' as const, formatter: (p: any) => {
-      const d = p[0]
-      const item = sorted[d.dataIndex]
-      return `${item.difficultyLabel}<br/>正确率：${item.accuracy.toFixed(1)}%（${item.correct}/${item.total}）`
-    }},
-    grid: { left: 60, right: 30, top: 10, bottom: 20 },
+    tooltip: { trigger: 'axis' as const },
+    grid: { left: 55, right: 30, top: 10, bottom: 20 },
     xAxis: { type: 'category' as const, data: sorted.map(d => d.difficultyLabel) },
     yAxis: { type: 'value' as const, max: 100, axisLabel: { formatter: '{value}%' } },
     series: [{
-      type: 'bar',
-      data: sorted.map(d => d.accuracy),
-      itemStyle: {
-        color: (p: any) => {
-          const v = p.value ?? 0
-          if (v >= 80) return '#67c23a'
-          if (v >= 60) return '#e6a23c'
-          return '#f56c6c'
-        },
-      },
-      barMaxWidth: 48,
+      type: 'bar', data: sorted.map(d => d.accuracy), barMaxWidth: 50,
+      itemStyle: { color: (p: any) => { const v = p.value ?? 0; return v >= 80 ? '#67c23a' : v >= 60 ? '#e6a23c' : '#f56c6c' } },
     }],
   }
 })
 
-// 按考点标签弱点分布 (错误率从高到低 → 最薄弱考点在前)
+// 考点弱点 Top 15
 const tagChartOption = computed(() => {
   const list: TagStat[] = stats.value?.tagStats ?? []
   if (!list.length) return {}
-  // 截取 top 15 显示在图表中（已按 errorRate desc 排序）
-  const top = [...list].slice(0, 15).reverse() // reverse 为了横向柱状图从下到上
+  const top = [...list].slice(0, 15).reverse()
   return {
     tooltip: { trigger: 'axis' as const, formatter: (p: any) => {
-      const d = p[0]
-      const item = top[d.dataIndex]
+      const item = top[p[0].dataIndex]
       return `${item.tagName}<br/>错误率：${item.errorRate.toFixed(1)}%（${item.wrong}/${item.total}）`
     }},
-    grid: { left: 150, right: 30, top: 10, bottom: 20 },
+    grid: { left: 140, right: 30, top: 10, bottom: 20 },
     xAxis: { type: 'value' as const, max: 100, axisLabel: { formatter: '{value}%' } },
-    yAxis: {
-      type: 'category' as const,
-      data: top.map(t => t.tagName.length > 12 ? t.tagName.slice(0, 12) + '…' : t.tagName),
-      axisLabel: { fontSize: 11 },
-    },
+    yAxis: { type: 'category' as const, data: top.map(t => t.tagName.length > 14 ? t.tagName.slice(0, 14) + '…' : t.tagName), axisLabel: { fontSize: 11 } },
     series: [{
-      type: 'bar',
-      data: top.map(t => t.errorRate),
-      itemStyle: {
-        color: (p: any) => {
-          const v = p.value ?? 0
-          if (v <= 20) return '#67c23a'
-          if (v <= 50) return '#e6a23c'
-          return '#f56c6c'
-        },
-      },
-      barMaxWidth: 22,
+      type: 'bar', data: top.map(t => t.errorRate), barMaxWidth: 20,
+      itemStyle: { color: (p: any) => { const v = p.value ?? 0; return v <= 20 ? '#67c23a' : v <= 50 ? '#e6a23c' : '#f56c6c' } },
     }],
   }
 })
-
-const weekDayNames: Record<number, string> = {
-  1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日',
-}
-const trainingDaysText = computed(() => {
-  const td = stats.value?.trainingSchedule?.trainingDays
-  if (!td) return '未设置'
-  return td.split(',').map(d => weekDayNames[Number(d.trim())] || d).join('、')
-})
-
-const accuracyColor = (v: number | undefined) => {
-  if (v == null) return '#909399'
-  if (v >= 80) return '#67c23a'
-  if (v >= 60) return '#e6a23c'
-  return '#f56c6c'
-}
 </script>
 
 <template>
   <div class="page" v-loading="loading">
-    <!-- 顶部切换 -->
     <div class="page-header">
       <h3 class="page-title">📊 学习数据</h3>
       <el-radio-group v-model="currentModule" @change="switchModule" size="small">
-        <el-radio-button v-for="m in moduleOptions" :key="m.value" :value="m.value">
-          {{ m.label }}
-        </el-radio-button>
+        <el-radio-button v-for="m in moduleOptions" :key="m.value" :value="m.value">{{ m.label }}</el-radio-button>
       </el-radio-group>
     </div>
 
     <template v-if="stats">
-      <!-- ========== 基本信息卡片 ========== -->
+      <!-- ====== 用户信息条 ====== -->
       <el-card shadow="never" class="section-card" v-if="stats.realName">
         <div class="basic-info">
           <div class="basic-left">
-            <el-avatar :size="56" :src="stats.avatar" style="background:#409eff;font-size:22px">
-              {{ (stats.realName || stats.username)[0]?.toUpperCase() }}
-            </el-avatar>
+            <el-avatar :size="48" :src="stats.avatar" style="background:#409eff;font-size:20px">{{ (stats.realName || stats.username)[0]?.toUpperCase() }}</el-avatar>
             <div class="basic-text">
               <div class="basic-name">{{ stats.realName || stats.username }}</div>
-              <div class="basic-meta">
-                <span>{{ genderText }}</span>
-                <span v-if="stats.email">· {{ stats.email }}</span>
-                <span v-if="stats.phone">· {{ stats.phone }}</span>
-                <span>· 注册于 {{ stats.createTime?.slice(0, 10) }}</span>
-              </div>
+              <div class="basic-meta">{{ genderText }} · 注册于 {{ stats.createTime?.slice(0, 10) }} · 上次登录 {{ stats.lastLoginTime?.slice(0, 16) || '-' }}</div>
             </div>
-          </div>
-          <div class="basic-extra" v-if="stats.lastLoginTime">
-            上次登录：{{ stats.lastLoginTime?.slice(0, 16) }}
           </div>
         </div>
       </el-card>
 
-      <!-- ========== 考试 + 练习 + 错题 总览卡片 ========== -->
-      <el-row :gutter="16" class="stat-row" v-if="stats.examCount != null || stats.practiceCount != null">
-        <!-- 考试 -->
-        <el-col :span="8">
-          <el-card shadow="never" class="kpi-card">
-            <div class="kpi-header">
-              <span class="kpi-icon">📝</span>
-              <span class="kpi-label">考试</span>
-            </div>
-            <el-divider style="margin:12px 0" />
-            <div class="kpi-grid">
-              <div class="kpi-item">
-                <div class="kpi-value">{{ stats.examCount ?? '-' }}</div>
-                <div class="kpi-desc">参加次数</div>
-              </div>
-              <div class="kpi-item">
-                <div class="kpi-value" :style="{ color: accuracyColor(stats.examAccuracy) }">
-                  {{ stats.examAccuracy != null ? stats.examAccuracy.toFixed(1) + '%' : '-' }}
-                </div>
-                <div class="kpi-desc">正确率</div>
-              </div>
-              <div class="kpi-item">
-                <div class="kpi-value">{{ stats.examAverageScore != null ? stats.examAverageScore.toFixed(1) : '-' }}</div>
-                <div class="kpi-desc">平均分</div>
-              </div>
-              <div class="kpi-item">
-                <div class="kpi-value" style="color:#67c23a">{{ stats.examHighestScore ?? '-' }}</div>
-                <div class="kpi-desc">最高</div>
-              </div>
-              <div class="kpi-item">
-                <div class="kpi-value" style="color:#f56c6c">{{ stats.examLowestScore ?? '-' }}</div>
-                <div class="kpi-desc">最低</div>
-              </div>
-              <div class="kpi-item">
-                <div class="kpi-value">{{ stats.examCorrectCount ?? 0 }}<span style="font-size:12px;color:#909399">/{{ stats.examWrongCount ?? 0 }}</span></div>
-                <div class="kpi-desc">对/错题数</div>
-              </div>
-            </div>
-          </el-card>
+      <!-- ====== KPI 总览 ====== -->
+      <el-row :gutter="16" class="stat-row">
+        <el-col :span="6">
+          <div class="kpi kpi-exam" @click="$router.push('/student/results')">
+            <div class="kpi-num">{{ stats.examCount ?? '-' }}</div><div class="kpi-lbl">考试次数</div>
+            <div class="kpi-sub">均分 {{ stats.examAverageScore?.toFixed(1) ?? '-' }} · 最高 {{ stats.examHighestScore ?? '-' }}</div>
+          </div>
         </el-col>
-
-        <!-- 练习 -->
-        <el-col :span="8">
-          <el-card shadow="never" class="kpi-card">
-            <div class="kpi-header">
-              <span class="kpi-icon">🎯</span>
-              <span class="kpi-label">专项练习</span>
-            </div>
-            <el-divider style="margin:12px 0" />
-            <div class="kpi-grid">
-              <div class="kpi-item">
-                <div class="kpi-value">{{ stats.practiceCount ?? '-' }}</div>
-                <div class="kpi-desc">练习次数</div>
-              </div>
-              <div class="kpi-item">
-                <div class="kpi-value" :style="{ color: accuracyColor(stats.practiceAccuracy) }">
-                  {{ stats.practiceAccuracy != null ? stats.practiceAccuracy.toFixed(1) + '%' : '-' }}
-                </div>
-                <div class="kpi-desc">正确率</div>
-              </div>
-              <div class="kpi-item">
-                <div class="kpi-value">{{ stats.practiceQuestionCount ?? '-' }}</div>
-                <div class="kpi-desc">累计题数</div>
-              </div>
-              <div class="kpi-item">
-                <div class="kpi-value" style="color:#67c23a">{{ stats.practiceCorrectCount ?? 0 }}</div>
-                <div class="kpi-desc">答对</div>
-              </div>
-              <div class="kpi-item">
-                <div class="kpi-value" style="color:#f56c6c">{{ stats.practiceWrongCount ?? 0 }}</div>
-                <div class="kpi-desc">答错</div>
-              </div>
-            </div>
-          </el-card>
+        <el-col :span="6">
+          <div class="kpi kpi-practice" @click="$router.push('/student/practice')">
+            <div class="kpi-num">{{ stats.practiceCount ?? '-' }}</div><div class="kpi-lbl">练习次数</div>
+            <div class="kpi-sub">{{ stats.practiceQuestionCount ?? 0 }} 题 · 正确率 {{ stats.practiceAccuracy?.toFixed(1) ?? '-' }}%</div>
+          </div>
         </el-col>
-
-        <!-- 错题总览 -->
-        <el-col :span="8">
-          <el-card shadow="never" class="kpi-card">
-            <div class="kpi-header">
-              <span class="kpi-icon">📋</span>
-              <span class="kpi-label">错题总览</span>
-            </div>
-            <el-divider style="margin:12px 0" />
-            <div class="center-stat">
-              <div class="big-num" style="color:#f56c6c">{{ stats.distinctWrongCount ?? '-' }}</div>
-              <div class="big-desc">去重错题总数</div>
-            </div>
-            <div class="center-stat" style="margin-top:8px" v-if="stats.tagStats?.length">
-              <div class="weak-tag">
-                最薄弱考点：
-                <el-tag type="danger" size="small" effect="dark">{{ stats.tagStats[0]?.tagName }}</el-tag>
-              </div>
-              <div style="font-size:12px;color:#909399">
-                错误率 {{ stats.tagStats[0]?.errorRate?.toFixed(0) }}%
-              </div>
-            </div>
-          </el-card>
+        <el-col :span="6">
+          <div class="kpi kpi-accuracy">
+            <div class="kpi-num" :style="{ color: accuracyColor(stats.examAccuracy) }">{{ stats.examAccuracy?.toFixed(1) ?? '-' }}%</div><div class="kpi-lbl">考试正确率</div>
+            <div class="kpi-sub">对 {{ stats.examCorrectCount ?? 0 }} / 错 {{ stats.examWrongCount ?? 0 }}</div>
+          </div>
+        </el-col>
+        <el-col :span="6">
+          <div class="kpi kpi-wrong" @click="$router.push('/student/wrong-book')">
+            <div class="kpi-num" style="color:#f56c6c">{{ stats.distinctWrongCount ?? '-' }}</div><div class="kpi-lbl">去重错题</div>
+            <div class="kpi-sub" v-if="stats.tagStats?.length">最弱：{{ stats.tagStats[0]?.tagName }}</div>
+          </div>
         </el-col>
       </el-row>
 
-      <!-- ========== 训练信息 ========== -->
-      <el-row :gutter="16" v-if="stats.trainingSchedule || stats.trainedDays != null">
-        <el-col :span="24">
+      <!-- ====== 成绩趋势图 ====== -->
+      <el-card v-if="scoreTrendData.length >= 2" shadow="never" class="section-card">
+        <template #header>📈 成绩趋势（最近 {{ scoreTrendData.length }} 场）</template>
+        <VChart :option="scoreTrendOption" autoresize style="height:280px" />
+      </el-card>
+
+      <!-- ====== 图表区 ====== -->
+      <el-row :gutter="16">
+        <el-col v-if="categoryChartOption.series" :span="12">
           <el-card shadow="never" class="section-card">
-            <template #header>📅 训练计划</template>
-            <div class="training-row">
-              <div class="training-item">
-                <div class="training-label">训练日</div>
-                <div class="training-value">{{ trainingDaysText }}</div>
-              </div>
-              <div class="training-item" v-if="stats.trainingSchedule?.timeSlot">
-                <div class="training-label">每日时段</div>
-                <div class="training-value">{{ stats.trainingSchedule.timeSlot }}</div>
-              </div>
-              <div class="training-item" v-if="stats.trainingSchedule?.dailyQuestionCount">
-                <div class="training-label">每日题数</div>
-                <div class="training-value">{{ stats.trainingSchedule.dailyQuestionCount }} 题</div>
-              </div>
-              <div class="training-item">
-                <div class="training-label">已训练</div>
-                <div class="training-value">{{ stats.trainedDays ?? 0 }} 天</div>
-              </div>
-              <div class="training-item">
-                <div class="training-label">剩余</div>
-                <div class="training-value" style="color:#e6a23c">{{ stats.daysRemaining ?? '-' }} 天</div>
-              </div>
-            </div>
+            <template #header>📊 各语法大类正确率</template>
+            <VChart :option="categoryChartOption" autoresize style="height:300px" />
           </el-card>
         </el-col>
-      </el-row>
-
-      <!-- ========== 图表区域 ========== -->
-
-      <!-- 按语法大类 --><el-row :gutter="16" v-if="stats.categoryStats?.length">
-        <el-col :span="24">
-          <el-card shadow="never" class="section-card">
-            <template #header>📈 各语法大类正确率</template>
-            <VChart :option="categoryChartOption" autoresize style="height: 300px" />
-          </el-card>
-        </el-col>
-      </el-row>
-
-      <!-- 按难度 + 按考点标签弱点 --><el-row :gutter="16">
-        <el-col :span="12" v-if="stats.difficultyStats?.length">
+        <el-col v-if="difficultyChartOption.series" :span="12">
           <el-card shadow="never" class="section-card">
             <template #header>🎯 按难度正确率</template>
-            <VChart :option="difficultyChartOption" autoresize style="height: 240px" />
-          </el-card>
-        </el-col>
-        <el-col :span="stats.difficultyStats?.length ? 12 : 24" v-if="stats.tagStats?.length">
-          <el-card shadow="never" class="section-card">
-            <template #header>⚠️ 考点弱点排行（Top {{ Math.min(stats.tagStats.length, 15) }}）</template>
-            <VChart :option="tagChartOption" autoresize style="height: 360px" />
+            <VChart :option="difficultyChartOption" autoresize style="height:300px" />
           </el-card>
         </el-col>
       </el-row>
 
-      <!-- 考点标签详细表格 --><el-card shadow="never" class="section-card" v-if="stats.tagStats?.length">
-        <template #header>📋 考点弱点明细</template>
-        <el-table :data="stats.tagStats" size="default">
+      <!-- ====== 考点弱点 + 训练计划 ====== -->
+      <el-row :gutter="16">
+        <el-col v-if="tagChartOption.series" :span="14">
+          <el-card shadow="never" class="section-card">
+            <template #header>⚠️ 考点弱点排行（Top {{ Math.min(stats.tagStats?.length ?? 0, 15) }}）</template>
+            <VChart :option="tagChartOption" autoresize style="height:340px" />
+          </el-card>
+        </el-col>
+        <el-col :span="tagChartOption.series ? 10 : 24">
+          <el-card v-if="stats.trainingSchedule || stats.trainedDays != null" shadow="never" class="section-card">
+            <template #header>📅 训练计划</template>
+            <div class="training-grid">
+              <div class="tg-item"><div class="tg-label">训练日</div><div class="tg-value">{{ trainingDaysText }}</div></div>
+              <div class="tg-item" v-if="stats.trainingSchedule?.trainingTimeFrom"><div class="tg-label">每日时段</div><div class="tg-value">{{ stats.trainingSchedule.trainingTimeFrom }} ~ {{ stats.trainingSchedule.trainingTimeTo }}</div></div>
+              <div class="tg-item" v-if="stats.trainingSchedule?.trainingTargetHours"><div class="tg-label">目标时长</div><div class="tg-value">{{ stats.trainingSchedule.trainingTargetHours }} 小时</div></div>
+              <div class="tg-item"><div class="tg-label">已训练</div><div class="tg-value">{{ stats.trainedDays ?? 0 }} 天</div></div>
+              <div class="tg-item"><div class="tg-label">剩余</div><div class="tg-value" style="color:#e6a23c">{{ stats.daysRemaining ?? '-' }} 天</div></div>
+            </div>
+          </el-card>
+
+          <!-- 最近练习 -->
+          <el-card shadow="never" class="section-card" style="margin-top:14px" v-if="recentPractices.length">
+            <template #header>🎯 最近练习记录</template>
+            <el-table :data="recentPractices.slice(0, 5)" size="small">
+              <el-table-column prop="categoryName" label="专题" min-width="100" />
+              <el-table-column label="对/错" width="80" align="center">
+                <template #default="{ row }">{{ row.correctCount }}/{{ row.wrongCount }}</template>
+              </el-table-column>
+              <el-table-column label="正确率" width="80" align="center">
+                <template #default="{ row }"><span :style="{ color: accuracyColor(row.accuracy) }">{{ row.accuracy?.toFixed(0) ?? '-' }}%</span></template>
+              </el-table-column>
+              <el-table-column prop="startTime" label="时间" width="140">
+                <template #default="{ row }">{{ row.startTime?.slice(0, 16) }}</template>
+              </el-table-column>
+            </el-table>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- ====== 最近考试记录 ====== -->
+      <el-card shadow="never" class="section-card" v-if="recentResults.length">
+        <template #header>📝 最近考试记录</template>
+        <el-table :data="recentResults.slice(0, 10)" size="small">
+          <el-table-column prop="sessionName" label="考试名称" min-width="150" show-overflow-tooltip />
+          <el-table-column label="提交时间" width="160">
+            <template #default="{ row }">{{ row.submitTime?.slice(0, 16) || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="得分" width="100" align="center">
+            <template #default="{ row }">
+              <span :style="{ color: accuracyColor(row.scorePercentage), fontWeight: 600 }">{{ row.totalScore ?? '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="正确率" width="90" align="center">
+            <template #default="{ row }">{{ row.scorePercentage?.toFixed(1) ?? '-' }}%</template>
+          </el-table-column>
+          <el-table-column label="对/错" width="80" align="center">
+            <template #default="{ row }">{{ row.correctCount ?? '-' }}/{{ row.wrongCount ?? '-' }}</template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
+      <!-- ====== 考点弱点明细表 ====== -->
+      <el-card shadow="never" class="section-card" v-if="stats.tagStats?.length">
+        <template #header>📋 考点弱点明细（共 {{ stats.tagStats.length }} 个考点）</template>
+        <el-table :data="stats.tagStats" size="small">
           <el-table-column type="index" label="#" width="50" />
           <el-table-column prop="tagName" label="考点名称" min-width="150" />
-          <el-table-column prop="total" label="总题数" width="90" align="center" />
-          <el-table-column prop="wrong" label="错题数" width="90" align="center">
+          <el-table-column prop="total" label="总题数" width="80" align="center" />
+          <el-table-column prop="wrong" label="错题数" width="80" align="center">
+            <template #default="{ row }"><span style="color:#f56c6c;font-weight:600">{{ row.wrong }}</span></template>
+          </el-table-column>
+          <el-table-column label="错误率" width="160" align="center">
             <template #default="{ row }">
-              <span style="color:#f56c6c;font-weight:600">{{ row.wrong }}</span>
+              <el-progress :percentage="Math.min(row.errorRate, 100)" :stroke-width="14" :color="row.errorRate <= 20 ? '#67c23a' : row.errorRate <= 50 ? '#e6a23c' : '#f56c6c'" />
             </template>
           </el-table-column>
-          <el-table-column label="错误率" width="120" align="center">
-            <template #default="{ row }">
-              <el-progress
-                :percentage="Math.min(row.errorRate, 100)"
-                :color="row.errorRate <= 20 ? '#67c23a' : row.errorRate <= 50 ? '#e6a23c' : '#f56c6c'"
-                :stroke-width="16"
-              />
-            </template>
-          </el-table-column>
-          <el-table-column prop="errorRate" label="错误率" width="90" align="center">
-            <template #default="{ row }">
-              <span :style="{ color: accuracyColor(100 - row.errorRate), fontWeight: 600 }">
-                {{ row.errorRate.toFixed(1) }}%
-              </span>
-            </template>
+          <el-table-column prop="errorRate" label="错误率" width="80" align="center">
+            <template #default="{ row }"><span :style="{ color: accuracyColor(100 - row.errorRate), fontWeight: 600 }">{{ row.errorRate.toFixed(1) }}%</span></template>
           </el-table-column>
         </el-table>
       </el-card>
     </template>
 
-    <el-empty v-else-if="!loading" description="暂无统计数据" />
+    <el-empty v-else-if="!loading" description="暂无统计数据" :image-size="100" />
   </div>
 </template>
 
 <style scoped lang="scss">
-.page { display: flex; flex-direction: column; gap: 14px; }
-
-.page-header {
-  display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 2px;
-}
+.page { display: flex; flex-direction: column; gap: 14px; padding: 4px; }
+.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
 .page-title { margin: 0; font-size: 18px; font-weight: 600; color: #303133; }
 
 .section-card {
   border-radius: 8px;
-  :deep(.el-card__header) { font-weight: 600; font-size: 14px; }
+  :deep(.el-card__header) { padding: 12px 20px; font-weight: 600; font-size: 14px; }
 }
 
-// basic info
-.basic-info {
-  display: flex; align-items: center; justify-content: space-between;
-  flex-wrap: wrap; gap: 12px;
-}
-.basic-left { display: flex; align-items: center; gap: 16px; }
-.basic-name { font-size: 18px; font-weight: 600; color: #303133; }
-.basic-meta { font-size: 13px; color: #909399; margin-top: 4px; }
-.basic-extra { font-size: 12px; color: #909399; }
+// Basic info
+.basic-info { display: flex; align-items: center; justify-content: space-between; }
+.basic-left { display: flex; align-items: center; gap: 14px; }
+.basic-name { font-size: 16px; font-weight: 600; color: #303133; }
+.basic-meta { font-size: 12px; color: #909399; margin-top: 2px; }
 
-// KPI cards
+// KPI row
 .stat-row { margin: 0 !important; }
-.kpi-card {
-  border-radius: 8px; height: 100%;
-  :deep(.el-card__body) { padding: 16px 20px 20px; }
+.kpi {
+  text-align: center; background: #fff; border-radius: 8px; padding: 18px 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06); cursor: pointer; transition: transform 0.15s;
+  &:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
 }
-.kpi-header { display: flex; align-items: center; gap: 8px; }
-.kpi-icon { font-size: 18px; }
-.kpi-label { font-size: 14px; font-weight: 600; color: #606266; }
-.kpi-grid {
-  display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px 8px;
-}
-.kpi-item { text-align: center; }
-.kpi-value {
-  font-size: 20px; font-weight: 600; color: #303133; line-height: 1.2;
-}
-.kpi-desc { font-size: 11px; color: #909399; margin-top: 2px; }
+.kpi-num { font-size: 28px; font-weight: 700; color: #303133; line-height: 1.2; }
+.kpi-lbl { font-size: 13px; color: #606266; margin: 4px 0; }
+.kpi-sub { font-size: 11px; color: #909399; }
+.kpi-exam { border-top: 3px solid #409eff; }
+.kpi-practice { border-top: 3px solid #67c23a; }
+.kpi-accuracy { border-top: 3px solid #e6a23c; }
+.kpi-wrong { border-top: 3px solid #f56c6c; }
 
-.center-stat { text-align: center; }
-.big-num { font-size: 42px; font-weight: 700; line-height: 1; }
-.big-desc { font-size: 13px; color: #909399; margin-top: 4px; }
-.weak-tag { font-size: 13px; color: #606266; margin-top: 8px; }
-
-// training
-.training-row { display: flex; gap: 32px; flex-wrap: wrap; }
-.training-item { text-align: center; }
-.training-label { font-size: 12px; color: #909399; margin-bottom: 4px; }
-.training-value { font-size: 15px; font-weight: 600; color: #303133; }
+// Training
+.training-grid { display: flex; gap: 28px; flex-wrap: wrap; }
+.tg-item { text-align: center; }
+.tg-label { font-size: 12px; color: #909399; margin-bottom: 4px; }
+.tg-value { font-size: 15px; font-weight: 600; color: #303133; }
 </style>

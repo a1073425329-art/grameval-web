@@ -173,7 +173,7 @@ const accColor = (a: number) => a >= 80 ? '#67c23a' : a >= 60 ? '#e6a23c' : '#f5
         </template>
         <el-table :data="worstQuestions.slice(0, 20)" style="width:100%">
           <el-table-column type="index" label="#" width="60" />
-          <el-table-column prop="stem" label="题干" min-width="360" show-overflow-tooltip />
+          <el-table-column prop="stemPreview" label="题干" min-width="360" show-overflow-tooltip />
           <el-table-column prop="categoryName" label="分类" width="120" />
           <el-table-column label="题型" width="90">
             <template #default="{ row }">{{ typeLabel(row.questionType) }}</template>

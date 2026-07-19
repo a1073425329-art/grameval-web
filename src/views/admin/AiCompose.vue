@@ -66,7 +66,7 @@ const categories = ref<Category[]>([])
 const loadCategories = async () => {
   try {
     const res = await listCategoryTree()
-    categories.value = res.data ?? []
+    categories.value = Array.isArray(res.data) ? res.data : []
   } catch { /* silent */ }
 }
 

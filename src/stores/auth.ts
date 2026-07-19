@@ -46,7 +46,15 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = tk
     userInfo.value = user
     localStorage.setItem(TOKEN_KEY, tk)
-    localStorage.setItem(USER_KEY, JSON.stringify(user))
+    // 头像 base64 可能很长（几十 KB），
+    // localStorage 通常只有 5MB 且存太多 base64 拖慢序列化。
+    // 这里只存轻量身份字段，avatar 需要时从 /auth/me 拉。
+    localStorage.setItem(USER_KEY, JSON.stringify({
+      id: user.id,
+      username: user.username,
+      displayName: user.displayName,
+      role: user.role,
+    }))
     localStorage.setItem(ROLE_KEY, user.role)
     return user
   }

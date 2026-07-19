@@ -1,109 +1,282 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { getMySummary, getAvailableExams } from '@/api/student'
-import type { ResultSummary } from '@/types/result'
+import { getMySummary, getAvailableExams, getStudentStatistics, getMyResults, listPractices } from '@/api/student'
+import type { ResultSummary, ExamResultItem } from '@/types/result'
 import type { AvailableExam } from '@/types/exam'
+import type { StudentStatistics } from '@/types/stats'
+import type { PracticeRecord } from '@/types/question'
+import VChart from 'vue-echarts'
+import { use } from 'echarts/core'
+import { CanvasRenderer } from 'echarts/renderers'
+import { LineChart, BarChart } from 'echarts/charts'
+import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
+
+use([CanvasRenderer, LineChart, BarChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
 const router = useRouter()
 const authStore = useAuthStore()
-
-const summary = ref<ResultSummary>({
-  totalCount: 0,
-  averageScore: 0,
-  highestScore: 0,
-  lowestScore: 0,
-  totalAccuracy: 0,
-})
-const availableExams = ref<AvailableExam[]>([])
 const loading = ref(false)
 
+const summary = ref<ResultSummary>({ totalCount: 0, averageScore: 0, highestScore: 0, lowestScore: 0, totalAccuracy: 0 })
+const availableExams = ref<AvailableExam[]>([])
+const stats = ref<StudentStatistics | null>(null)
+const recentResults = ref<ExamResultItem[]>([])
+const recentPractices = ref<PracticeRecord[]>([])
+
 const shortcuts = [
-  { title: '语法题库', desc: '按专题浏览题目 + 学习模式看解析', path: '/student/question-bank', icon: 'Notebook', color: '#409eff' },
-  { title: '专项练习', desc: '选专题刷 10 题，即时反馈', path: '/student/practice', icon: 'EditPen', color: '#67c23a' },
-  { title: '在线考试', desc: '查看可参加考试并进入答题', path: '/student/exams', icon: 'Document', color: '#e6a23c' },
-  { title: '错题本', desc: '合并考试+练习错题，按题目去重', path: '/student/wrong-book', icon: 'CircleClose', color: '#f56c6c' },
-  { title: '学习数据', desc: '多维度掌握分析 + 考点弱点', path: '/student/stats', icon: 'TrendCharts', color: '#409eff' },
+  { title: '语法题库', desc: '按专题浏览 + 学习模式看解析', path: '/student/question-bank', icon: 'Notebook', color: '#409eff' },
+  { title: '专项练习', desc: '选专题刷题即时反馈', path: '/student/practice', icon: 'EditPen', color: '#67c23a' },
+  { title: '在线考试', desc: '参加考试并答题', path: '/student/exams', icon: 'Document', color: '#e6a23c' },
+  { title: '错题本', desc: '去重错题按考点分类', path: '/student/wrong-book', icon: 'CircleClose', color: '#f56c6c' },
+  { title: '学习数据', desc: '多维度分析 + 考点弱点', path: '/student/stats', icon: 'TrendCharts', color: '#409eff' },
+  { title: '个人资料', desc: '查看和编辑个人信息', path: '/student/profile', icon: 'User', color: '#9c27b0' },
 ]
 
 const load = async () => {
   loading.value = true
   try {
-    const [s, e] = await Promise.allSettled([getMySummary(), getAvailableExams()])
-    if (s.status === 'fulfilled') summary.value = s.value.data
-    if (e.status === 'fulfilled') availableExams.value = e.value.data ?? []
-  } finally {
-    loading.value = false
-  }
+    const uid = authStore.userInfo?.id
+    const tasks = [
+      getMySummary(),
+      getAvailableExams(),
+      uid ? getStudentStatistics(uid, 'basic,exam,practice,tag') : Promise.resolve(null),
+      getMyResults({ pageNum: 1, pageSize: 5 }),
+      listPractices({ pageNum: 1, pageSize: 5 }),
+    ]
+    const [s, e, st, r, p] = await Promise.allSettled(tasks)
+    if (s.status === 'fulfilled' && s.value) summary.value = (s.value as any).data
+    if (e.status === 'fulfilled' && e.value) availableExams.value = (e.value as any).data ?? []
+    if (st.status === 'fulfilled' && st.value) stats.value = (st.value as any).data
+    if (r.status === 'fulfilled' && r.value) recentResults.value = (r.value as any).data?.records ?? []
+    if (p.status === 'fulfilled' && p.value) recentPractices.value = (p.value as any).data?.records ?? []
+  } finally { loading.value = false }
 }
 
 onMounted(load)
+
+const accuracyColor = (v?: number) => {
+  if (v == null) return '#909399'
+  if (v >= 80) return '#67c23a'
+  if (v >= 60) return '#e6a23c'
+  return '#f56c6c'
+}
+
+/** 弱点分类 mini 柱状图 */
+const weakChartOption = computed(() => {
+  const tags = stats.value?.tagStats?.slice(0, 5) ?? []
+  if (!tags.length) return {}
+  return {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 0, right: 10, top: 5, bottom: 0 },
+    xAxis: { show: false, type: 'value', max: 100 },
+    yAxis: { type: 'category', data: tags.map(t => t.tagName.length > 6 ? t.tagName.slice(0, 6) + '…' : t.tagName).reverse(), axisLabel: { fontSize: 10 } },
+    series: [{
+      type: 'bar', data: tags.map(t => t.errorRate).reverse(),
+      barMaxWidth: 14,
+      itemStyle: {
+        borderRadius: [0, 4, 4, 0],
+        color: (p: any) => { const v = p.value ?? 0; return v <= 25 ? '#67c23a' : v <= 50 ? '#e6a23c' : '#f56c6c' },
+      },
+    }],
+  }
+})
+
+// 近5次考试分数 mini 趋势
+const scoreMiniOption = computed(() => {
+  const list = recentResults.value
+  if (!list.length) return {}
+  const data = [...list].reverse()
+  return {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 0, right: 10, top: 5, bottom: 0 },
+    xAxis: { show: false, type: 'category', data: data.map((_, i) => `#${i + 1}`) },
+    yAxis: { show: false, type: 'value', min: 0, max: 100 },
+    series: [{
+      type: 'line', smooth: true, data: data.map(r => r.scorePercentage ?? 0),
+      lineStyle: { color: '#409eff', width: 2 }, itemStyle: { color: '#409eff' },
+      areaStyle: { color: 'rgba(64,158,255,0.15)' },
+    }],
+  }
+})
+
+const isOngoing = (e: AvailableExam) => {
+  const now = Date.now()
+  return now >= Date.parse(e.startTime) && now <= Date.parse(e.endTime)
+}
+
+const examStatus = (e: AvailableExam) => {
+  const now = Date.now()
+  if (now < Date.parse(e.startTime)) return { text: '未开始', type: 'info' as const }
+  if (now > Date.parse(e.endTime)) return { text: '已结束', type: 'danger' as const }
+  return { text: '进行中', type: 'success' as const }
+}
+
+const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d === 3 ? '困难' : '-')
 </script>
 
 <template>
-  <div class="student-home">
+  <div class="student-home" v-loading="loading">
+    <!-- Hero -->
     <div class="hero">
       <h2>你好，{{ authStore.userInfo?.displayName || authStore.userInfo?.username || '同学' }} 👋</h2>
-      <p class="hero-sub">今天也要保持学习节奏，加油！</p>
+      <p class="hero-sub">坚持每天练习，语法能力会越来越强！</p>
     </div>
 
+    <!-- ====== Stats Row ====== -->
     <el-row :gutter="16" class="stat-row">
-      <el-col :span="8">
-        <div class="stat-card">
-          <div class="stat-label">考试次数</div>
-          <div class="stat-value">{{ summary.totalCount }}</div>
+      <el-col :span="4">
+        <div class="mini-stat" @click="router.push('/student/results')">
+          <div class="mini-num">{{ summary.totalCount }}</div>
+          <div class="mini-label">考试次数</div>
         </div>
       </el-col>
-      <el-col :span="8">
-        <div class="stat-card">
-          <div class="stat-label">平均分</div>
-          <div class="stat-value">{{ typeof summary.averageScore === 'number' ? summary.averageScore.toFixed(1) : summary.averageScore }}</div>
+      <el-col :span="4">
+        <div class="mini-stat">
+          <div class="mini-num" :style="{ color: accuracyColor(summary.averageScore) }">{{ summary.averageScore?.toFixed(1) || '-' }}</div>
+          <div class="mini-label">平均分</div>
         </div>
       </el-col>
-      <el-col :span="8">
-        <div class="stat-card">
-          <div class="stat-label">最高分</div>
-          <div class="stat-value" style="color:#67c23a">{{ summary.highestScore }}</div>
+      <el-col :span="4">
+        <div class="mini-stat">
+          <div class="mini-num" style="color:#67c23a">{{ summary.highestScore || '-' }}</div>
+          <div class="mini-label">最高分</div>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="mini-stat">
+          <div class="mini-num" :style="{ color: accuracyColor(summary.totalAccuracy) }">{{ summary.totalAccuracy?.toFixed(1) || '-' }}%</div>
+          <div class="mini-label">总正确率</div>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="mini-stat" @click="router.push('/student/practice')">
+          <div class="mini-num">{{ stats?.practiceCount ?? '-' }}</div>
+          <div class="mini-label">练习次数</div>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="mini-stat" @click="router.push('/student/wrong-book')">
+          <div class="mini-num" style="color:#f56c6c">{{ stats?.distinctWrongCount ?? '-' }}</div>
+          <div class="mini-label">错题数</div>
         </div>
       </el-col>
     </el-row>
 
-    <h3 class="section-title">快捷入口</h3>
+    <!-- ====== Charts Row: 弱点 + 趋势 + 考试 ====== -->
     <el-row :gutter="16">
-      <el-col v-for="s in shortcuts" :key="s.path" :xs="12" :sm="8" :md="6" :lg="4">
-        <div class="shortcut" @click="router.push(s.path)">
-          <div class="icon-wrap" :style="{ background: s.color + '22', color: s.color }">
-            <el-icon :size="24"><component :is="s.icon" /></el-icon>
+      <!-- 弱点考点 mini 图 -->
+      <el-col :span="8">
+        <el-card shadow="never" class="mini-chart-card">
+          <template #header><span class="card-title-text">⚠️ 薄弱考点 Top 5</span></template>
+          <VChart v-if="weakChartOption.series" :option="weakChartOption" autoresize style="height:140px" />
+          <el-empty v-else description="暂无数据" :image-size="60" />
+        </el-card>
+      </el-col>
+
+      <!-- 最近考试趋势 -->
+      <el-col :span="8">
+        <el-card shadow="never" class="mini-chart-card">
+          <template #header><span class="card-title-text">📈 最近考试趋势</span></template>
+          <VChart v-if="scoreMiniOption.series" :option="scoreMiniOption" autoresize style="height:140px" />
+          <el-empty v-else description="暂无考试记录" :image-size="60" />
+        </el-card>
+      </el-col>
+
+      <!-- 快捷入口 -->
+      <el-col :span="8">
+        <el-card shadow="never" class="mini-chart-card">
+          <template #header><span class="card-title-text">⚡ 快捷入口</span></template>
+          <div class="shortcut-grid">
+            <div v-for="s in shortcuts" :key="s.path" class="shortcut-item" @click="router.push(s.path)">
+              <div class="sc-icon" :style="{ background: s.color + '18', color: s.color }">
+                <el-icon :size="18"><component :is="s.icon" /></el-icon>
+              </div>
+              <div class="sc-text">
+                <div class="sc-title">{{ s.title }}</div>
+                <div class="sc-desc">{{ s.desc }}</div>
+              </div>
+            </div>
           </div>
-          <div class="shortcut-body">
-            <div class="shortcut-title">{{ s.title }}</div>
-            <div class="shortcut-desc">{{ s.desc }}</div>
-          </div>
-        </div>
+        </el-card>
       </el-col>
     </el-row>
 
-    <h3 class="section-title">
-      <span>正在进行的考试</span>
-      <el-link type="primary" :underline="false" @click="router.push('/student/exams')">查看全部 →</el-link>
-    </h3>
-    <el-card v-loading="loading" shadow="never">
-      <el-empty v-if="!availableExams.length" description="暂无可参加的考试" :image-size="80" />
-      <el-table v-else :data="availableExams.slice(0, 5)" size="default">
-        <el-table-column prop="sessionName" label="考试名称" />
-        <el-table-column prop="startTime" label="开始时间" width="180" />
-        <el-table-column prop="endTime" label="结束时间" width="180" />
-        <el-table-column label="时长" width="90">
-          <template #default="{ row }">{{ row.duration }} 分钟</template>
-        </el-table-column>
-        <el-table-column label="操作" width="120" align="center">
-          <template #default="{ row }">
-            <el-button type="primary" size="small" @click="router.push(`/student/exam-room/${row.id}`)">进入</el-button>
+    <!-- ====== Recent Exams + Practice ====== -->
+    <el-row :gutter="16">
+      <!-- 最近考试 -->
+      <el-col :span="14">
+        <el-card shadow="never">
+          <template #header>
+            <div class="card-head">
+              <span class="card-title-text">📝 最近考试记录</span>
+              <el-link type="primary" :underline="false" @click="router.push('/student/results')">全部 →</el-link>
+            </div>
           </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+          <el-table v-if="recentResults.length" :data="recentResults" size="small">
+            <el-table-column prop="sessionName" label="考试" min-width="140" show-overflow-tooltip />
+            <el-table-column label="提交时间" width="160">
+              <template #default="{ row }">{{ row.submitTime?.slice(0, 16) || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="得分" width="100" align="center">
+              <template #default="{ row }">
+                <span :style="{ color: accuracyColor(row.scorePercentage), fontWeight: 600 }">{{ row.totalScore ?? '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="正确率" width="80" align="center">
+              <template #default="{ row }">{{ row.scorePercentage?.toFixed(0) ?? '-' }}%</template>
+            </el-table-column>
+            <el-table-column label="操作" width="80" align="center">
+              <template #default="{ row }">
+                <el-button size="small" type="primary" link @click="router.push(`/student/results/${row.id}`)">详情</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-else description="暂无考试记录" :image-size="80" />
+        </el-card>
+      </el-col>
+
+      <!-- 最近练习 + 可用考试 -->
+      <el-col :span="10">
+        <!-- 最近练习 -->
+        <el-card shadow="never" style="margin-bottom:16px">
+          <template #header>
+            <div class="card-head">
+              <span class="card-title-text">🎯 最近练习</span>
+              <el-link type="primary" :underline="false" @click="router.push('/student/practice')">去练习 →</el-link>
+            </div>
+          </template>
+          <div v-if="recentPractices.length" class="practice-list">
+            <div v-for="p in recentPractices" :key="p.id" class="practice-row">
+              <span class="pr-name">{{ p.categoryName || '综合练习' }}</span>
+              <span class="pr-stat">{{ p.correctCount }}/{{ p.questionCount }}</span>
+              <span v-if="p.accuracy != null" class="pr-acc" :style="{ color: accuracyColor(p.accuracy) }">{{ p.accuracy.toFixed(0) }}%</span>
+              <span class="pr-time">{{ p.startTime?.slice(0, 10) }}</span>
+            </div>
+          </div>
+          <el-empty v-else description="暂无练习记录" :image-size="60" />
+        </el-card>
+
+        <!-- 可参加考试 -->
+        <el-card shadow="never">
+          <template #header>
+            <div class="card-head">
+              <span class="card-title-text">📋 可参加的考试</span>
+              <el-link type="primary" :underline="false" @click="router.push('/student/exams')">全部 →</el-link>
+            </div>
+          </template>
+          <div v-if="availableExams.length" class="exam-mini-list">
+            <div v-for="e in availableExams.slice(0, 3)" :key="e.id" class="exam-mini-row" @click="router.push(`/student/exam-room/${e.id}`)">
+              <el-tag :type="examStatus(e).type" size="small">{{ examStatus(e).text }}</el-tag>
+              <span class="em-name">{{ e.sessionName }}</span>
+              <span class="em-meta">{{ e.duration }}分钟 · {{ e.startTime?.slice(5, 16) }}</span>
+            </div>
+          </div>
+          <el-empty v-else description="暂无可参加的考试" :image-size="60" />
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
@@ -112,61 +285,61 @@ onMounted(load)
 
 .hero {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: #fff;
-  padding: 24px 28px;
-  border-radius: 8px;
-  margin-bottom: 16px;
-
+  color: #fff; padding: 24px 28px; border-radius: 8px; margin-bottom: 16px;
   h2 { margin: 0; font-size: 22px; font-weight: 600; }
   .hero-sub { margin: 6px 0 0; opacity: 0.85; font-size: 13px; }
 }
 
-.stat-row { margin-bottom: 20px; }
-.stat-card {
-  background: #fff;
-  border-radius: 8px;
-  padding: 18px 20px;
-  text-align: center;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+.stat-row { margin-bottom: 16px; }
+.mini-stat {
+  background: #fff; border-radius: 8px; padding: 16px; text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06); cursor: pointer; transition: transform 0.15s, box-shadow 0.15s;
+  &:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
 }
-.stat-label { color: #909399; font-size: 13px; margin-bottom: 6px; }
-.stat-value { font-size: 26px; font-weight: 600; color: #303133; }
+.mini-num { font-size: 24px; font-weight: 600; color: #303133; }
+.mini-label { font-size: 12px; color: #909399; margin-top: 4px; }
 
-.section-title {
-  margin: 8px 4px 12px;
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.card-head { display: flex; align-items: center; justify-content: space-between; }
+.card-title-text { font-size: 14px; font-weight: 600; color: #303133; }
+.mini-chart-card {
+  border-radius: 8px;
+  :deep(.el-card__body) { padding: 0 12px 12px; }
+  :deep(.el-card__header) { padding: 10px 16px; }
 }
 
-.shortcut {
-  background: #fff;
-  border-radius: 8px;
-  padding: 18px;
-  display: flex;
-  gap: 14px;
-  align-items: center;
-  cursor: pointer;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  transition: transform 0.15s, box-shadow 0.15s;
+// Shortcuts
+.shortcut-grid { display: flex; flex-direction: column; gap: 6px; }
+.shortcut-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 6px;
+  cursor: pointer; transition: background 0.15s;
+  &:hover { background: #f5f7fa; }
+}
+.sc-icon {
+  width: 32px; height: 32px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.sc-title { font-size: 13px; font-weight: 600; color: #303133; }
+.sc-desc { font-size: 11px; color: #909399; }
 
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-  }
+// Practice list
+.practice-list { display: flex; flex-direction: column; gap: 6px; }
+.practice-row {
+  display: flex; align-items: center; gap: 12px; padding: 6px 8px;
+  border-radius: 4px; font-size: 13px;
+  &:hover { background: #f5f7fa; }
+  .pr-name { flex: 1; color: #303133; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pr-stat { color: #606266; }
+  .pr-acc { font-weight: 600; min-width: 36px; text-align: right; }
+  .pr-time { color: #909399; font-size: 12px; min-width: 72px; text-align: right; }
 }
-.icon-wrap {
-  width: 44px;
-  height: 44px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+
+// Mini exam list
+.exam-mini-list { display: flex; flex-direction: column; gap: 6px; }
+.exam-mini-row {
+  display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+  border-radius: 4px; cursor: pointer; font-size: 13px;
+  &:hover { background: #f5f7fa; }
+  .em-name { flex: 1; color: #303133; font-weight: 500; }
+  .em-meta { color: #909399; font-size: 12px; }
 }
-.shortcut-title { font-size: 15px; font-weight: 600; color: #303133; }
-.shortcut-desc { font-size: 12px; color: #909399; margin-top: 4px; }
 </style>

@@ -8,7 +8,7 @@ const query = reactive({
   userId: undefined as number | undefined,
   timeRange: [] as string[],
   pageNum: 1,
-  pageSize: 20,
+  pageSize: 50,
 })
 
 const list = ref<OperationLog[]>([])
@@ -43,7 +43,8 @@ const reset = () => {
 const loadTypes = async () => {
   try {
     const res = await getOperationLogTypes()
-    types.value = res.data ?? []
+    const data = res.data
+    types.value = Array.isArray(data) ? data : []
   } catch { /* silent */ }
 }
 
@@ -142,7 +143,7 @@ onMounted(async () => {
           v-model:page-size="query.pageSize"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
-          :page-sizes="[20, 50, 100, 200]"
+          :page-sizes="[50, 100, 200]"
           @size-change="load"
           @current-change="load"
         />

@@ -44,7 +44,11 @@ export const constantRoutes: RouteRecordRaw[] = [
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
     component: () => import('@/views/error/404.vue'),
-    meta: { title: '404', noAuth: true },
+    // 注意：不要给 noAuth: true。
+    // 否则刷新动态路由（如 /dashboard）时，由于路由未注册会先命中此 catch-all，
+    // to.meta.noAuth 继承为 true，导致守卫误判为白名单直接放行，
+    // 跳过了动态路由生成逻辑，页面就永远卡在 404。
+    meta: { title: '404' },
   },
 ]
 
@@ -106,10 +110,13 @@ router.beforeEach(async (to) => {
 
     // 访问根路径 → 重定向到角色首页
     if (to.path === '/' || to.path === '/redirect') {
-      return homePath
+      return { path: homePath, replace: true }
     }
 
-    // 返回当前路径触发重试（此时动态路由已就绪，第二次进入会走到下面的 return true）
+    // 🔑 关键：返回 to.fullPath 字符串触发一次全新导航，
+    // 让 Vue Router 用已注册的动态路由重新匹配 /dashboard 等路径。
+    // 不要 return { ...to, replace: true }——to 里带着 name: 'NotFound'、
+    // matched 等字段，spread 出来会让新导航继续按 NotFound 走，仍然 404。
     return to.fullPath
   }
 

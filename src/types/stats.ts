@@ -83,22 +83,26 @@ export interface TagStat {
   errorRate: number
 }
 
-/** 训练时间设置（对齐后端 TrainingScheduleVO） */
+/** 训练时间设置（对齐后端 TrainingScheduleVO / TrainingScheduleRequest） */
 export interface TrainingSchedule {
-  id?: number
-  userId?: number
-  /** 可训练星期（1-7 逗号分隔，如 "1,3,5"） */
-  trainingDays?: string
-  /** 每日训练时段，如 "19:00-21:00" */
-  timeSlot?: string
-  /** 每日训练题目数 */
-  dailyQuestionCount?: number
-  /** 实际开始日期 */
+  /** 训练计划开始日期，如 "2026-01-01" */
+  trainingStartDate?: string
+  /** 实际训练开始日期（老师/学生可手动改，如学生只能周末训练则改为最近周六） */
   actualStartDate?: string
-  /** 训练结束日期 */
+  /** 训练计划结束日期 */
   trainingEndDate?: string
-  /** 计划开始日期 */
-  plannedStartDate?: string
+  /** 可训练星期（1-7 逗号分隔，如 "6,7" 表示仅周末可训练）*/
+  trainingDays?: string
+  /** 可训练星期中文名列表（后端直接返回，前端用来展示） */
+  trainingDayNames?: string[]
+  /** 每日训练时段-起 HH:mm */
+  trainingTimeFrom?: string
+  /** 每日训练时段-止 HH:mm */
+  trainingTimeTo?: string
+  /** 训练目标总时长（小时数） */
+  trainingTargetHours?: number
+  /** 训练备注 */
+  trainingNotes?: string
 }
 
 /* ============================================================ *

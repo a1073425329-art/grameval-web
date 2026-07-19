@@ -7,16 +7,23 @@ import * as ElementPlusIconsVue from '@element-plus/icons-vue'
 import App from './App.vue'
 import router from './router'
 import './styles/index.scss'
+import { useDictStore } from './stores/dict'
 
 const app = createApp(App)
 
-// Register Element Plus icons globally
+// 全局注册 Element Plus 图标
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
 
-app.use(createPinia())
+const pinia = createPinia()
+
+app.use(pinia)
 app.use(ElementPlus)
 app.use(router)
+
+// 启动后异步拉字典（失败不阻塞）
+const dictStore = useDictStore(pinia)
+dictStore.load().catch(() => null)
 
 app.mount('#app')

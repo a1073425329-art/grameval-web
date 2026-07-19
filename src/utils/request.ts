@@ -16,20 +16,25 @@ request.interceptors.request.use(
     }
     return config
   },
-  (error) => {
-    return Promise.reject(error)
-  }
+  (error) => Promise.reject(error)
 )
 
 // Response interceptor
 request.interceptors.response.use(
   (response) => {
+    // blob（文件流）不走业务错误判断
+    if (
+      response.request?.responseType === 'blob' ||
+      response.config?.responseType === 'blob'
+    ) {
+      return response
+    }
     const res = response.data
-    // Business-level error
-    if (res.code !== undefined && res.code !== 200) {
+    if (res && res.code !== undefined && res.code !== 200) {
       ElMessage.error(res.message || 'Request failed')
       if (res.code === 401) {
         localStorage.removeItem('token')
+        localStorage.removeItem('role')
         router.push('/login')
       }
       return Promise.reject(new Error(res.message || 'Request failed'))
@@ -39,9 +44,10 @@ request.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
+      localStorage.removeItem('role')
       router.push('/login')
     }
-    ElMessage.error(error.message || 'Network error')
+    ElMessage.error(error.response?.data?.message || error.message || 'Network error')
     return Promise.reject(error)
   }
 )

@@ -1,18 +1,63 @@
-// Colors
-$primary-color: #409eff;
-$success-color: #67c23a;
-$warning-color: #e6a23c;
-$danger-color: #f56c6c;
-$info-color: #909399;
+// ============================================================================
+//  Design tokens —— 参考 vue-element-admin 风格
+// ============================================================================
 
-$bg-color: #f0f2f5;
-$sidebar-bg: #304156;
-$sidebar-text: #bfcbd9;
-$sidebar-active-text: #409eff;
-$header-bg: #fff;
-$header-height: 60px;
-$sidebar-width: 220px;
+// Brand
+$primary-color:        #409eff;
+$primary-hover:        #66b1ff;
+$success-color:        #67c23a;
+$warning-color:        #e6a23c;
+$danger-color:         #f56c6c;
+$info-color:           #909399;
+
+// Layout background
+$bg-color:             #f0f2f5;          // main content area
+$card-bg:              #ffffff;
+
+// Sidebar (dark theme)
+$sidebar-bg:           #304156;
+$sidebar-submenu-bg:   #1f2d3d;
+$sidebar-hover-bg:     #263445;
+$sidebar-text:         #bfcbd9;
+$sidebar-active-text:  #ffffff;
+$sidebar-active-bg:    #263445;
+$sidebar-active-border:$primary-color;
+$sidebar-width:        210px;
+$sidebar-collapsed-width: 64px;
+
+// Header
+$header-bg:            #ffffff;
+$header-height:        50px;
+$header-shadow:        0 1px 4px rgba(0, 21, 41, 0.08);
+$breadcrumb-color:     #97a8be;
+$breadcrumb-active:    #303133;
+
+// TagsView
+$tags-height:          34px;
+$tags-bg:              #ffffff;
+$tag-border:           #d8dce5;
+$tag-active-bg:        $primary-color;
+$tag-active-text:      #ffffff;
+
+// Radius & shadow
+$radius-sm:            4px;
+$radius-md:            6px;
+$radius-lg:            8px;
+$shadow-card:          0 1px 3px rgba(0, 0, 0, 0.05);
+$shadow-card-hover:    0 4px 12px rgba(0, 0, 0, 0.08);
+
+// Text
+$text-primary:         #303133;
+$text-regular:         #606266;
+$text-secondary:       #909399;
+$text-placeholder:     #c0c4cc;
+$border-base:          #dcdfe6;
+$border-light:         #ebeef5;
 
 // Font
-$font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Hiragino Sans GB',
-  'Microsoft YaHei', Arial, sans-serif;
+$font-family:          'Helvetica Neue', Helvetica, 'PingFang SC',
+                       'Hiragino Sans GB', 'Microsoft YaHei', Arial, sans-serif;
+
+// Transition
+$trans-fast:           all 0.2s ease;
+$trans-base:           all 0.28s ease;

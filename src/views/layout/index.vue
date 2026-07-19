@@ -1,20 +1,8 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useAuthStore } from '@/stores/auth'
+// 用户信息在 login 时由后端一次性下发到 authStore，
+// 这里不再需要单独拉取。permissionStore 由 router 守卫按 role 生成动态路由。
 import Sidebar from './components/Sidebar.vue'
 import Header from './components/Header.vue'
-
-const authStore = useAuthStore()
-
-onMounted(async () => {
-  if (authStore.token && !authStore.userInfo) {
-    try {
-      await authStore.fetchUserInfo()
-    } catch {
-      authStore.logout()
-    }
-  }
-})
 </script>
 
 <template>

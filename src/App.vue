@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import { useAuthStore } from '@/stores/auth'
-import { useRouter } from 'vue-router'
-
-const authStore = useAuthStore()
-const router = useRouter()
-
-const token = authStore.token
+// 全局根组件，仅承载路由出口。
 </script>
 
 <template>

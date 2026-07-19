@@ -1,19 +1,82 @@
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import { useAuthStore, HOME_BY_ROLE } from '@/stores/auth'
+import { usePermissionStore } from '@/stores/permission'
 import { ElMessage } from 'element-plus'
+import { User, Lock } from '@element-plus/icons-vue'
 import type { LoginForm } from '@/types/user'
+import type { Role } from '@/types/common'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const permissionStore = usePermissionStore()
+
+/**
+ * 登录页的"角色入口"：
+ *   /login              → tab = '' （通用，不锁定，允许任意角色登录）
+ *   /login/student      → tab = 'STUDENT'  （预选并锁定）
+ *   /login/admin        → tab = 'ADMIN'    （预选并锁定）
+ *   /login?role=student → 兼容 query 写法
+ *
+ * 锁定态：URL 里明确指定了角色，页面上禁止切换（避免误操作），
+ * 提交时把 role 一并给后端做身份校验。
+ */
+function normalizeRole(v: unknown): Role | '' {
+  if (!v) return ''
+  const s = String(v).toUpperCase()
+  if (s === 'STUDENT' || s === 'ADMIN') return s
+  return ''
+}
+
+const initialRole = computed<Role | ''>(() => {
+  const fromPath = normalizeRole(route.params.role)
+  if (fromPath) return fromPath
+  return normalizeRole(route.query.role)
+})
+
+/** 是否为锁定入口（URL 已指定角色） */
+const locked = computed(() => Boolean(initialRole.value))
 
 const loading = ref(false)
+const activeRole = ref<Role>(initialRole.value || 'STUDENT')
+
+/** 默认快捷账号 */
+const PRESET_ACCOUNTS: Record<Role, { username: string; password: string; label: string }[]> = {
+  ADMIN: [
+    { username: 'admin', password: '123456', label: '系统管理员' },
+    { username: 'teacher01', password: '123456', label: '王老师' },
+  ],
+  STUDENT: [
+    { username: 'student01', password: '123456', label: '演示学生' },
+    { username: 'student02', password: '123456', label: '李小红' },
+    { username: 'student03', password: '123456', label: '王小刚' },
+  ],
+}
+
+const currentPresets = computed(() => PRESET_ACCOUNTS[activeRole.value])
+
 const loginForm = reactive<LoginForm>({
   username: '',
   password: '',
+  role: undefined,
 })
+
+// URL 变了（比如从 /login 切到 /login/admin），tab 也跟着变
+watch(
+  () => route.fullPath,
+  () => {
+    if (initialRole.value) {
+      activeRole.value = initialRole.value
+    }
+  },
+)
+
+const handleRoleChange = (r: string | number) => {
+  if (locked.value) return
+  activeRole.value = r as Role
+}
 
 const handleLogin = async () => {
   if (!loginForm.username || !loginForm.password) {
@@ -23,16 +86,42 @@ const handleLogin = async () => {
 
   loading.value = true
   try {
-    await authStore.login(loginForm)
+    // 只有锁定入口才把 role 发给后端做严格校验；
+    // 通用入口(/login) 不带 role，后端会按账号实际角色返回。
+    const payload: LoginForm = {
+      username: loginForm.username,
+      password: loginForm.password,
+      role: locked.value ? activeRole.value : undefined,
+    }
+    const user = await authStore.login(payload)
+
+    // 登录切换了角色，清掉之前生成的动态路由，让守卫重新生成
+    permissionStore.reset()
+
     ElMessage.success('登录成功')
-    const redirect = (route.query.redirect as string) || '/'
+
+    // 跳转优先级：显式 redirect → 角色首页
+    const redirect = (route.query.redirect as string) || HOME_BY_ROLE[user.role]
     router.push(redirect)
   } catch {
-    // Error handled by interceptor
+    // 拦截器已经弹过错误
   } finally {
     loading.value = false
   }
 }
+
+const goRegister = () => {
+  router.push({ path: '/register', query: { role: activeRole.value } })
+}
+
+/** 已登录状态下访问登录页 → 直接送到角色首页（备份守卫的逻辑，避免闪一下） */
+onMounted(() => {
+  if (authStore.token && authStore.role) {
+    router.replace(authStore.homePath)
+  }
+})
+
+const roleLabel = computed(() => (activeRole.value === 'ADMIN' ? '管理员' : '学生'))
 </script>
 
 <template>
@@ -40,6 +129,22 @@ const handleLogin = async () => {
     <div class="login-card">
       <h1 class="login-title">GramEval</h1>
       <p class="login-subtitle">英语语法专项在线考试系统</p>
+
+      <!-- 角色切换：URL 已锁定角色时禁用切换 -->
+      <el-radio-group
+        v-model="activeRole"
+        class="role-tabs"
+        size="large"
+        :disabled="locked"
+        @change="handleRoleChange"
+      >
+        <el-radio-button label="STUDENT" value="STUDENT">学生登录</el-radio-button>
+        <el-radio-button label="ADMIN" value="ADMIN">管理员登录</el-radio-button>
+      </el-radio-group>
+
+      <p v-if="locked" class="locked-hint">
+        当前为「{{ roleLabel }}」专用入口
+      </p>
 
       <el-form
         :model="loginForm"
@@ -50,8 +155,9 @@ const handleLogin = async () => {
         <el-form-item>
           <el-input
             v-model="loginForm.username"
-            placeholder="请输入用户名"
+            :placeholder="`输入${roleLabel}账号`"
             :prefix-icon="User"
+            autocomplete="username"
           />
         </el-form-item>
         <el-form-item>
@@ -61,6 +167,7 @@ const handleLogin = async () => {
             placeholder="请输入密码"
             :prefix-icon="Lock"
             show-password
+            autocomplete="current-password"
           />
         </el-form-item>
         <el-form-item>
@@ -70,14 +177,34 @@ const handleLogin = async () => {
             style="width: 100%"
             @click="handleLogin"
           >
-            {{ loading ? '登录中...' : '登 录' }}
+            {{ loading ? '登录中...' : `${roleLabel}登录` }}
           </el-button>
         </el-form-item>
       </el-form>
 
-      <div style="text-align: center; margin-top: 16px">
+      <!-- 快捷选择账号 -->
+      <div class="quick-accounts">
+        <div class="quick-label">快捷登录</div>
+        <div class="quick-btns">
+          <el-button
+            v-for="acct in currentPresets"
+            :key="acct.username"
+            size="small"
+            plain
+            @click="loginForm.username = acct.username; loginForm.password = acct.password"
+          >
+            {{ acct.label }}
+          </el-button>
+        </div>
+      </div>
+
+      <div class="login-footer">
         <el-text type="info" size="small">
-          默认账号: admin / 密码: 123456
+          还没有账号？
+          <el-link type="primary" @click="goRegister">立即注册</el-link>
+        </el-text>
+        <el-text v-if="activeRole === 'ADMIN'" type="info" size="small" class="hint">
+          管理员默认账号：admin / 123456
         </el-text>
       </div>
     </div>
@@ -111,8 +238,67 @@ const handleLogin = async () => {
 
 .login-subtitle {
   text-align: center;
-  margin-bottom: 32px;
+  margin-bottom: 20px;
   font-size: 14px;
   color: #999;
+}
+
+.role-tabs {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+
+  :deep(.el-radio-button__inner) {
+    width: 140px;
+    text-align: center;
+  }
+}
+
+.locked-hint {
+  text-align: center;
+  font-size: 12px;
+  color: #67c23a;
+  margin: 0 0 16px;
+}
+
+.role-tabs + .el-form,
+.locked-hint + .el-form {
+  margin-top: 16px;
+}
+
+.quick-accounts {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #ebeef5;
+}
+.quick-label {
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 8px;
+}
+.quick-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.login-footer {
+  text-align: center;
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+
+  .hint {
+    opacity: 0.75;
+  }
+}
+
+.login-credential-hint {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 4px;
+  text-align: left;
+  width: 100%;
 }
 </style>

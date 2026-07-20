@@ -207,41 +207,59 @@ onMounted(load)
         </el-button>
       </div>
 
-      <el-table :data="list" style="width:100%">
-        <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="username" label="用户名" width="130" />
-        <el-table-column prop="realName" label="姓名" width="120" />
-        <el-table-column label="性别" width="70">
-          <template #default="{ row }">{{ genderText(row.gender) }}</template>
-        </el-table-column>
-        <el-table-column label="角色" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.role === 'ADMIN' ? 'danger' : 'success'" size="small">
-              {{ row.role === 'ADMIN' ? '管理员' : '学生' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="email" label="邮箱" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="phone" label="手机号" width="120" />
-        <el-table-column prop="lastLoginTime" label="最后登录" width="170" />
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
+      <!-- 卡片网格布局 -->
+      <div class="user-grid">
+        <el-card
+          v-for="item in list"
+          :key="item.id"
+          class="user-card"
+          hover
+        >
+          <div class="card-header">
+            <div class="avatar-wrap">
+              <el-avatar :size="44" :src="item.avatar || ''">
+                <el-icon><User /></el-icon>
+              </el-avatar>
+            </div>
+            <div class="user-info">
+              <div class="user-name">{{ item.realName || item.username }}</div>
+              <div class="user-meta">
+                <span class="username">@{{ item.username }}</span>
+                <el-tag :type="item.role === 'ADMIN' ? 'danger' : 'success'" size="small">{{ item.role === 'ADMIN' ? '管理员' : '学生' }}</el-tag>
+              </div>
+            </div>
             <el-switch
-              v-model="row.status"
+              v-model="item.status"
               :active-value="1"
               :inactive-value="0"
-              @change="(v: unknown) => onStatusChange(row, v as number)"
+              @change="(v: unknown) => onStatusChange(item, v as number)"
             />
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="220" align="center" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="warning" size="small" @click="confirmResetPwd(row)">重置密码</el-button>
-            <el-button link type="danger" size="small" @click="confirmDelete(row)">禁用</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          </div>
+          <div class="card-body">
+            <div class="info-row">
+              <span class="info-label">邮箱</span>
+              <span class="info-value">{{ item.email || '-' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">手机号</span>
+              <span class="info-value">{{ item.phone || '-' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">性别</span>
+              <span class="info-value">{{ genderText(item.gender) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">最后登录</span>
+              <span class="info-value">{{ item.lastLoginTime || '-' }}</span>
+            </div>
+          </div>
+          <div class="card-footer">
+            <el-button link type="primary" size="small" @click="openEdit(item)">编辑</el-button>
+            <el-button link type="warning" size="small" @click="confirmResetPwd(item)">重置密码</el-button>
+            <el-button link type="danger" size="small" @click="confirmDelete(item)">禁用</el-button>
+          </div>
+        </el-card>
+      </div>
 
       <div class="pagination">
         <el-pagination
@@ -300,4 +318,84 @@ onMounted(load)
 .filter-card :deep(.el-card__body) { padding-bottom: 0; }
 .toolbar { margin-bottom: 12px; }
 .pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
+
+.user-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+}
+
+.user-card {
+  transition: all 0.2s;
+  &:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 12px;
+}
+
+.avatar-wrap {
+  flex-shrink: 0;
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.user-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.username {
+  font-size: 12px;
+  color: #909399;
+}
+
+.card-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.info-label {
+  font-size: 11px;
+  color: #909399;
+}
+
+.info-value {
+  font-size: 13px;
+  color: #606266;
+}
+
+.card-footer {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
+  margin-top: 12px;
+}
 </style>

@@ -360,34 +360,57 @@ onMounted(async () => {
         <el-button type="warning" plain :disabled="!selected.length" @click="batchToggle(0)">批量停用</el-button>
         <el-button type="danger" plain :disabled="!selected.length" @click="batchDelete">批量删除</el-button>
       </div>
-      <el-table :data="list" style="width:100%" @selection-change="onSelection">
-        <el-table-column type="selection" width="45" />
-        <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="stem" label="题干" min-width="320" show-overflow-tooltip />
-        <el-table-column prop="categoryName" label="分类" width="120" />
-        <el-table-column label="题型" width="100">
-          <template #default="{ row }">{{ typeLabel(row.questionType) }}</template>
-        </el-table-column>
-        <el-table-column label="难度" width="80">
-          <template #default="{ row }">
-            <el-tag :type="diffTagType(row.difficulty)" size="small">{{ diffLabel(row.difficulty) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="80">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
-              {{ row.status === 1 ? '启用' : '停用' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="usageCount" label="被引用" width="80" align="center" />
-        <el-table-column label="操作" width="140" align="center" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" size="small" @click="confirmDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+
+      <!-- 卡片网格布局（支持批量选择） -->
+      <div class="question-grid">
+        <el-card
+          v-for="item in list"
+          :key="item.id"
+          class="question-card"
+          hover
+          @click="openEdit(item)"
+        >
+          <div class="card-header">
+            <el-checkbox
+              :checked="selected.some(s => s.id === item.id)"
+              @change="(v: unknown) => { if(v) selected.push(item); else selected = selected.filter((s: Question) => s.id !== item.id) }"
+              @click.stop
+            />
+            <span class="q-id">#{{ item.id }}</span>
+            <el-tag :type="item.status === 1 ? 'success' : 'info'" size="small">{{ item.status === 1 ? '启用' : '停用' }}</el-tag>
+            <el-tag :type="diffTagType(item.difficulty)" size="small">{{ diffLabel(item.difficulty) }}</el-tag>
+            <el-tag size="small">{{ typeLabel(item.questionType) }}</el-tag>
+          </div>
+          <div class="card-stem">{{ item.stem }}</div>
+          <div class="card-meta">
+            <span class="meta-item">
+              <span class="meta-label">分类</span>
+              <span class="meta-value">{{ item.categoryName || '-' }}</span>
+            </span>
+            <span class="meta-item">
+              <span class="meta-label">引用</span>
+              <span class="meta-value">{{ item.usageCount ?? 0 }} 次</span>
+            </span>
+            <span class="meta-item">
+              <span class="meta-label">分值</span>
+              <span class="meta-value">{{ item.defaultScore ?? 2 }} 分</span>
+            </span>
+          </div>
+          <div class="card-options" v-if="item.options?.length">
+            <div v-for="opt in item.options" :key="opt.optionLabel" class="opt-item">
+              <span class="opt-label">{{ opt.optionLabel }}.</span>
+              <span class="opt-content">{{ opt.optionContent }}</span>
+            </div>
+          </div>
+          <div class="card-footer">
+            <span class="answer-hint">答案：{{ item.standardAnswer || '-' }}</span>
+            <div class="actions">
+              <el-button type="primary" size="small" @click.stop="openEdit(item)">编辑</el-button>
+              <el-button type="danger" size="small" @click.stop="confirmDelete(item)">删除</el-button>
+            </div>
+          </div>
+        </el-card>
+      </div>
       <div class="pagination">
         <el-pagination
           v-model:current-page="query.pageNum"
@@ -505,4 +528,109 @@ onMounted(async () => {
 .opt-list { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .opt-row { display: flex; gap: 8px; align-items: center; }
 .opt-key { flex-shrink: 0; width: 32px; text-align: center; font-weight: 600; }
+
+.question-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 16px;
+}
+
+.question-card {
+  cursor: pointer;
+  transition: all 0.2s;
+  &:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.q-id {
+  font-size: 12px;
+  color: #909399;
+  font-family: monospace;
+}
+
+.card-stem {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #303133;
+  margin-bottom: 10px;
+  white-space: pre-wrap;
+}
+
+.card-meta {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-label {
+  font-size: 11px;
+  color: #909399;
+}
+
+.meta-value {
+  font-size: 12px;
+  color: #606266;
+}
+
+.card-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.opt-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 6px 10px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.opt-label {
+  font-weight: 600;
+  color: #409eff;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.opt-content {
+  color: #606266;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
+}
+
+.answer-hint {
+  font-size: 13px;
+  color: #67c23a;
+  font-weight: 500;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
 </style>

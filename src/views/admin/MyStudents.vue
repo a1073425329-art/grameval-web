@@ -237,153 +237,88 @@ onMounted(load)
 
       <el-empty v-if="!loading && !sortedList.length" description="暂无学生数据" />
 
-      <el-table
-        v-else
-        :data="sortedList"
-        v-loading="loading"
-        stripe
-        style="width: 100%"
-        row-class-name="student-row"
-        :default-sort="{ prop: 'averageScore', order: 'descending' }"
-      >
-        <!-- # -->
-        <el-table-column type="index" label="#" width="50" align="center" />
-
-        <!-- 学生信息 -->
-        <el-table-column label="学生" min-width="180" fixed="left">
-          <template #default="{ row }: { row: AdminStudent }">
-            <div class="student-cell">
-              <el-avatar :size="36" :src="row.avatar || '/avatars/student.jpg'">
-                <el-icon><UserFilled /></el-icon>
-              </el-avatar>
-              <div class="stu-info">
-                <div class="stu-name">
-                  {{ row.realName || row.displayName || row.username }}
-                  <el-tag
-                    :type="(row.status ?? 1) === 0 ? 'danger' : 'success'"
-                    size="small"
-                    effect="light"
-                    class="status-tag"
-                  >
-                    {{ statusLabel(row.status) }}
-                  </el-tag>
-                </div>
-                <div class="stu-meta">
-                  <span class="stu-username">@{{ row.username }}</span>
-                  <span v-if="genderLabel(row.gender)" class="stu-gender" :style="{ color: genderColor(row.gender) }">
-                    {{ genderLabel(row.gender) }}
-                  </span>
-                </div>
+      <!-- 卡片网格布局 -->
+      <div v-else class="student-grid" v-loading="loading">
+        <el-card
+          v-for="item in sortedList"
+          :key="item.studentId"
+          class="student-card"
+          hover
+        >
+          <div class="card-header">
+            <el-avatar :size="44" :src="item.avatar || '/avatars/student.jpg'">
+              <el-icon><UserFilled /></el-icon>
+            </el-avatar>
+            <div class="stu-info">
+              <div class="stu-name">
+                {{ item.realName || item.displayName || item.username }}
+                <el-tag :type="(item.status ?? 1) === 0 ? 'danger' : 'success'" size="small" effect="light">
+                  {{ statusLabel(item.status) }}
+                </el-tag>
+              </div>
+              <div class="stu-meta">
+                <span class="stu-username">@{{ item.username }}</span>
+                <span v-if="genderLabel(item.gender)" class="stu-gender" :style="{ color: genderColor(item.gender) }">
+                  {{ genderLabel(item.gender) }}
+                </span>
               </div>
             </div>
-          </template>
-        </el-table-column>
-
-        <!-- 邮箱 -->
-        <el-table-column label="邮箱" min-width="180" show-overflow-tooltip>
-          <template #default="{ row }: { row: AdminStudent }">
-            <span v-if="row.email">{{ row.email }}</span>
-            <span v-else class="na-text">-</span>
-          </template>
-        </el-table-column>
-
-        <!-- 手机号 -->
-        <el-table-column label="手机号" width="130" align="center">
-          <template #default="{ row }: { row: AdminStudent }">
-            <span v-if="row.phone">{{ row.phone }}</span>
-            <span v-else class="na-text">-</span>
-          </template>
-        </el-table-column>
-
-        <!-- 训练计划 -->
-        <el-table-column label="训练开始" width="115" align="center">
-          <template #default="{ row }: { row: AdminStudent }">
-            <span :class="{ 'na-text': !row.trainingStartDate }">
-              {{ formatDate(row.trainingStartDate) }}
-            </span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="实际训练" width="115" align="center">
-          <template #default="{ row }: { row: AdminStudent }">
-            <span :class="{ 'na-text': !row.actualStartDate }">
-              {{ formatDate(row.actualStartDate) }}
-            </span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="训练日" width="110" align="center">
-          <template #default="{ row }: { row: AdminStudent }">
-            <span :class="{ 'na-text': !row.trainingDays }">
-              {{ trainingDaysLabel(row.trainingDays) }}
-            </span>
-          </template>
-        </el-table-column>
-
-        <!-- 学习概览 -->
-        <el-table-column label="考试次数" width="90" align="center" sortable prop="examCount">
-          <template #default="{ row }: { row: AdminStudent }">
-            <span class="count-num">{{ row.examCount ?? 0 }}</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="平均分" width="85" align="center" sortable prop="averageScore">
-          <template #default="{ row }: { row: AdminStudent }">
-            <span :class="['score-badge', scoreClass(row.averageScore)]">
-              {{ row.averageScore != null ? row.averageScore.toFixed(0) : '-' }}
-            </span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="最近得分" width="85" align="center" sortable prop="recentScore">
-          <template #default="{ row }: { row: AdminStudent }">
-            <span :class="['score-badge', scoreClass(row.recentScore)]">
-              {{ row.recentScore != null ? row.recentScore.toFixed(0) : '-' }}
-            </span>
-          </template>
-        </el-table-column>
-
-        <el-table-column label="错题数" width="80" align="center" sortable prop="wrongCount">
-          <template #default="{ row }: { row: AdminStudent }">
-            <span :class="{ 'wrong-num': (row.wrongCount ?? 0) > 0 }">
-              {{ row.wrongCount ?? 0 }}
-            </span>
-          </template>
-        </el-table-column>
-
-        <!-- 最后登录 -->
-        <el-table-column label="最后登录" width="145" align="center">
-          <template #default="{ row }: { row: AdminStudent }">
-            <span :class="{ 'na-text': !row.lastLoginTime }">
-              {{ formatDateTime(row.lastLoginTime) }}
-            </span>
-          </template>
-        </el-table-column>
-
-        <!-- 备注 -->
-        <el-table-column label="备注" min-width="120" show-overflow-tooltip>
-          <template #default="{ row }: { row: AdminStudent }">
-            <span v-if="row.remark">{{ row.remark }}</span>
-            <span v-else class="na-text">-</span>
-          </template>
-        </el-table-column>
-
-        <!-- 操作 -->
-        <el-table-column label="操作" width="70" align="center" fixed="right">
-          <template #default="{ row }: { row: AdminStudent }">
+          </div>
+          <div class="card-body">
+            <div class="info-row">
+              <span class="info-label">邮箱</span>
+              <span class="info-value">{{ item.email || '-' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">手机号</span>
+              <span class="info-value">{{ item.phone || '-' }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">训练开始</span>
+              <span class="info-value">{{ formatDate(item.trainingStartDate) }}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">训练日</span>
+              <span class="info-value">{{ trainingDaysLabel(item.trainingDays) }}</span>
+            </div>
+          </div>
+          <div class="card-stats">
+            <div class="stat-item">
+              <span class="stat-num">{{ item.examCount ?? 0 }}</span>
+              <span class="stat-label">考试</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num" :class="['score-badge', scoreClass(item.averageScore)]">
+                {{ item.averageScore != null ? item.averageScore.toFixed(0) : '-' }}
+              </span>
+              <span class="stat-label">平均分</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num" :class="['score-badge', scoreClass(item.recentScore)]">
+                {{ item.recentScore != null ? item.recentScore.toFixed(0) : '-' }}
+              </span>
+              <span class="stat-label">最近</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num" :class="{ 'wrong-num': (item.wrongCount ?? 0) > 0 }">{{ item.wrongCount ?? 0 }}</span>
+              <span class="stat-label">错题</span>
+            </div>
+          </div>
+          <div class="card-footer">
+            <span class="last-login">{{ formatDateTime(item.lastLoginTime) }}</span>
             <el-popconfirm
-              :title="`确认解绑「${row.realName || row.displayName || row.username}」？`"
+              :title="`确认解绑「${item.realName || item.displayName || item.username}」？`"
               confirm-button-text="解绑"
               cancel-button-text="取消"
-              @confirm="unbindOne(row)"
+              @confirm="unbindOne(item)"
             >
               <template #reference>
-                <el-button link type="danger" size="small" :icon="Close">解绑</el-button>
+                <el-button link type="danger" size="small">解绑</el-button>
               </template>
             </el-popconfirm>
-          </template>
-        </el-table-column>
-      </el-table>
+          </div>
+        </el-card>
+      </div>
 
       <!-- 底部汇总 -->
       <div v-if="sortedList.length" class="table-summary">
@@ -548,6 +483,89 @@ onMounted(load)
   font-size: 13px;
   color: #909399;
   b { color: #303133; }
+}
+
+/* ---------------- 卡片网格 ---------------- */
+.student-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+}
+
+.student-card {
+  transition: all 0.2s;
+  &:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 12px;
+}
+
+.card-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.info-label {
+  font-size: 11px;
+  color: #909399;
+}
+
+.info-value {
+  font-size: 13px;
+  color: #606266;
+}
+
+.card-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-num {
+  font-size: 18px;
+  font-weight: 700;
+  color: #303133;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #909399;
+  margin-top: 2px;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
+}
+
+.last-login {
+  font-size: 12px;
+  color: #909399;
 }
 
 /* ---------------- 绑定弹窗 ---------------- */

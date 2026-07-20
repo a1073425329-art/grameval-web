@@ -96,46 +96,44 @@ onMounted(async () => {
     </el-card>
 
     <el-card shadow="never" v-loading="loading">
-      <el-table :data="list" style="width:100%">
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="createTime" label="时间" width="180" />
-        <el-table-column label="用户" width="180">
-          <template #default="{ row }">
-            <span>{{ row.username }}</span>
-            <span style="color:#909399; margin-left:4px">#{{ row.userId }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作类型" width="140">
-          <template #default="{ row }">
-            <el-tag :type="typeTag(row.operationType)" size="small">
-              {{ typeLabel(row.operationType) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="目标" width="180">
-          <template #default="{ row }">
-            <span v-if="row.targetType">
-              {{ row.targetType }}
-              <span v-if="row.targetId" style="color:#909399">#{{ row.targetId }}</span>
-            </span>
-            <span v-else style="color:#c0c4cc">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="detail" label="详情" min-width="240" show-overflow-tooltip />
-        <el-table-column prop="requestUri" label="请求路径" min-width="200" show-overflow-tooltip>
-          <template #default="{ row }">
-            <span class="mono">{{ row.requestUri }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="clientIp" label="IP" width="140" />
-        <el-table-column label="结果" width="80" align="center">
-          <template #default="{ row }">
-            <el-tag :type="row.resultCode === '200' ? 'success' : 'danger'" size="small">
-              {{ row.resultCode }}
-            </el-tag>
-          </template>
-        </el-table-column>
-      </el-table>
+      <!-- 卡片列表布局 -->
+      <div class="log-list">
+        <div
+          v-for="item in list"
+          :key="item.id"
+          class="log-item"
+        >
+          <div class="log-header">
+            <div class="log-time">{{ item.createTime }}</div>
+            <div class="log-id">#{{ item.id }}</div>
+          </div>
+          <div class="log-body">
+            <div class="log-user">
+              <el-icon><User /></el-icon>
+              <span>{{ item.username }}</span>
+              <span class="user-id">#{{ item.userId }}</span>
+            </div>
+            <div class="log-tags">
+              <el-tag :type="typeTag(item.operationType)" size="small">
+                {{ typeLabel(item.operationType) }}
+              </el-tag>
+              <el-tag :type="item.resultCode === '200' ? 'success' : 'danger'" size="small">
+                {{ item.resultCode }}
+              </el-tag>
+            </div>
+            <div v-if="item.targetType" class="log-target">
+              <span class="target-label">目标：</span>
+              <span>{{ item.targetType }}</span>
+              <span v-if="item.targetId" class="target-id">#{{ item.targetId }}</span>
+            </div>
+            <div v-if="item.detail" class="log-detail">{{ item.detail }}</div>
+          </div>
+          <div class="log-footer">
+            <span class="log-uri">{{ item.requestUri }}</span>
+            <span class="log-ip">{{ item.clientIp }}</span>
+          </div>
+        </div>
+      </div>
 
       <div class="pagination">
         <el-pagination
@@ -157,4 +155,107 @@ onMounted(async () => {
 .filter-card :deep(.el-card__body) { padding-bottom: 0; }
 .pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
 .mono { font-family: Consolas, Menlo, monospace; font-size: 12px; color: #606266; }
+
+.log-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.log-item {
+  padding: 14px 16px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #ebeef5;
+  transition: all 0.2s;
+  &:hover {
+    border-color: #409eff;
+    box-shadow: 0 2px 8px rgba(64, 158, 255, 0.1);
+  }
+}
+
+.log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.log-time {
+  font-size: 14px;
+  color: #303133;
+  font-weight: 500;
+}
+
+.log-id {
+  font-size: 12px;
+  color: #909399;
+  font-family: monospace;
+}
+
+.log-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.log-user {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.user-id {
+  font-size: 12px;
+  color: #909399;
+}
+
+.log-tags {
+  display: flex;
+  gap: 6px;
+}
+
+.log-target {
+  font-size: 13px;
+  color: #606266;
+}
+
+.target-label {
+  color: #909399;
+}
+
+.target-id {
+  color: #909399;
+  margin-left: 4px;
+}
+
+.log-detail {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.6;
+  padding-left: 20px;
+  border-left: 3px solid #dcdfe6;
+}
+
+.log-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 10px;
+  border-top: 1px dashed #ebeef5;
+}
+
+.log-uri {
+  font-family: Consolas, Menlo, monospace;
+  font-size: 12px;
+  color: #409eff;
+}
+
+.log-ip {
+  font-size: 12px;
+  color: #909399;
+}
 </style>

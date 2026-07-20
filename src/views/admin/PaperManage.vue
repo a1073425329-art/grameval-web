@@ -293,33 +293,46 @@ onMounted(async () => {
       <div class="toolbar">
         <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>新建试卷</el-button>
       </div>
-      <el-table :data="list" style="width:100%">
-        <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="paperName" label="试卷名称" min-width="200" />
-        <el-table-column prop="questionCount" label="题量" width="80" align="center" />
-        <el-table-column prop="totalScore" label="总分" width="80" align="center" />
-        <el-table-column prop="passScore" label="及格分" width="80" align="center" />
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="AI 生成" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.aiGenerated" type="warning" size="small" effect="light">AI</el-tag>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="180" />
-        <el-table-column label="操作" width="280" align="center" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button v-if="row.status !== 1" link type="success" size="small" @click="publish(row)">发布</el-button>
-            <el-button v-else link type="warning" size="small" @click="unpublish(row)">下架</el-button>
-            <el-button link type="danger" size="small" @click="confirmDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <!-- 卡片网格布局 -->
+      <div class="paper-grid">
+        <el-card
+          v-for="item in list"
+          :key="item.id"
+          class="paper-card"
+          hover
+          @click="openEdit(item)"
+        >
+          <div class="card-header">
+            <span class="paper-id">#{{ item.id }}</span>
+            <el-tag :type="statusType(item.status)" size="small">{{ statusText(item.status) }}</el-tag>
+            <el-tag v-if="item.aiGenerated" type="warning" size="small" effect="light">AI 生成</el-tag>
+          </div>
+          <div class="card-title">{{ item.paperName }}</div>
+          <div v-if="item.description" class="card-desc">{{ item.description }}</div>
+          <div class="card-stats">
+            <div class="stat-item">
+              <span class="stat-num">{{ item.questionCount ?? 0 }}</span>
+              <span class="stat-label">题量</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num">{{ item.totalScore ?? 0 }}</span>
+              <span class="stat-label">总分</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num">{{ item.passScore ?? 60 }}</span>
+              <span class="stat-label">及格分</span>
+            </div>
+          </div>
+          <div class="card-footer">
+            <span class="create-time">{{ item.createTime || '-' }}</span>
+            <div class="actions">
+              <el-button v-if="item.status !== 1" type="success" size="small" @click.stop="publish(item)">发布</el-button>
+              <el-button v-else type="warning" size="small" @click.stop="unpublish(item)">下架</el-button>
+              <el-button type="danger" size="small" @click.stop="confirmDelete(item)">删除</el-button>
+            </div>
+          </div>
+        </el-card>
+      </div>
       <div class="pagination">
         <el-pagination
           v-model:current-page="query.pageNum"
@@ -518,4 +531,92 @@ onMounted(async () => {
 .step-body { min-height: 300px; padding: 8px 4px; }
 .step2-header { display: flex; justify-content: space-between; align-items: center; padding-top: 16px; }
 .step3 h4 { margin: 12px 0; font-size: 14px; color: #606266; }
+
+.paper-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 16px;
+}
+
+.paper-card {
+  cursor: pointer;
+  transition: all 0.2s;
+  &:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.paper-id {
+  font-size: 12px;
+  color: #909399;
+  font-family: monospace;
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 6px;
+}
+
+.card-desc {
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.5;
+  margin-bottom: 12px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.card-stats {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-num {
+  font-size: 20px;
+  font-weight: 700;
+  color: #409eff;
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #909399;
+  margin-top: 2px;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
+}
+
+.create-time {
+  font-size: 12px;
+  color: #909399;
+}
+
+.actions {
+  display: flex;
+  gap: 6px;
+}
 </style>

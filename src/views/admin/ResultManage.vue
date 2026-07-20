@@ -140,45 +140,57 @@ onMounted(load)
           <el-icon><Download /></el-icon>导出 CSV
         </el-button>
       </div>
-      <el-table :data="list" style="width:100%">
-        <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="sessionName" label="考试名称" min-width="160" show-overflow-tooltip />
-        <el-table-column label="学生" width="180">
-          <template #default="{ row }">
-            <span>{{ row.realName || row.username }}</span>
-            <span v-if="row.realName && row.username" style="color:#909399; margin-left:4px">({{ row.username }})</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="paperName" label="试卷" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="createTime" label="生成时间" width="180" />
-        <el-table-column label="用时" width="90">
-          <template #default="{ row }">{{ durationText(row) }}</template>
-        </el-table-column>
-        <el-table-column label="得分" width="130" align="center">
-          <template #default="{ row }">
-            <span :style="{ color: scoreColor(row), fontWeight: 600 }">{{ row.totalScore ?? '-' }}</span>
-            <span style="color:#909399"> / {{ row.paperTotalScore ?? '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="百分制" width="90" align="center">
-          <template #default="{ row }">
-            <span :style="{ color: scoreColor(row) }">
-              {{ row.scorePercentage != null ? row.scorePercentage.toFixed(1) : '-' }}
+      <!-- 卡片网格布局 -->
+      <div class="result-grid">
+        <el-card
+          v-for="item in list"
+          :key="item.id"
+          class="result-card"
+          hover
+          @click="openDetail(item)"
+        >
+          <div class="card-header">
+            <span class="result-id">#{{ item.id }}</span>
+            <el-tag :type="item.passed ? 'success' : 'danger'" size="small">{{ item.passed ? '及格' : '不及格' }}</el-tag>
+          </div>
+          <div class="card-title">{{ item.sessionName }}</div>
+          <div class="card-student">
+            <el-avatar :size="32">
+              <el-icon><User /></el-icon>
+            </el-avatar>
+            <div class="student-info">
+              <div class="student-name">{{ item.realName || item.username }}</div>
+              <div class="student-meta">@{{ item.username }}</div>
+            </div>
+          </div>
+          <div class="card-meta">
+            <span class="meta-item">
+              <span class="meta-label">试卷</span>
+              <span class="meta-value">{{ item.paperName || '-' }}</span>
             </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="是否及格" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.passed" type="success" size="small">及格</el-tag>
-            <el-tag v-else type="danger" size="small">不及格</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="100" align="center" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openDetail(row)">详情</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+            <span class="meta-item">
+              <span class="meta-label">用时</span>
+              <span class="meta-value">{{ durationText(item) }}</span>
+            </span>
+            <span class="meta-item">
+              <span class="meta-label">时间</span>
+              <span class="meta-value">{{ item.createTime || '-' }}</span>
+            </span>
+          </div>
+          <div class="card-score">
+            <div class="score-main">
+              <span class="score-value" :style="{ color: scoreColor(item) }">{{ item.totalScore ?? '-' }}</span>
+              <span class="score-total">/ {{ item.paperTotalScore ?? '-' }}</span>
+            </div>
+            <div class="score-percent" :style="{ color: scoreColor(item) }">
+              {{ item.scorePercentage != null ? item.scorePercentage.toFixed(1) : '-' }}%
+            </div>
+          </div>
+          <div class="card-footer">
+            <el-button type="primary" size="small">查看详情</el-button>
+          </div>
+        </el-card>
+      </div>
       <div class="pagination">
         <el-pagination
           v-model:current-page="query.pageNum"
@@ -242,6 +254,122 @@ onMounted(load)
 .filter-card :deep(.el-card__body) { padding-bottom: 0; }
 .toolbar { margin-bottom: 12px; display: flex; justify-content: flex-end; }
 .pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
+
+.result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+}
+
+.result-card {
+  cursor: pointer;
+  transition: all 0.2s;
+  &:hover {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.result-id {
+  font-size: 12px;
+  color: #909399;
+  font-family: monospace;
+}
+
+.card-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 10px;
+}
+
+.card-student {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.student-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.student-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #303133;
+}
+
+.student-meta {
+  font-size: 12px;
+  color: #909399;
+}
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-label {
+  font-size: 11px;
+  color: #909399;
+}
+
+.meta-value {
+  font-size: 12px;
+  color: #606266;
+}
+
+.card-score {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px;
+  background: #fafafa;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.score-main {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.score-value {
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.score-total {
+  font-size: 14px;
+  color: #909399;
+}
+
+.score-percent {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: flex-end;
+}
 
 .answers { display: flex; flex-direction: column; gap: 10px; }
 .answer-item {

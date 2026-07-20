@@ -183,7 +183,7 @@ onMounted(() => { load(); loadPickers() })
                     </template>
                   </el-table-column>
                   <el-table-column label="学生" min-width="140">
-                    <template #default="{ row: r }">{{ r.realName || r.username }}<span v-if="r.realName && r.username" style="color:#909399;margin-left:4px">({{ r.username }})</span></template>
+                    <template #default="{ row: r }">{{ r.realName || r.username }}<span v-if="r.englishName" style="color:#909399;margin-left:4px">{{ r.englishName }}</span><span v-if="r.realName && r.username" style="color:#909399;margin-left:4px">({{ r.username }})</span></template>
                   </el-table-column>
                   <el-table-column label="状态" width="100" align="center">
                     <template #default="{ row: r }">

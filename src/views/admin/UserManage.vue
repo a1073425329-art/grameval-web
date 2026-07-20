@@ -252,6 +252,7 @@ onMounted(load)
         </el-table-column>
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column prop="realName" label="姓名" width="100" />
+        <el-table-column prop="englishName" label="英文名" width="130" show-overflow-tooltip />
         <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
         <el-table-column prop="phone" label="手机号" width="130" />
         <el-table-column label="性别" width="80">
@@ -312,6 +313,10 @@ onMounted(load)
           </div>
           <div class="card-body">
             <div class="info-row">
+              <span class="info-label">英文名</span>
+              <span class="info-value">{{ item.englishName || '-' }}</span>
+            </div>
+            <div class="info-row">
               <span class="info-label">邮箱</span>
               <span class="info-value">{{ item.email || '-' }}</span>
             </div>
@@ -359,6 +364,9 @@ onMounted(load)
         </el-form-item>
         <el-form-item label="姓名" prop="realName">
           <el-input v-model="form.realName" />
+        </el-form-item>
+        <el-form-item label="英文名">
+          <el-input v-model="form.englishName" placeholder="如：Zhang Xiaoming" />
         </el-form-item>
         <el-form-item label="性别">
           <el-radio-group v-model="form.gender">

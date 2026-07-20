@@ -152,6 +152,8 @@ export interface QuestionAnalyticsRow {
 export interface OperationLog {
   id: number
   userId: number
+  realName?: string
+  englishName?: string
   username: string
   avatar?: string
   operationType: string
@@ -176,6 +178,7 @@ export interface AdminStudent {
   // 学生基本信息（扁平结构，与后端 AdminStudentVO 对齐）
   username: string
   realName?: string
+  englishName?: string
   displayName?: string   // @JsonGetter 别名
   email?: string
   phone?: string

@@ -240,7 +240,7 @@ onMounted(load)
             </el-avatar>
             <div class="student-info">
               <div class="student-name">{{ item.realName || item.username }}</div>
-              <div class="student-meta">@{{ item.username }}</div>
+              <div class="student-meta">@{{ item.username }} <span v-if="item.englishName" style="color:#909399">{{ item.englishName }}</span></div>
             </div>
           </div>
           <div class="card-meta">

@@ -13,18 +13,18 @@ export interface RegisterForm {
   username: string
   password: string
   realName?: string
+  englishName?: string
   email?: string
   phone?: string
   role?: Role
 }
 
-/**
- * 登录响应里的用户信息（LoginResponse.user）—— 精简
- */
+/** 登录响应里的用户信息（LoginResponse.user）—— 精简 */
 export interface UserInfo {
   id: number
   username: string
   displayName: string
+  englishName?: string
   role: Role
   /** base64 或 URL；过长时不宜存 localStorage，见 authStore.login() */
   avatar?: string
@@ -39,6 +39,7 @@ export interface UserDetail {
   id: number
   username: string
   realName: string
+  englishName?: string
   /** 兼容别名：后端同时输出 realName 和 displayName */
   displayName?: string
   gender?: 0 | 1 | 2
@@ -72,6 +73,7 @@ export interface TeacherInfo {
   id: number
   username: string
   realName: string
+  englishName?: string
   displayName?: string
   phone?: string
   email?: string
@@ -90,6 +92,7 @@ export interface LoginResult {
 /** 用户资料修改 */
 export interface UserUpdateForm {
   realName?: string
+  englishName?: string
   gender?: number
   email?: string
   phone?: string
@@ -108,6 +111,7 @@ export interface UserCreateForm {
   username: string
   password: string
   realName?: string
+  englishName?: string
   gender?: number
   email?: string
   phone?: string

@@ -291,7 +291,7 @@ onMounted(load)
             </el-avatar>
             <div>
               <div>{{ row.realName || row.displayName || row.username }}</div>
-              <div style="font-size:12px;color:#909399">@{{ row.username }}</div>
+              <div style="font-size:12px;color:#909399">@{{ row.username }} <span v-if="row.englishName">{{ row.englishName }}</span></div>
             </div>
           </template>
         </el-table-column>
@@ -369,6 +369,9 @@ onMounted(load)
               </div>
               <div class="stu-meta">
                 <span class="stu-username">@{{ item.username }}</span>
+                <span v-if="item.englishName" class="stu-english" style="color: #909399;font-size:12px;">
+                  {{ item.englishName }}
+                </span>
                 <span v-if="genderLabel(item.gender)" class="stu-gender" :style="{ color: genderColor(item.gender) }">
                   {{ genderLabel(item.gender) }}
                 </span>

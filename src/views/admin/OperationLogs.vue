@@ -146,8 +146,8 @@ onMounted(async () => {
             </el-avatar>
           </template>
         </el-table-column>
-        <el-table-column label="用户" width="140">
-          <template #default="{ row }">{{ row.username }}</template>
+        <el-table-column label="用户" width="160">
+          <template #default="{ row }">{{ row.realName || row.username }}<span v-if="row.englishName" style="color:#909399;margin-left:4px">{{ row.englishName }}</span></template>
         </el-table-column>
         <el-table-column label="操作类型" width="150">
           <template #default="{ row }">
@@ -187,7 +187,8 @@ onMounted(async () => {
               <el-avatar :size="32" :src="item.avatar || ''">
                 <el-icon><User /></el-icon>
               </el-avatar>
-              <span>{{ item.username }}</span>
+              <span>{{ item.realName || item.username }}</span>
+              <span v-if="item.englishName" style="color:#909399;margin-left:4px">{{ item.englishName }}</span>
               <span class="user-id">#{{ item.userId }}</span>
             </div>
             <div class="log-tags">

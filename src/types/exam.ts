@@ -129,6 +129,7 @@ export interface ExamRecord {
   paperName?: string
   username?: string
   realName?: string
+  englishName?: string
 }
 
 /** 逐题答题明细 */

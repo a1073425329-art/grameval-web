@@ -1,11 +1,19 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
+import { List, Grid } from '@element-plus/icons-vue'
 import { listOperationLogs, getOperationLogTypes } from '@/api/admin'
 import type { OperationLog } from '@/types/admin'
+import { useViewMode } from '@/composables/useViewMode'
+
+const { viewMode, toggleViewMode } = useViewMode('operation_logs')
 
 const query = reactive({
   operationType: '',
   userId: undefined as number | undefined,
+  username: '',
+  clientIp: '',
+  resultCode: '',
+  targetType: '',
   timeRange: [] as string[],
   pageNum: 1,
   pageSize: 50,
@@ -24,6 +32,10 @@ const load = async () => {
       pageSize: query.pageSize,
       operationType: query.operationType || undefined,
       userId: query.userId,
+      username: query.username || undefined,
+      clientIp: query.clientIp || undefined,
+      resultCode: query.resultCode || undefined,
+      targetType: query.targetType || undefined,
       startTime: query.timeRange?.[0],
       endTime: query.timeRange?.[1],
     })
@@ -35,6 +47,10 @@ const search = () => { query.pageNum = 1; load() }
 const reset = () => {
   query.operationType = ''
   query.userId = undefined
+  query.username = ''
+  query.clientIp = ''
+  query.resultCode = ''
+  query.targetType = ''
   query.timeRange = []
   query.pageNum = 1
   load()
@@ -69,35 +85,91 @@ onMounted(async () => {
   <div class="page">
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
-        <el-form-item label="操作类型">
-          <el-select v-model="query.operationType" clearable placeholder="全部" style="width:200px" filterable>
-            <el-option v-for="op in types" :key="op.value" :label="op.label" :value="op.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="用户 ID">
-          <el-input-number v-model="query.userId" placeholder="userId" :min="1" controls-position="right" style="width:150px" />
-        </el-form-item>
-        <el-form-item label="时间范围">
-          <el-date-picker
-            v-model="query.timeRange"
-            type="datetimerange"
-            value-format="YYYY-MM-DDTHH:mm:ss"
-            range-separator="→"
-            start-placeholder="开始"
-            end-placeholder="结束"
-            style="width:340px"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
-          <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-        </el-form-item>
+        <el-row :gutter="8">
+          <el-form-item label="操作类型">
+            <el-select v-model="query.operationType" clearable placeholder="全部" style="width:180px" filterable>
+              <el-option v-for="op in types" :key="op.value" :label="op.label" :value="op.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="用户名">
+            <el-input v-model="query.username" clearable placeholder="用户名" style="width:150px" />
+          </el-form-item>
+          <el-form-item label="用户 ID">
+            <el-input-number v-model="query.userId" placeholder="userId" :min="1" controls-position="right" style="width:120px" />
+          </el-form-item>
+          <el-form-item label="客户端 IP">
+            <el-input v-model="query.clientIp" clearable placeholder="IP" style="width:150px" />
+          </el-form-item>
+        </el-row>
+        <el-row :gutter="8" style="margin-top: 8px;">
+          <el-form-item label="操作结果">
+            <el-select v-model="query.resultCode" clearable placeholder="全部" style="width:120px">
+              <el-option label="成功" value="200" />
+              <el-option label="失败" value="500" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="目标类型">
+            <el-input v-model="query.targetType" clearable placeholder="如 PAPER" style="width:150px" />
+          </el-form-item>
+          <el-form-item label="时间范围">
+            <el-date-picker
+              v-model="query.timeRange"
+              type="datetimerange"
+              value-format="YYYY-MM-DDTHH:mm:ss"
+              range-separator="~"
+              start-placeholder="开始"
+              end-placeholder="结束"
+              style="width:300px"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
+            <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
+            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+              <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
+              {{ viewMode === 'card' ? '表格' : '卡片' }}
+            </el-button>
+          </el-form-item>
+        </el-row>
       </el-form>
     </el-card>
 
     <el-card shadow="never" v-loading="loading">
+      <!-- 表格布局 -->
+      <el-table v-if="viewMode === 'table'" :data="list" style="width:100%">
+        <el-table-column type="index" label="#" width="60" />
+        <el-table-column prop="createTime" label="时间" width="180" />
+        <el-table-column label="用户" width="160">
+          <template #default="{ row }">
+            <el-icon><User /></el-icon>
+            <span>{{ row.username }}</span>
+            <span style="color:#909399">#{{ row.userId }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作类型" width="150">
+          <template #default="{ row }">
+            <el-tag :type="typeTag(row.operationType)" size="small">{{ typeLabel(row.operationType) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="结果" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.resultCode === '200' ? 'success' : 'danger'" size="small">{{ row.resultCode }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="目标" width="150" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span v-if="row.targetType">{{ row.targetType }}</span>
+            <span v-if="row.targetType && row.targetId"> #{{ row.targetId }}</span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="detail" label="详情" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="clientIp" label="IP" width="130" />
+        <el-table-column prop="requestUri" label="接口" width="200" show-overflow-tooltip />
+      </el-table>
+
       <!-- 卡片列表布局 -->
-      <div class="log-list">
+      <div v-else class="log-list">
         <div
           v-for="item in list"
           :key="item.id"

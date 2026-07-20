@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { List, Grid } from '@element-plus/icons-vue'
 import {
   listUsers,
   createUser,
@@ -11,10 +12,16 @@ import {
 } from '@/api/admin'
 import type { UserDetail, UserCreateForm } from '@/types/user'
 import type { Role } from '@/types/common'
+import { useViewMode } from '@/composables/useViewMode'
+
+const { viewMode, toggleViewMode } = useViewMode('user_manage')
 
 const query = reactive({
   username: '',
   realName: '',
+  email: '',
+  phone: '',
+  gender: undefined as number | undefined,
   role: '' as Role | '',
   status: undefined as number | undefined,
   pageNum: 1,
@@ -33,6 +40,9 @@ const load = async () => {
       pageSize: query.pageSize,
       username: query.username || undefined,
       realName: query.realName || undefined,
+      email: query.email || undefined,
+      phone: query.phone || undefined,
+      gender: query.gender,
       role: query.role || undefined,
       status: query.status,
     })
@@ -42,11 +52,13 @@ const load = async () => {
     loading.value = false
   }
 }
-
 const search = () => { query.pageNum = 1; load() }
 const reset = () => {
   query.username = ''
   query.realName = ''
+  query.email = ''
+  query.phone = ''
+  query.gender = undefined
   query.role = ''
   query.status = undefined
   query.pageNum = 1
@@ -175,28 +187,49 @@ onMounted(load)
   <div class="page">
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
-        <el-form-item label="用户名">
-          <el-input v-model="query.username" placeholder="用户名" clearable style="width:180px" />
-        </el-form-item>
-        <el-form-item label="姓名">
-          <el-input v-model="query.realName" placeholder="姓名" clearable style="width:180px" />
-        </el-form-item>
-        <el-form-item label="角色">
-          <el-select v-model="query.role" clearable placeholder="全部" style="width:140px">
-            <el-option label="管理员" value="ADMIN" />
-            <el-option label="学生" value="STUDENT" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" clearable placeholder="全部" style="width:120px">
-            <el-option label="启用" :value="1" />
-            <el-option label="禁用" :value="0" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
-          <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-        </el-form-item>
+        <el-row :gutter="8">
+          <el-form-item label="用户名">
+            <el-input v-model="query.username" placeholder="用户名" clearable style="width:180px" />
+          </el-form-item>
+          <el-form-item label="姓名">
+            <el-input v-model="query.realName" placeholder="姓名" clearable style="width:180px" />
+          </el-form-item>
+          <el-form-item label="邮箱">
+            <el-input v-model="query.email" placeholder="邮箱" clearable style="width:180px" />
+          </el-form-item>
+          <el-form-item label="手机号">
+            <el-input v-model="query.phone" placeholder="手机号" clearable style="width:160px" />
+          </el-form-item>
+        </el-row>
+        <el-row :gutter="8" style="margin-top: 8px;">
+          <el-form-item label="性别">
+            <el-select v-model="query.gender" clearable placeholder="全部" style="width:120px">
+              <el-option label="男" :value="1" />
+              <el-option label="女" :value="2" />
+              <el-option label="未知" :value="0" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="角色">
+            <el-select v-model="query.role" clearable placeholder="全部" style="width:140px">
+              <el-option label="管理员" value="ADMIN" />
+              <el-option label="学生" value="STUDENT" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="query.status" clearable placeholder="全部" style="width:120px">
+              <el-option label="启用" :value="1" />
+              <el-option label="禁用" :value="0" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
+            <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
+            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+              <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
+              {{ viewMode === 'card' ? '表格' : '卡片' }}
+            </el-button>
+          </el-form-item>
+        </el-row>
       </el-form>
     </el-card>
 
@@ -207,8 +240,43 @@ onMounted(load)
         </el-button>
       </div>
 
+      <!-- 表格布局 -->
+      <el-table v-if="viewMode === 'table'" :data="list" style="width:100%">
+        <el-table-column type="index" label="#" width="60" />
+        <el-table-column prop="username" label="用户名" width="140" />
+        <el-table-column prop="realName" label="姓名" width="120" />
+        <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="phone" label="手机号" width="130" />
+        <el-table-column label="性别" width="80">
+          <template #default="{ row }">{{ genderText(row.gender) }}</template>
+        </el-table-column>
+        <el-table-column label="角色" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.role === 'ADMIN' ? 'danger' : 'success'" size="small">{{ row.role === 'ADMIN' ? '管理员' : '学生' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-switch
+              v-model="row.status"
+              :active-value="1"
+              :inactive-value="0"
+              @change="(v: unknown) => onStatusChange(row, v as number)"
+            />
+          </template>
+        </el-table-column>
+        <el-table-column prop="lastLoginTime" label="最后登录" width="180" />
+        <el-table-column label="操作" width="160" align="center">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="warning" size="small" @click="confirmResetPwd(row)">重置密码</el-button>
+            <el-button link type="danger" size="small" @click="confirmDelete(row)">禁用</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
       <!-- 卡片网格布局 -->
-      <div class="user-grid">
+      <div v-else class="user-grid">
         <el-card
           v-for="item in list"
           :key="item.id"

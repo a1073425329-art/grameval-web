@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { List, Grid } from '@element-plus/icons-vue'
 import {
   listPapers,
   createPaper,
@@ -17,9 +18,17 @@ import type { Paper, PaperForm } from '@/types/paper'
 import type { Question } from '@/types/question'
 import type { Category } from '@/types/category'
 import type { QuestionType, Difficulty } from '@/types/common'
+import { useViewMode } from '@/composables/useViewMode'
+
+const { viewMode, toggleViewMode } = useViewMode('paper_manage')
 
 const query = reactive({
   paperName: '',
+  aiGenerated: undefined as boolean | undefined,
+  minQuestionCount: undefined as number | undefined,
+  maxQuestionCount: undefined as number | undefined,
+  minTotalScore: undefined as number | undefined,
+  maxTotalScore: undefined as number | undefined,
   status: undefined as number | undefined,
   pageNum: 1,
   pageSize: 50,
@@ -38,6 +47,11 @@ const load = async () => {
       pageNum: query.pageNum,
       pageSize: query.pageSize,
       paperName: query.paperName || undefined,
+      aiGenerated: query.aiGenerated,
+      minQuestionCount: query.minQuestionCount,
+      maxQuestionCount: query.maxQuestionCount,
+      minTotalScore: query.minTotalScore,
+      maxTotalScore: query.maxTotalScore,
       status: query.status,
     })
     list.value = res.data.records ?? []
@@ -49,6 +63,11 @@ const load = async () => {
 const search = () => { query.pageNum = 1; load() }
 const reset = () => {
   query.paperName = ''
+  query.aiGenerated = undefined
+  query.minQuestionCount = undefined
+  query.maxQuestionCount = undefined
+  query.minTotalScore = undefined
+  query.maxTotalScore = undefined
   query.status = undefined
   query.pageNum = 1
   load()
@@ -272,20 +291,44 @@ onMounted(async () => {
   <div class="page">
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
-        <el-form-item label="试卷名称">
-          <el-input v-model="query.paperName" clearable placeholder="试卷名称" style="width:200px" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" clearable placeholder="全部" style="width:140px">
-            <el-option label="草稿" :value="0" />
-            <el-option label="启用" :value="1" />
-            <el-option label="停用" :value="2" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
-          <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-        </el-form-item>
+        <el-row :gutter="8">
+          <el-form-item label="试卷名称">
+            <el-input v-model="query.paperName" clearable placeholder="试卷名称" style="width:200px" />
+          </el-form-item>
+          <el-form-item label="AI 生成">
+            <el-select v-model="query.aiGenerated" clearable placeholder="全部" style="width:120px">
+              <el-option label="是" :value="true" />
+              <el-option label="否" :value="false" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="题量范围">
+            <el-input-number v-model="query.minQuestionCount" :min="0" placeholder="最低" controls-position="right" style="width:100px" />
+            <span style="margin:0 4px; color:#909399">~</span>
+            <el-input-number v-model="query.maxQuestionCount" :min="0" placeholder="最高" controls-position="right" style="width:100px" />
+          </el-form-item>
+          <el-form-item label="总分范围">
+            <el-input-number v-model="query.minTotalScore" :min="0" placeholder="最低" controls-position="right" style="width:100px" />
+            <span style="margin:0 4px; color:#909399">~</span>
+            <el-input-number v-model="query.maxTotalScore" :min="0" placeholder="最高" controls-position="right" style="width:100px" />
+          </el-form-item>
+        </el-row>
+        <el-row :gutter="8" style="margin-top: 8px;">
+          <el-form-item label="状态">
+            <el-select v-model="query.status" clearable placeholder="全部" style="width:140px">
+              <el-option label="草稿" :value="0" />
+              <el-option label="启用" :value="1" />
+              <el-option label="停用" :value="2" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
+            <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
+            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+              <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
+              {{ viewMode === 'card' ? '表格' : '卡片' }}
+            </el-button>
+          </el-form-item>
+        </el-row>
       </el-form>
     </el-card>
 
@@ -293,8 +336,44 @@ onMounted(async () => {
       <div class="toolbar">
         <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>新建试卷</el-button>
       </div>
+
+      <!-- 表格布局 -->
+      <el-table v-if="viewMode === 'table'" :data="list" style="width:100%">
+        <el-table-column type="index" label="#" width="60" />
+        <el-table-column prop="paperName" label="试卷名称" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="description" label="描述" min-width="180" show-overflow-tooltip />
+        <el-table-column label="AI 生成" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.aiGenerated" type="warning" size="small" effect="light">是</el-tag>
+            <span v-else style="color:#c0c4cc">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="题量" width="80" align="center">
+          <template #default="{ row }">{{ row.questionCount ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column label="总分" width="80" align="center">
+          <template #default="{ row }">{{ row.totalScore ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column label="及格分" width="80" align="center">
+          <template #default="{ row }">{{ row.passScore ?? 60 }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createTime" label="创建时间" width="180" />
+        <el-table-column label="操作" width="200" align="center">
+          <template #default="{ row }">
+            <el-button v-if="row.status !== 1" type="success" size="small" @click="publish(row)">发布</el-button>
+            <el-button v-else type="warning" size="small" @click="unpublish(row)">下架</el-button>
+            <el-button type="danger" size="small" @click="confirmDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
       <!-- 卡片网格布局 -->
-      <div class="paper-grid">
+      <div v-else class="paper-grid">
         <el-card
           v-for="item in list"
           :key="item.id"

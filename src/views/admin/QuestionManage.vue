@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { List, Grid } from '@element-plus/icons-vue'
 import {
   listAdminQuestions,
   createQuestion,
@@ -14,6 +15,9 @@ import {
 import type { Question, QuestionOption, QuestionForm } from '@/types/question'
 import type { Difficulty, QuestionType } from '@/types/common'
 import type { Category } from '@/types/category'
+import { useViewMode } from '@/composables/useViewMode'
+
+const { viewMode, toggleViewMode } = useViewMode('question_manage')
 
 const query = reactive({
   keyword: '',
@@ -21,6 +25,9 @@ const query = reactive({
   questionType: undefined as QuestionType | undefined,
   difficulty: undefined as Difficulty | undefined,
   status: undefined as number | undefined,
+  hasTrap: undefined as boolean | undefined,
+  minUsageCount: undefined as number | undefined,
+  maxUsageCount: undefined as number | undefined,
   pageNum: 1,
   pageSize: 50,
 })
@@ -59,6 +66,9 @@ const load = async () => {
       questionType: query.questionType,
       difficulty: query.difficulty,
       status: query.status,
+      hasTrap: query.hasTrap,
+      minUsageCount: query.minUsageCount,
+      maxUsageCount: query.maxUsageCount,
     })
     list.value = res.data.records ?? []
     total.value = res.data.total ?? 0
@@ -73,6 +83,9 @@ const reset = () => {
   query.questionType = undefined
   query.difficulty = undefined
   query.status = undefined
+  query.hasTrap = undefined
+  query.minUsageCount = undefined
+  query.maxUsageCount = undefined
   query.pageNum = 1
   load()
 }
@@ -319,37 +332,56 @@ onMounted(async () => {
   <div class="page">
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
-        <el-form-item label="关键词">
-          <el-input v-model="query.keyword" placeholder="题干关键词" clearable style="width:180px" />
-        </el-form-item>
-        <el-form-item label="分类">
-          <el-cascader
-            v-model="query.categoryId"
-            :options="categories"
-            :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
-            clearable placeholder="选择分类" style="width:200px"
-          />
-        </el-form-item>
-        <el-form-item label="题型">
-          <el-select v-model="query.questionType" clearable placeholder="全部" style="width:120px">
-            <el-option v-for="op in typeOptions" :key="op.value" :label="op.label" :value="op.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="难度">
-          <el-select v-model="query.difficulty" clearable placeholder="全部" style="width:100px">
-            <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" clearable placeholder="全部" style="width:100px">
-            <el-option label="启用" :value="1" />
-            <el-option label="停用" :value="0" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
-          <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-        </el-form-item>
+        <el-row :gutter="8">
+          <el-form-item label="关键词">
+            <el-input v-model="query.keyword" placeholder="题干关键词" clearable style="width:180px" />
+          </el-form-item>
+          <el-form-item label="分类">
+            <el-cascader
+              v-model="query.categoryId"
+              :options="categories"
+              :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
+              clearable placeholder="选择分类" style="width:200px"
+            />
+          </el-form-item>
+          <el-form-item label="题型">
+            <el-select v-model="query.questionType" clearable placeholder="全部" style="width:120px">
+              <el-option v-for="op in typeOptions" :key="op.value" :label="op.label" :value="op.value" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="难度">
+            <el-select v-model="query.difficulty" clearable placeholder="全部" style="width:100px">
+              <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
+            </el-select>
+          </el-form-item>
+        </el-row>
+        <el-row :gutter="8" style="margin-top: 8px;">
+          <el-form-item label="状态">
+            <el-select v-model="query.status" clearable placeholder="全部" style="width:100px">
+              <el-option label="启用" :value="1" />
+              <el-option label="停用" :value="0" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="陷阱题">
+            <el-select v-model="query.hasTrap" clearable placeholder="全部" style="width:100px">
+              <el-option label="是" :value="true" />
+              <el-option label="否" :value="false" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="引用次数">
+            <el-input-number v-model="query.minUsageCount" :min="0" placeholder="最低" controls-position="right" style="width:100px" />
+            <span style="margin:0 4px; color:#909399">~</span>
+            <el-input-number v-model="query.maxUsageCount" :min="0" placeholder="最高" controls-position="right" style="width:100px" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
+            <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
+            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+              <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
+              {{ viewMode === 'card' ? '表格' : '卡片' }}
+            </el-button>
+          </el-form-item>
+        </el-row>
       </el-form>
     </el-card>
 
@@ -361,8 +393,38 @@ onMounted(async () => {
         <el-button type="danger" plain :disabled="!selected.length" @click="batchDelete">批量删除</el-button>
       </div>
 
+      <!-- 表格布局 -->
+      <el-table v-if="viewMode === 'table'" :data="list" style="width:100%">
+        <el-table-column type="selection" width="50" />
+        <el-table-column type="index" label="#" width="60" />
+        <el-table-column prop="stem" label="题干" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="categoryName" label="分类" width="120" show-overflow-tooltip />
+        <el-table-column label="题型" width="100">
+          <template #default="{ row }">{{ typeLabel(row.questionType) }}</template>
+        </el-table-column>
+        <el-table-column label="难度" width="100">
+          <template #default="{ row }">
+            <el-tag :type="diffTagType(row.difficulty)" size="small">{{ diffLabel(row.difficulty) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">{{ row.status === 1 ? '启用' : '停用' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="引用" width="100" align="center">
+          <template #default="{ row }">{{ row.usageCount ?? 0 }} 次</template>
+        </el-table-column>
+        <el-table-column label="操作" width="150" align="center">
+          <template #default="{ row }">
+            <el-button type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button type="danger" size="small" @click="confirmDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
       <!-- 卡片网格布局（支持批量选择） -->
-      <div class="question-grid">
+      <div v-else class="question-grid">
         <el-card
           v-for="item in list"
           :key="item.id"

@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { List, Grid } from '@element-plus/icons-vue'
 import { getMyResults, getMySummary } from '@/api/student'
 import type { ResultSummary, ExamResultItem } from '@/types/result'
+import { useViewMode } from '@/composables/useViewMode'
 
 const router = useRouter()
+const { viewMode, toggleViewMode } = useViewMode('my_results')
 
 const summary = ref<ResultSummary>({
   totalCount: 0,
@@ -19,6 +22,9 @@ const loading = ref(false)
 
 const query = reactive({
   keyword: '',
+  isPass: undefined as boolean | undefined,
+  minScore: undefined as number | undefined,
+  maxScore: undefined as number | undefined,
   pageNum: 1,
   pageSize: 50,
 })
@@ -32,6 +38,9 @@ const load = async () => {
         pageNum: query.pageNum,
         pageSize: query.pageSize,
         keyword: query.keyword || undefined,
+        isPass: query.isPass,
+        minScore: query.minScore,
+        maxScore: query.maxScore,
       }),
     ])
     if (s.status === 'fulfilled') summary.value = s.value.data
@@ -45,7 +54,7 @@ const load = async () => {
 }
 
 const search = () => { query.pageNum = 1; load() }
-const reset = () => { query.keyword = ''; query.pageNum = 1; load() }
+const reset = () => { query.keyword = ''; query.isPass = undefined; query.minScore = undefined; query.maxScore = undefined; query.pageNum = 1; load() }
 
 /** 用百分制成绩上色 */
 const scoreColor = (row: ExamResultItem) => {
@@ -94,19 +103,62 @@ onMounted(load)
     <!-- 查询 -->
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
-        <el-form-item label="考试名称">
-          <el-input v-model="query.keyword" placeholder="搜索考试" clearable style="width:220px" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
-          <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-        </el-form-item>
+        <el-row :gutter="8">
+          <el-form-item label="考试名称">
+            <el-input v-model="query.keyword" placeholder="搜索考试" clearable style="width:200px" />
+          </el-form-item>
+          <el-form-item label="及格状态">
+            <el-select v-model="query.isPass" clearable placeholder="全部" style="width:120px">
+              <el-option label="及格" :value="true" />
+              <el-option label="不及格" :value="false" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="分数区间">
+            <el-input-number v-model="query.minScore" :min="0" :max="100" placeholder="最低" controls-position="right" style="width:100px" />
+            <span style="margin:0 4px; color:#909399">~</span>
+            <el-input-number v-model="query.maxScore" :min="0" :max="100" placeholder="最高" controls-position="right" style="width:100px" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
+            <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
+            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+              <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
+              {{ viewMode === 'card' ? '表格' : '卡片' }}
+            </el-button>
+          </el-form-item>
+        </el-row>
       </el-form>
     </el-card>
 
     <!-- 卡片网格布局 -->
     <el-card shadow="never" v-loading="loading">
-      <div class="result-grid">
+      <!-- 表格布局 -->
+      <el-table v-if="viewMode === 'table'" :data="list" style="width:100%">
+        <el-table-column type="index" label="#" width="60" />
+        <el-table-column prop="sessionName" label="考试名称" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="paperName" label="试卷" min-width="120" show-overflow-tooltip />
+        <el-table-column label="分数" width="140" align="center">
+          <template #default="{ row }">
+            <span :style="{ color: scoreColor(row) }">{{ row.totalScore ?? '-' }}</span>
+            <span style="color:#c0c4cc">/ {{ row.paperTotalScore ?? '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="正确率" width="100" align="center">
+          <template #default="{ row }">{{ row.scorePercentage != null ? row.scorePercentage.toFixed(1) + '%' : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="用时" width="100" align="center">
+          <template #default="{ row }">{{ durationText(row) }}</template>
+        </el-table-column>
+        <el-table-column prop="submitTime" label="提交时间" width="180" />
+        <el-table-column label="操作" width="120" align="center">
+          <template #default="{ row }">
+            <el-button type="primary" size="small" @click="router.push(`/student/results/${row.examId ?? row.id}`)">详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <!-- 卡片网格布局 -->
+      <div v-else class="result-grid">
         <el-card
           v-for="item in list"
           :key="item.id"

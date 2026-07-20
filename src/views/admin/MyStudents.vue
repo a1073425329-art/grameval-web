@@ -1,17 +1,26 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, UserFilled, Plus, Close, DataAnalysis, Clock, Warning, InfoFilled } from '@element-plus/icons-vue'
+import { Search, Refresh, UserFilled, Plus, Close, DataAnalysis, Clock, Warning, InfoFilled, List, Grid } from '@element-plus/icons-vue'
 import { listMyStudents, listUnassignedStudents, bindMyStudents } from '@/api/admin'
 import type { AdminStudent } from '@/types/admin'
 import type { UserDetail } from '@/types/user'
+import { useViewMode } from '@/composables/useViewMode'
 
 /* ---------------- 数据 ---------------- */
+const { viewMode, toggleViewMode } = useViewMode('my_students')
+
 const list = ref<AdminStudent[]>([])
 const unassigned = ref<UserDetail[]>([])
 const loading = ref(false)
-const searchText = ref('')
-const scoreFilter = ref<string>('')   // all | low | mid | high
+
+const query = reactive({
+  keyword: '',
+  gender: undefined as number | undefined,
+  scoreFilter: '',
+  status: undefined as number | undefined,
+  hasExam: undefined as boolean | undefined,
+})
 
 const load = async () => {
   loading.value = true
@@ -47,8 +56,8 @@ const sortedList = computed(() => {
   let data = [...list.value]
 
   // 搜索过滤
-  if (searchText.value.trim()) {
-    const kw = searchText.value.trim().toLowerCase()
+  if (query.keyword.trim()) {
+    const kw = query.keyword.trim().toLowerCase()
     data = data.filter(s =>
       (s.realName || s.displayName || s.username)?.toLowerCase().includes(kw) ||
       s.email?.toLowerCase().includes(kw) ||
@@ -56,12 +65,31 @@ const sortedList = computed(() => {
     )
   }
 
+  // 性别过滤
+  if (query.gender != null) {
+    data = data.filter(s => s.gender === query.gender)
+  }
+
+  // 状态过滤
+  if (query.status != null) {
+    data = data.filter(s => s.status === query.status)
+  }
+
+  // 有无考试记录过滤
+  if (query.hasExam != null) {
+    if (query.hasExam) {
+      data = data.filter(s => (s.examCount ?? 0) > 0)
+    } else {
+      data = data.filter(s => (s.examCount ?? 0) === 0)
+    }
+  }
+
   // 分数段过滤
-  if (scoreFilter.value === 'low') {
+  if (query.scoreFilter === 'low') {
     data = data.filter(s => (s.averageScore ?? 100) < 60)
-  } else if (scoreFilter.value === 'mid') {
+  } else if (query.scoreFilter === 'mid') {
     data = data.filter(s => (s.averageScore ?? 0) >= 60 && (s.averageScore ?? 0) < 80)
-  } else if (scoreFilter.value === 'high') {
+  } else if (query.scoreFilter === 'high') {
     data = data.filter(s => (s.averageScore ?? 0) >= 80)
   }
 
@@ -218,13 +246,25 @@ onMounted(load)
         </div>
         <div class="head-actions">
           <el-input
-            v-model="searchText"
+            v-model="query.keyword"
             placeholder="搜索姓名 / 邮箱 / 手机号……"
             :prefix-icon="Search"
             clearable
-            style="width: 240px;"
+            style="width: 200px;"
           />
-          <el-select v-model="scoreFilter" placeholder="成绩筛选" clearable style="width: 130px;">
+          <el-select v-model="query.gender" placeholder="性别" clearable style="width: 100px;">
+            <el-option label="男" :value="1" />
+            <el-option label="女" :value="2" />
+          </el-select>
+          <el-select v-model="query.status" placeholder="状态" clearable style="width: 100px;">
+            <el-option label="正常" :value="1" />
+            <el-option label="禁用" :value="0" />
+          </el-select>
+          <el-select v-model="query.hasExam" placeholder="考试记录" clearable style="width: 120px;">
+            <el-option label="有考试" :value="true" />
+            <el-option label="无考试" :value="false" />
+          </el-select>
+          <el-select v-model="query.scoreFilter" placeholder="成绩筛选" clearable style="width: 130px;">
             <el-option label="全部" value="" />
             <el-option label="薄弱 (&lt;60)" value="low" />
             <el-option label="中等 (60-80)" value="mid" />
@@ -232,13 +272,84 @@ onMounted(load)
           </el-select>
           <el-button :icon="Refresh" @click="load" :loading="loading">刷新</el-button>
           <el-button type="primary" :icon="Plus" @click="openBind">管理绑定</el-button>
+          <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+            <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
+            {{ viewMode === 'card' ? '表格' : '卡片' }}
+          </el-button>
         </div>
       </div>
 
       <el-empty v-if="!loading && !sortedList.length" description="暂无学生数据" />
 
+      <!-- 表格布局 -->
+      <el-table v-if="!loading && sortedList.length && viewMode === 'table'" :data="sortedList" style="width:100%">
+        <el-table-column type="index" label="#" width="60" />
+        <el-table-column label="学生" min-width="160">
+          <template #default="{ row }">
+            <el-avatar :size="32" :src="row.avatar || '/avatars/student.jpg'" style="margin-right:8px">
+              <el-icon><UserFilled /></el-icon>
+            </el-avatar>
+            <div>
+              <div>{{ row.realName || row.displayName || row.username }}</div>
+              <div style="font-size:12px;color:#909399">@{{ row.username }}</div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="性别" width="80" align="center">
+          <template #default="{ row }">
+            <span :style="{ color: genderColor(row.gender) }">{{ genderLabel(row.gender) || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="email" label="邮箱" width="180" show-overflow-tooltip />
+        <el-table-column prop="phone" label="手机号" width="140" />
+        <el-table-column label="考试次数" width="100" align="center">
+          <template #default="{ row }">{{ row.examCount ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column label="平均分" width="100" align="center">
+          <template #default="{ row }">
+            <span :class="['score-badge', scoreClass(row.averageScore)]">
+              {{ row.averageScore != null ? row.averageScore.toFixed(0) : '-' }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="最近成绩" width="100" align="center">
+          <template #default="{ row }">
+            <span :class="['score-badge', scoreClass(row.recentScore)]">
+              {{ row.recentScore != null ? row.recentScore.toFixed(0) : '-' }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="错题数" width="100" align="center">
+          <template #default="{ row }">
+            <span :class="{ 'wrong-num': (row.wrongCount ?? 0) > 0 }">{{ row.wrongCount ?? 0 }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="(row.status ?? 1) === 0 ? 'danger' : 'success'" size="small" effect="light">
+              {{ statusLabel(row.status) }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="lastLoginTime" label="最后登录" width="160" />
+        <el-table-column label="操作" width="120" align="center">
+          <template #default="{ row }">
+            <el-popconfirm
+              :title="`确认解绑「${row.realName || row.displayName || row.username}」？`"
+              confirm-button-text="解绑"
+              cancel-button-text="取消"
+              @confirm="unbindOne(row)"
+            >
+              <template #reference>
+                <el-button link type="danger" size="small">解绑</el-button>
+              </template>
+            </el-popconfirm>
+          </template>
+        </el-table-column>
+      </el-table>
+
       <!-- 卡片网格布局 -->
-      <div v-else class="student-grid" v-loading="loading">
+      <div v-else-if="sortedList.length" class="student-grid" v-loading="loading">
         <el-card
           v-for="item in sortedList"
           :key="item.studentId"
@@ -323,7 +434,7 @@ onMounted(load)
       <!-- 底部汇总 -->
       <div v-if="sortedList.length" class="table-summary">
         共 <b>{{ sortedList.length }}</b> 名学生
-        <template v-if="searchText || scoreFilter">（筛选自 {{ list.length }} 人）</template>
+        <template v-if="query.keyword || query.scoreFilter || query.gender != null || query.status != null || query.hasExam != null">（筛选自 {{ list.length }} 人）</template>
       </div>
     </el-card>
 

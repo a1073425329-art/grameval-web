@@ -1,17 +1,26 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { List, Grid } from '@element-plus/icons-vue'
 import { listAdminResults, exportResults } from '@/api/admin'
 import { getResultDetail } from '@/api/student'
 import type { ExamResultItem, ResultDetail } from '@/types/result'
 import type { QuestionType } from '@/types/common'
+import { useViewMode } from '@/composables/useViewMode'
+
+const { viewMode, toggleViewMode } = useViewMode('result_manage')
 
 const query = reactive({
   userId: undefined as number | undefined,
+  userName: '',
   sessionId: undefined as number | undefined,
   paperId: undefined as number | undefined,
+  paperName: '',
   minScore: undefined as number | undefined,
   maxScore: undefined as number | undefined,
+  isPass: undefined as boolean | undefined,
+  minCorrectRate: undefined as number | undefined,
+  maxCorrectRate: undefined as number | undefined,
   pageNum: 1,
   pageSize: 50,
 })
@@ -27,10 +36,15 @@ const load = async () => {
       pageNum: query.pageNum,
       pageSize: query.pageSize,
       userId: query.userId,
+      userName: query.userName || undefined,
       sessionId: query.sessionId,
       paperId: query.paperId,
+      paperName: query.paperName || undefined,
       minScore: query.minScore,
       maxScore: query.maxScore,
+      isPass: query.isPass,
+      minCorrectRate: query.minCorrectRate,
+      maxCorrectRate: query.maxCorrectRate,
     })
     list.value = res.data.records ?? []
     total.value = res.data.total ?? 0
@@ -38,8 +52,9 @@ const load = async () => {
 }
 const search = () => { query.pageNum = 1; load() }
 const reset = () => {
-  query.userId = undefined; query.sessionId = undefined; query.paperId = undefined
-  query.minScore = undefined; query.maxScore = undefined; query.pageNum = 1
+  query.userId = undefined; query.userName = ''; query.sessionId = undefined; query.paperId = undefined
+  query.paperName = ''; query.minScore = undefined; query.maxScore = undefined; query.isPass = undefined
+  query.minCorrectRate = undefined; query.maxCorrectRate = undefined; query.pageNum = 1
   load()
 }
 
@@ -113,24 +128,49 @@ onMounted(load)
   <div class="page">
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
-        <el-form-item label="场次 ID">
-          <el-input-number v-model="query.sessionId" placeholder="sessionId" :min="1" controls-position="right" style="width:150px" />
-        </el-form-item>
-        <el-form-item label="试卷 ID">
-          <el-input-number v-model="query.paperId" placeholder="paperId" :min="1" controls-position="right" style="width:150px" />
-        </el-form-item>
-        <el-form-item label="学生 ID">
-          <el-input-number v-model="query.userId" placeholder="userId" :min="1" controls-position="right" style="width:150px" />
-        </el-form-item>
-        <el-form-item label="分数区间">
-          <el-input-number v-model="query.minScore" :min="0" :max="100" placeholder="最低" controls-position="right" style="width:110px" />
-          <span style="margin:0 4px; color:#909399">→</span>
-          <el-input-number v-model="query.maxScore" :min="0" :max="100" placeholder="最高" controls-position="right" style="width:110px" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
-          <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-        </el-form-item>
+        <el-row :gutter="8">
+          <el-form-item label="学生姓名">
+            <el-input v-model="query.userName" clearable placeholder="学生姓名" style="width:150px" />
+          </el-form-item>
+          <el-form-item label="试卷名称">
+            <el-input v-model="query.paperName" clearable placeholder="试卷名称" style="width:180px" />
+          </el-form-item>
+          <el-form-item label="及格状态">
+            <el-select v-model="query.isPass" clearable placeholder="全部" style="width:120px">
+              <el-option label="及格" :value="true" />
+              <el-option label="不及格" :value="false" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="分数区间">
+            <el-input-number v-model="query.minScore" :min="0" :max="100" placeholder="最低" controls-position="right" style="width:100px" />
+            <span style="margin:0 4px; color:#909399">~</span>
+            <el-input-number v-model="query.maxScore" :min="0" :max="100" placeholder="最高" controls-position="right" style="width:100px" />
+          </el-form-item>
+        </el-row>
+        <el-row :gutter="8" style="margin-top: 8px;">
+          <el-form-item label="场次 ID">
+            <el-input-number v-model="query.sessionId" placeholder="sessionId" :min="1" controls-position="right" style="width:120px" />
+          </el-form-item>
+          <el-form-item label="试卷 ID">
+            <el-input-number v-model="query.paperId" placeholder="paperId" :min="1" controls-position="right" style="width:120px" />
+          </el-form-item>
+          <el-form-item label="学生 ID">
+            <el-input-number v-model="query.userId" placeholder="userId" :min="1" controls-position="right" style="width:120px" />
+          </el-form-item>
+          <el-form-item label="正确率">
+            <el-input-number v-model="query.minCorrectRate" :min="0" :max="100" placeholder="最低%" controls-position="right" style="width:100px" />
+            <span style="margin:0 4px; color:#909399">~</span>
+            <el-input-number v-model="query.maxCorrectRate" :min="0" :max="100" placeholder="最高%" controls-position="right" style="width:100px" />
+          </el-form-item>
+          <el-form-item>
+            <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
+            <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
+            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+              <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
+              {{ viewMode === 'card' ? '表格' : '卡片' }}
+            </el-button>
+          </el-form-item>
+        </el-row>
       </el-form>
     </el-card>
 
@@ -140,8 +180,46 @@ onMounted(load)
           <el-icon><Download /></el-icon>导出 CSV
         </el-button>
       </div>
+      <!-- 表格布局 -->
+      <el-table v-if="viewMode === 'table'" :data="list" style="width:100%">
+        <el-table-column type="index" label="#" width="60" />
+        <el-table-column label="学生" min-width="150">
+          <template #default="{ row }">
+            <el-avatar :size="24" style="margin-right:8px">
+              <el-icon><User /></el-icon>
+            </el-avatar>
+            <span>{{ row.realName || row.username }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="paperName" label="试卷" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="sessionName" label="场次" min-width="120" show-overflow-tooltip />
+        <el-table-column label="分数" width="140" align="center">
+          <template #default="{ row }">
+            <span :style="{ color: scoreColor(row) }">{{ row.totalScore ?? '-' }}</span>
+            <span style="color:#c0c4cc">/ {{ row.paperTotalScore ?? '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="正确率" width="100" align="center">
+          <template #default="{ row }">{{ row.scorePercentage != null ? row.scorePercentage.toFixed(1) + '%' : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.passed ? 'success' : 'danger'" size="small">{{ row.passed ? '及格' : '不及格' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="用时" width="100" align="center">
+          <template #default="{ row }">{{ durationText(row) }}</template>
+        </el-table-column>
+        <el-table-column prop="createTime" label="提交时间" width="180" />
+        <el-table-column label="操作" width="120" align="center">
+          <template #default="{ row }">
+            <el-button type="primary" size="small" @click="openDetail(row)">详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
       <!-- 卡片网格布局 -->
-      <div class="result-grid">
+      <div v-else class="result-grid">
         <el-card
           v-for="item in list"
           :key="item.id"

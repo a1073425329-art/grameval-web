@@ -1,21 +1,15 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { getWrongBook } from '@/api/student'
-import { getCategoryTree } from '@/api/student'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { getWrongBook, getCategoryTree } from '@/api/student'
 import type { WrongBookItem } from '@/types/result'
 import type { Category } from '@/types/category'
-import type { QuestionType } from '@/types/common'
+import type { QuestionType, Difficulty } from '@/types/common'
 
-const query = reactive<{
-  source: 'ALL' | 'EXAM' | 'PRACTICE'
-  categoryId?: number
-  questionType?: QuestionType
-  pageNum: number
-  pageSize: number
-}>({
-  source: 'ALL',
-  categoryId: undefined,
-  questionType: undefined,
+const query = reactive({
+  source: 'ALL' as 'ALL' | 'EXAM' | 'PRACTICE',
+  categoryId: undefined as number | undefined,
+  questionType: undefined as QuestionType | undefined,
+  difficulty: undefined as Difficulty | undefined,
   pageNum: 1,
   pageSize: 50,
 })
@@ -25,16 +19,23 @@ const total = ref(0)
 const loading = ref(false)
 const categories = ref<Category[]>([])
 
-const typeOptions: { label: string; value: QuestionType }[] = [
-  { label: '单选题', value: 'SINGLE' },
-  { label: '多选题', value: 'MULTIPLE' },
-  { label: '判断题', value: 'JUDGE' },
-  { label: '填空题', value: 'FILL_HINT' },
-  { label: '阅读理解', value: 'READING' },
+const typeOptions = [
+  { label: '单选题', value: 'SINGLE' as QuestionType },
+  { label: '多选题', value: 'MULTIPLE' as QuestionType },
+  { label: '判断题', value: 'JUDGE' as QuestionType },
+  { label: '填空题', value: 'FILL' as QuestionType },
+  { label: '阅读理解', value: 'READING' as QuestionType },
 ]
-const typeLabel = (t?: QuestionType) => typeOptions.find((o) => o.value === t)?.label ?? t
-const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d === 3 ? '困难' : '-')
-const diffTagType = (d?: number) => (d === 1 ? 'success' : d === 2 ? 'warning' : 'danger')
+
+const diffOptions = [
+  { label: '简单', value: 1 as Difficulty },
+  { label: '中等', value: 2 as Difficulty },
+  { label: '困难', value: 3 as Difficulty },
+]
+
+const typeLabel = (t?: QuestionType) => typeOptions.find(o => o.value === t)?.label ?? t
+const diffLabel = (d?: number) => diffOptions.find(o => o.value === d)?.label ?? '-'
+const diffTagType = (d?: number) => (d === 1 ? 'success' : d === 2 ? 'warning' : d === 3 ? 'danger' : 'info')
 
 const load = async () => {
   loading.value = true
@@ -43,115 +44,186 @@ const load = async () => {
       source: query.source,
       categoryId: query.categoryId,
       questionType: query.questionType,
+      difficulty: query.difficulty,
       pageNum: query.pageNum,
       pageSize: query.pageSize,
     })
-    list.value = res.data.records ?? []
-    total.value = res.data.total ?? 0
+    list.value = res.data?.records ?? []
+    total.value = res.data?.total ?? 0
   } finally { loading.value = false }
 }
 
-const search = () => { query.pageNum = 1; load() }
-const reset = () => {
-  query.source = 'ALL'
-  query.categoryId = undefined
-  query.questionType = undefined
-  query.pageNum = 1
-  load()
-}
-
-const answerText = (a: string | undefined | null) => {
-  if (a === undefined || a === null || a === '') return '（未作答）'
-  return a
-}
+const onFilterChange = () => { query.pageNum = 1; load() }
 
 const sourceTag = (s: string) => (s === 'EXAM' ? 'danger' : 'warning')
-const sourceLabel = (s: string) => (s === 'EXAM' ? '考试' : '练习')
+const sourceLabel = (s: string) => (s === 'EXAM' ? '考试错题' : '练习错题')
+
+const answerText = (a?: string | null) => a || '（未作答）'
+const answerCorrect = (user: string | undefined | null, standard: string) => {
+  if (!user) return false
+  return user.trim().toUpperCase() === standard.trim().toUpperCase()
+}
+
+// 展开解析
+const expandedAnalysis = ref<Set<number>>(new Set())
+const toggleAnalysis = (idx: number) => {
+  if (expandedAnalysis.value.has(idx)) expandedAnalysis.value.delete(idx)
+  else expandedAnalysis.value.add(idx)
+}
+
+/** 从分类树拍平，供级联选择器直接识别（不用 children 嵌套也可用） */
+const flatCategories = computed(() => {
+  const result: Category[] = []
+  const walk = (cats: Category[]) => {
+    cats.forEach(c => {
+      result.push(c)
+      if (c.children?.length) walk(c.children)
+    })
+  }
+  walk(categories.value)
+  return result
+})
 
 onMounted(async () => {
-  try {
-    const c = await getCategoryTree()
-    categories.value = c.data ?? []
-  } catch { /* silent */ }
+  try { const c = await getCategoryTree(); categories.value = Array.isArray(c.data) ? c.data : [] } catch { }
   load()
 })
 </script>
 
 <template>
-  <div class="page">
-    <el-card shadow="never" class="filter-card">
-      <el-form :inline="true" :model="query">
-        <el-form-item label="来源">
-          <el-radio-group v-model="query.source" @change="search">
-            <el-radio-button value="ALL">全部</el-radio-button>
-            <el-radio-button value="EXAM">考试错题</el-radio-button>
-            <el-radio-button value="PRACTICE">练习错题</el-radio-button>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="分类">
-          <el-cascader
-            v-model="query.categoryId"
-            :options="categories"
-            :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
-            clearable placeholder="全部分类" style="width:180px"
-          />
-        </el-form-item>
-        <el-form-item label="题型">
-          <el-select v-model="query.questionType" clearable placeholder="全部" style="width:140px">
-            <el-option v-for="op in typeOptions" :key="op.value" :label="op.label" :value="op.value" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
-          <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+  <div class="wrong-book-page">
+    <!-- ========== 顶部筛选 ========== -->
+    <div class="filter-bar">
+      <div class="filter-row">
+        <el-radio-group v-model="query.source" @change="onFilterChange" size="default">
+          <el-radio-button value="ALL">全部错题</el-radio-button>
+          <el-radio-button value="EXAM">考试错题</el-radio-button>
+          <el-radio-button value="PRACTICE">练习错题</el-radio-button>
+        </el-radio-group>
 
-    <div class="stats" v-if="!loading">
-      <el-alert type="info" :closable="false" show-icon>
-        共找到 <b>{{ total }}</b> 道错题（按题目去重，保留首次错误时间）
-      </el-alert>
+        <el-divider direction="vertical" style="height:28px" />
+
+        <el-select
+          v-model="query.categoryId"
+          clearable
+          filterable
+          placeholder="所有语法分类"
+          style="width:200px"
+          @change="onFilterChange"
+        >
+          <el-option
+            v-for="c in flatCategories"
+            :key="c.id"
+            :label="c.categoryName"
+            :value="c.id"
+          >
+            <span>{{ c.categoryName }}</span>
+            <span v-if="c.questionCount" style="color:#909399;font-size:12px;float:right">
+              {{ c.questionCount }}
+            </span>
+          </el-option>
+        </el-select>
+
+        <el-select
+          v-model="query.questionType"
+          clearable
+          placeholder="所有题型"
+          style="width:130px"
+          @change="onFilterChange"
+        >
+          <el-option v-for="op in typeOptions" :key="op.value" :label="op.label" :value="op.value" />
+        </el-select>
+
+        <el-select
+          v-model="query.difficulty"
+          clearable
+          placeholder="所有难度"
+          style="width:110px"
+          @change="onFilterChange"
+        >
+          <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
+        </el-select>
+      </div>
+
+      <div class="filter-summary">
+        共 <b>{{ total }}</b> 道错题<span v-if="list.length"> · 当前第 {{ (query.pageNum - 1) * query.pageSize + 1 }} - {{ Math.min(query.pageNum * query.pageSize, total) }} 题</span>
+      </div>
     </div>
 
+    <!-- ========== 题目列表 ========== -->
     <div v-loading="loading" class="wrong-list">
-      <el-empty v-if="!loading && !list.length" description="🎉 恭喜！暂无错题" />
+      <el-empty v-if="!loading && !list.length" description="🎉 恭喜！暂无错题" :image-size="120" />
 
-      <div v-for="(w, idx) in list" :key="`${w.questionId}-${w.source}`" class="wrong-item">
-        <div class="head">
-          <span class="q-idx">#{{ (query.pageNum - 1) * query.pageSize + idx + 1 }}</span>
-          <el-tag :type="sourceTag(w.source)" size="small" effect="light">{{ sourceLabel(w.source) }}</el-tag>
-          <el-tag size="small">{{ typeLabel(w.questionType) }}</el-tag>
-          <el-tag :type="diffTagType(w.difficulty)" size="small">{{ diffLabel(w.difficulty) }}</el-tag>
-          <el-tag type="info" size="small">{{ w.categoryName }}</el-tag>
-          <span class="time">首错：{{ w.firstWrongTime }}</span>
+      <div
+        v-for="(w, idx) in list"
+        :key="`${w.questionId}-${w.source}`"
+        class="wrong-card"
+      >
+        <!-- 题头 -->
+        <div class="wc-head">
+          <div class="wc-tags">
+            <span class="wc-idx">#{{ (query.pageNum - 1) * query.pageSize + idx + 1 }}</span>
+            <el-tag :type="sourceTag(w.source)" size="small" effect="dark">{{ sourceLabel(w.source) }}</el-tag>
+            <el-tag size="small">{{ typeLabel(w.questionType) }}</el-tag>
+            <el-tag :type="diffTagType(w.difficulty)" size="small">{{ diffLabel(w.difficulty) }}</el-tag>
+            <el-tag type="info" size="small">{{ w.categoryName }}</el-tag>
+          </div>
+          <span class="wc-time">首次错误：{{ w.firstWrongTime?.slice(0, 16) }}</span>
         </div>
-        <div class="stem">{{ w.stem }}</div>
-        <div v-if="w.options?.length" class="opts">
-          <div v-for="op in w.options" :key="op.optionLabel" class="opt">
-            <span class="opt-key">{{ op.optionLabel }}.</span>{{ op.optionContent }}
+
+        <!-- 题干 -->
+        <div class="wc-stem">{{ w.stem }}</div>
+
+        <!-- 选项 -->
+        <div v-if="w.options?.length" class="wc-options">
+          <div
+            v-for="op in w.options"
+            :key="op.optionLabel"
+            class="wc-opt"
+            :class="{
+              'opt-correct': op.optionLabel === w.standardAnswer,
+              'opt-wrong': op.optionLabel === w.userAnswer && w.userAnswer !== w.standardAnswer,
+            }"
+          >
+            <span class="opt-key">{{ op.optionLabel }}.</span>
+            <span>{{ op.optionContent }}</span>
+            <el-tag v-if="op.optionLabel === w.standardAnswer" size="small" type="success" effect="plain" class="opt-tag">✓</el-tag>
+            <el-tag v-if="op.optionLabel === w.userAnswer && w.userAnswer !== w.standardAnswer" size="small" type="danger" effect="plain" class="opt-tag">✗ 你的答案</el-tag>
           </div>
         </div>
-        <div class="row">
-          <span class="lbl">你的答案：</span>
-          <span class="ng-text">{{ answerText(w.userAnswer) }}</span>
+
+        <!-- 非选项题的答案区 -->
+        <div v-if="w.questionType === 'FILL' || w.questionType === 'JUDGE'" class="wc-answer-row">
+          <div class="answer-block wrong-block">
+            <div class="answer-label">你的答案</div>
+            <div class="answer-val" :class="{ correct: answerCorrect(w.userAnswer, w.standardAnswer) }">
+              {{ answerText(w.userAnswer) }}
+            </div>
+          </div>
+          <div class="answer-block correct-block">
+            <div class="answer-label">正确答案</div>
+            <div class="answer-val correct">{{ w.standardAnswer }}</div>
+          </div>
         </div>
-        <div class="row">
-          <span class="lbl">正确答案：</span>
-          <span class="ok-text">{{ w.standardAnswer }}</span>
+
+        <!-- 解析（可展开） -->
+        <div v-if="w.analysis" class="wc-analysis-toggle" @click="toggleAnalysis(idx)">
+          <el-icon><component :is="expandedAnalysis.has(idx) ? 'ArrowUp' : 'ArrowDown'" /></el-icon>
+          <span>题目解析</span>
         </div>
-        <div class="row" v-if="w.analysis">
-          <span class="lbl">解析：</span>
-          <span>{{ w.analysis }}</span>
+        <div v-if="w.analysis && expandedAnalysis.has(idx)" class="wc-analysis">
+          {{ w.analysis }}
         </div>
-        <div class="row" v-if="w.sourceName">
-          <span class="lbl">来源：</span>
-          <span style="color:#909399">{{ w.sourceName }}</span>
+
+        <!-- 来源信息 -->
+        <div v-if="w.sourceName" class="wc-source">
+          <el-icon><Link /></el-icon> 来源：{{ w.sourceName }}
         </div>
       </div>
     </div>
 
-    <div class="pagination" v-if="list.length">
+    <!-- 分页 -->
+    <div class="pagination" v-if="total > query.pageSize">
       <el-pagination
         v-model:current-page="query.pageNum"
         v-model:page-size="query.pageSize"
@@ -160,39 +232,93 @@ onMounted(async () => {
         :page-sizes="[20, 50, 100]"
         @size-change="load"
         @current-change="load"
+        background
       />
     </div>
   </div>
 </template>
 
 <style scoped lang="scss">
-.page { display: flex; flex-direction: column; gap: 12px; }
-.filter-card :deep(.el-card__body) { padding-bottom: 0; }
+.wrong-book-page { display: flex; flex-direction: column; gap: 14px; }
 
-.stats { margin: 0; }
+// Filter
+.filter-bar {
+  background: #fff; border-radius: 8px; padding: 16px 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.filter-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.filter-summary {
+  margin-top: 12px; font-size: 13px; color: #606266;
+  b { color: #f56c6c; font-size: 18px; margin: 0 2px; }
+}
 
+// Card
 .wrong-list { display: flex; flex-direction: column; gap: 12px; }
-.wrong-item {
+.wrong-card {
   background: #fff;
   border-left: 4px solid #f56c6c;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 16px 20px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow 0.15s;
+  &:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 }
-.head {
-  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
-  margin-bottom: 10px;
-  .q-idx { font-weight: 600; color: #f56c6c; margin-right: 4px; }
-  .time { color: #909399; font-size: 12px; margin-left: auto; }
-}
-.stem { font-size: 15px; line-height: 1.7; color: #303133; margin-bottom: 12px; white-space: pre-wrap; }
-.opts { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
-.opt { padding: 4px 10px; background: #fafafa; border-radius: 3px; color: #606266; font-size: 13px; }
-.opt-key { font-weight: 600; color: #409eff; margin-right: 4px; }
-.row { padding: 3px 0; font-size: 14px; line-height: 1.6; }
-.lbl { color: #909399; margin-right: 4px; }
-.ok-text { color: #67c23a; font-weight: 600; }
-.ng-text { color: #f56c6c; font-weight: 600; }
 
-.pagination { display: flex; justify-content: flex-end; }
+.wc-head {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 8px; margin-bottom: 12px;
+}
+.wc-tags { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.wc-idx { font-weight: 700; color: #f56c6c; font-size: 15px; margin-right: 2px; }
+.wc-time { color: #909399; font-size: 12px; }
+
+.wc-stem {
+  font-size: 15px; line-height: 1.8; color: #303133; margin-bottom: 14px;
+  white-space: pre-wrap; word-break: break-word;
+}
+
+// Options
+.wc-options { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.wc-opt {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 6px; background: #f5f7fa;
+  font-size: 14px; color: #606266; position: relative;
+  &.opt-correct { background: #f0f9ff; border: 1px solid #b3e19d; }
+  &.opt-wrong { background: #fef0f0; border: 1px solid #fab6b6; }
+  .opt-key { font-weight: 700; color: #409eff; min-width: 20px; }
+  .opt-tag { margin-left: auto; }
+}
+
+// Answer row for fill/judge
+.wc-answer-row { display: flex; gap: 20px; margin-bottom: 14px; }
+.answer-block {
+  padding: 10px 16px; border-radius: 6px; min-width: 140px;
+  .answer-label { font-size: 12px; color: #909399; margin-bottom: 4px; }
+  .answer-val { font-size: 16px; font-weight: 600; color: #f56c6c;
+    &.correct { color: #67c23a; }
+  }
+}
+.wrong-block { background: #fef0f0; }
+.correct-block { background: #f0f9ff; }
+
+// Analysis
+.wc-analysis-toggle {
+  display: inline-flex; align-items: center; gap: 4px;
+  color: #409eff; font-size: 13px; cursor: pointer; padding: 4px 0;
+  &:hover { text-decoration: underline; }
+}
+.wc-analysis {
+  margin-top: 8px; padding: 12px 16px; background: #fafafa;
+  border-radius: 6px; font-size: 13px; color: #606266; line-height: 1.7;
+  border-left: 3px solid #409eff;
+}
+
+.wc-source {
+  margin-top: 8px; font-size: 12px; color: #909399;
+  display: flex; align-items: center; gap: 4px;
+}
+
+.pagination { display: flex; justify-content: center; padding: 8px 0; }
 </style>

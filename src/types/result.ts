@@ -90,6 +90,7 @@ export interface WrongBookQuery {
   source?: 'ALL' | 'EXAM' | 'PRACTICE'
   categoryId?: number
   questionType?: QuestionType
+  difficulty?: Difficulty
   pageNum?: number
   pageSize?: number
 }

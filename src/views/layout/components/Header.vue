@@ -9,6 +9,20 @@ const router = useRouter()
 const authStore = useAuthStore()
 const permissionStore = usePermissionStore()
 
+/** 头像下拉快捷入口 */
+const dropdownLinks = computed(() => {
+  if (authStore.role === 'ADMIN') return [
+    { path: '/dashboard', icon: 'HomeFilled', label: '工作台' },
+    { path: '/admin/profile', icon: 'User', label: '个人资料' },
+    { path: '/admin/operation-logs', icon: 'Document', label: '操作日志' },
+  ]
+  return [
+    { path: '/student/home', icon: 'HomeFilled', label: '首页' },
+    { path: '/student/stats', icon: 'TrendCharts', label: '学习数据' },
+    { path: '/student/profile', icon: 'User', label: '个人资料' },
+  ]
+})
+
 /** 头像来源优先级：login 返回的 avatar(base64/URL) > 用户名映射静态文件 > 角色默认 */
 const avatarUrl = computed(() => {
   // 1. 优先使用后端返回的真实头像（可能是 base64 或 URL）
@@ -27,11 +41,6 @@ const avatarUrl = computed(() => {
     ? '/avatars/admin.jpeg'
     : '/avatars/student.jpg'
 })
-
-/** 个人资料页路径按角色区分 */
-const profilePath = computed(() =>
-  authStore.role === 'ADMIN' ? '/admin/profile' : '/student/profile'
-)
 
 const handleLogout = async () => {
   try {
@@ -70,8 +79,12 @@ const handleLogout = async () => {
         </span>
         <template #dropdown>
           <el-dropdown-menu>
-            <el-dropdown-item @click="router.push(profilePath)">
-              <el-icon><User /></el-icon>个人资料
+            <el-dropdown-item
+              v-for="link in dropdownLinks"
+              :key="link.path"
+              @click="router.push(link.path)"
+            >
+              <el-icon><component :is="link.icon" /></el-icon>{{ link.label }}
             </el-dropdown-item>
             <el-dropdown-item divided @click="handleLogout">
               <el-icon><SwitchButton /></el-icon>退出登录

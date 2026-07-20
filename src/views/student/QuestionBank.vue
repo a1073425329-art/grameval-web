@@ -135,24 +135,36 @@ onMounted(async () => {
 
     <!-- 题目列表 -->
     <el-card shadow="never" v-loading="loading">
-      <el-table :data="list" style="width: 100%">
-        <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="stem" label="题干" min-width="360" show-overflow-tooltip />
-        <el-table-column prop="categoryName" label="专题" width="140" />
-        <el-table-column label="题型" width="100">
-          <template #default="{ row }">{{ typeLabel(row.questionType) }}</template>
-        </el-table-column>
-        <el-table-column label="难度" width="90">
-          <template #default="{ row }">
-            <el-tag size="small" :type="diffTagType(row.difficulty)">{{ diffLabel(row.difficulty) }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="110" align="center">
-          <template #default="{ row }">
-            <el-button type="primary" size="small" link @click="showDetail(row)">查看详情</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <div class="question-grid">
+        <el-card
+          v-for="item in list"
+          :key="item.id"
+          class="question-card"
+          hover
+          @click="showDetail(item)"
+        >
+          <div class="card-header">
+            <span class="q-id">#{{ item.id }}</span>
+            <el-tag size="small" type="info">{{ item.categoryName }}</el-tag>
+            <el-tag size="small" :type="diffTagType(item.difficulty)">{{ diffLabel(item.difficulty) }}</el-tag>
+            <el-tag size="small">{{ typeLabel(item.questionType) }}</el-tag>
+          </div>
+          <div class="card-stem">{{ item.stem }}</div>
+          <div class="card-options">
+            <div v-for="opt in item.options || []" :key="opt.optionLabel" class="opt-item">
+              <span class="opt-label">{{ opt.optionLabel }}.</span>
+              <span class="opt-content">{{ opt.optionContent }}</span>
+            </div>
+            <div v-if="!item.options?.length" class="no-options">
+              <el-text type="info" size="small">点击查看详情获取选项</el-text>
+            </div>
+          </div>
+          <div class="card-footer">
+            <span class="answer-hint">答案：{{ item.standardAnswer || '点击查看' }}</span>
+            <el-button type="primary" size="small">查看详情</el-button>
+          </div>
+        </el-card>
+      </div>
 
       <div class="pagination">
         <el-pagination
@@ -160,7 +172,7 @@ onMounted(async () => {
           v-model:page-size="query.pageSize"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
-          :page-sizes="[20, 50, 100]"
+          :page-sizes="[10, 20, 30]"
           @size-change="load"
           @current-change="load"
         />
@@ -168,7 +180,7 @@ onMounted(async () => {
     </el-card>
 
     <!-- 详情弹窗（学习模式：展示答案 + 解析） -->
-    <el-dialog v-model="detailVisible" title="题目详情" width="640px">
+    <el-dialog v-model="detailVisible" title="题目详情" width="720px">
       <div v-loading="detailLoading">
         <template v-if="detail">
           <div class="q-title">{{ detail.stem }}</div>
@@ -178,9 +190,15 @@ onMounted(async () => {
             <el-tag v-if="detail.categoryName" size="small" type="info">{{ detail.categoryName }}</el-tag>
           </div>
           <div v-if="detail.options?.length" class="q-options">
-            <div v-for="op in detail.options" :key="op.optionLabel" class="opt">
+            <div
+              v-for="op in detail.options"
+              :key="op.optionLabel"
+              class="opt"
+              :class="{ correct: op.optionLabel === detail.standardAnswer, wrong: detail.standardAnswer && op.optionLabel !== detail.standardAnswer }"
+            >
               <span class="opt-key">{{ op.optionLabel }}.</span>
               <span>{{ op.optionContent }}</span>
+              <el-icon v-if="op.optionLabel === detail.standardAnswer" class="opt-icon"><Check /></el-icon>
             </div>
           </div>
           <el-divider content-position="left">参考答案</el-divider>
@@ -198,11 +216,110 @@ onMounted(async () => {
 .filter-card :deep(.el-card__body) { padding-bottom: 0; }
 .pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
 
+.question-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+  gap: 16px;
+}
+
+.question-card {
+  cursor: pointer;
+  transition: all 0.2s;
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.q-id {
+  font-size: 12px;
+  color: #909399;
+  font-family: monospace;
+}
+
+.card-stem {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #303133;
+  margin-bottom: 12px;
+  white-space: pre-wrap;
+}
+
+.card-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.opt-item {
+  display: flex;
+  align-items: flex-start;
+  padding: 6px 10px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.opt-label {
+  font-weight: 600;
+  color: #409eff;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.opt-content {
+  color: #606266;
+}
+
+.no-options {
+  padding: 8px;
+  text-align: center;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
+}
+
+.answer-hint {
+  font-size: 13px;
+  color: #67c23a;
+  font-weight: 500;
+}
+
 .q-title { font-size: 15px; line-height: 1.7; margin-bottom: 12px; color: #303133; }
-.q-meta { display: flex; gap: 8px; margin-bottom: 12px; }
+.q-meta { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .q-options { display: flex; flex-direction: column; gap: 8px; }
-.opt { padding: 8px 12px; background: #f5f7fa; border-radius: 4px; }
-.opt-key { font-weight: 600; color: #409eff; margin-right: 6px; }
+.opt {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  border-left: 3px solid transparent;
+  &.correct {
+    background: #f0f9eb;
+    border-left-color: #67c23a;
+    color: #67c23a;
+  }
+  &.wrong {
+    opacity: 0.6;
+  }
+}
+.opt-key { font-weight: 600; color: #409eff; margin-right: 8px; flex-shrink: 0; }
+.opt-icon { margin-left: auto; color: #67c23a; }
 .q-answer { color: #67c23a; font-weight: 600; font-size: 15px; }
 .q-analysis { color: #606266; line-height: 1.7; white-space: pre-wrap; }
 </style>

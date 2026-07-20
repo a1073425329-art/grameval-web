@@ -33,7 +33,7 @@ export type Role = 'ADMIN' | 'STUDENT'
  *  - FILL_HINT 带括号提示的填空题（如 "My father ___ (get) up"）
  *  - READING  阅读理解（含 passageId）
  */
-export type QuestionType = 'SINGLE' | 'MULTIPLE' | 'JUDGE' | 'FILL_HINT' | 'READING'
+export type QuestionType = 'SINGLE' | 'MULTIPLE' | 'JUDGE' | 'FILL' | 'FILL_HINT' | 'READING'
 
 /** 难度 —— 后端 Integer 1/2/3 */
 export type Difficulty = 1 | 2 | 3

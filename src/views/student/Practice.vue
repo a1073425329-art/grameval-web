@@ -163,8 +163,8 @@ onMounted(loadCategories)
             :disabled="!!currentFeedback"
             class="opt-list"
           >
-            <el-radio value="TRUE" class="opt-row">正确</el-radio>
-            <el-radio value="FALSE" class="opt-row">错误</el-radio>
+            <el-radio value="TRUE" class="opt-row">对</el-radio>
+            <el-radio value="FALSE" class="opt-row">错</el-radio>
           </el-radio-group>
 
           <!-- 填空 -->

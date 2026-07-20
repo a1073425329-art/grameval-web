@@ -243,8 +243,15 @@ onMounted(load)
       <!-- 表格布局 -->
       <el-table v-if="viewMode === 'table'" :data="list" style="width:100%">
         <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="username" label="用户名" width="140" />
-        <el-table-column prop="realName" label="姓名" width="120" />
+        <el-table-column label="头像" width="80" align="center">
+          <template #default="{ row }">
+            <el-avatar :size="36" :src="row.avatar || ''">
+              <el-icon><User /></el-icon>
+            </el-avatar>
+          </template>
+        </el-table-column>
+        <el-table-column prop="username" label="用户名" width="120" />
+        <el-table-column prop="realName" label="姓名" width="100" />
         <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
         <el-table-column prop="phone" label="手机号" width="130" />
         <el-table-column label="性别" width="80">

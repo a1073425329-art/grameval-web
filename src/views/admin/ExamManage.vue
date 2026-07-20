@@ -175,6 +175,13 @@ onMounted(() => { load(); loadPickers() })
                 </div>
                 <el-table :data="examineesMap[row.id]" size="small" style="margin-top:8px">
                   <el-table-column type="index" label="#" width="50" />
+                  <el-table-column label="头像" width="70" align="center">
+                    <template #default="{ row: r }">
+                      <el-avatar :size="32" :src="r.avatar || ''">
+                        <el-icon><User /></el-icon>
+                      </el-avatar>
+                    </template>
+                  </el-table-column>
                   <el-table-column label="学生" min-width="140">
                     <template #default="{ row: r }">{{ r.realName || r.username }}<span v-if="r.realName && r.username" style="color:#909399;margin-left:4px">({{ r.username }})</span></template>
                   </el-table-column>

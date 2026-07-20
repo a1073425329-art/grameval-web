@@ -153,6 +153,7 @@ export interface OperationLog {
   id: number
   userId: number
   username: string
+  avatar?: string
   operationType: string
   targetType?: string
   targetId?: number

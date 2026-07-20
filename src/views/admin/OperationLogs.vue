@@ -139,12 +139,15 @@ onMounted(async () => {
       <el-table v-if="viewMode === 'table'" :data="list" style="width:100%">
         <el-table-column type="index" label="#" width="60" />
         <el-table-column prop="createTime" label="时间" width="180" />
-        <el-table-column label="用户" width="160">
+        <el-table-column label="头像" width="80" align="center">
           <template #default="{ row }">
-            <el-icon><User /></el-icon>
-            <span>{{ row.username }}</span>
-            <span style="color:#909399">#{{ row.userId }}</span>
+            <el-avatar :size="36" :src="row.avatar || ''">
+              <el-icon><User /></el-icon>
+            </el-avatar>
           </template>
+        </el-table-column>
+        <el-table-column label="用户" width="140">
+          <template #default="{ row }">{{ row.username }}</template>
         </el-table-column>
         <el-table-column label="操作类型" width="150">
           <template #default="{ row }">
@@ -153,7 +156,7 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="结果" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.resultCode === '200' ? 'success' : 'danger'" size="small">{{ row.resultCode }}</el-tag>
+            <el-tag :type="row.resultCode === '200' ? 'success' : 'danger'" size="small">{{ row.resultCode === '200' ? '成功' : '失败' }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="目标" width="150" show-overflow-tooltip>
@@ -181,7 +184,9 @@ onMounted(async () => {
           </div>
           <div class="log-body">
             <div class="log-user">
-              <el-icon><User /></el-icon>
+              <el-avatar :size="32" :src="item.avatar || ''">
+                <el-icon><User /></el-icon>
+              </el-avatar>
               <span>{{ item.username }}</span>
               <span class="user-id">#{{ item.userId }}</span>
             </div>
@@ -190,7 +195,7 @@ onMounted(async () => {
                 {{ typeLabel(item.operationType) }}
               </el-tag>
               <el-tag :type="item.resultCode === '200' ? 'success' : 'danger'" size="small">
-                {{ item.resultCode }}
+                {{ item.resultCode === '200' ? '成功' : '失败' }}
               </el-tag>
             </div>
             <div v-if="item.targetType" class="log-target">

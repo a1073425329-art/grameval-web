@@ -4,6 +4,7 @@ import { getWrongBook, getCategoryTree } from '@/api/student'
 import type { WrongBookItem } from '@/types/result'
 import type { Category } from '@/types/category'
 import type { QuestionType, Difficulty } from '@/types/common'
+import { getJudgeOptionLabel } from '@/utils/dict'
 
 const query = reactive({
   source: 'ALL' as 'ALL' | 'EXAM' | 'PRACTICE',
@@ -58,7 +59,11 @@ const onFilterChange = () => { query.pageNum = 1; load() }
 const sourceTag = (s: string) => (s === 'EXAM' ? 'danger' : 'warning')
 const sourceLabel = (s: string) => (s === 'EXAM' ? '考试错题' : '练习错题')
 
-const answerText = (a?: string | null) => a || '（未作答）'
+const answerText = (a?: string | null, type?: QuestionType) => {
+  if (!a) return '（未作答）'
+  if (type === 'JUDGE') return getJudgeOptionLabel(a)
+  return a
+}
 const answerCorrect = (user: string | undefined | null, standard: string) => {
   if (!user) return false
   return user.trim().toUpperCase() === standard.trim().toUpperCase()
@@ -197,12 +202,12 @@ onMounted(async () => {
           <div class="answer-block wrong-block">
             <div class="answer-label">你的答案</div>
             <div class="answer-val" :class="{ correct: answerCorrect(w.userAnswer, w.standardAnswer) }">
-              {{ answerText(w.userAnswer) }}
+              {{ answerText(w.userAnswer, w.questionType) }}
             </div>
           </div>
           <div class="answer-block correct-block">
             <div class="answer-label">正确答案</div>
-            <div class="answer-val correct">{{ w.standardAnswer }}</div>
+            <div class="answer-val correct">{{ answerText(w.standardAnswer, w.questionType) }}</div>
           </div>
         </div>
 

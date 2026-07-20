@@ -5,6 +5,7 @@ import { getResultDetail, getDimensionAnalysis } from '@/api/student'
 import type { ResultDetail as ResultDetailType } from '@/types/result'
 import type { DimensionAnalysis } from '@/types/stats'
 import type { QuestionType } from '@/types/common'
+import { getJudgeOptionLabel } from '@/utils/dict'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -70,8 +71,9 @@ const wrongCount = computed(() => detail.value?.wrongCount ?? 0)
 const typeLabel = (t: QuestionType) =>
   ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
 
-const answerText = (a: string | undefined | null) => {
+const answerText = (a: string | undefined | null, type?: QuestionType) => {
   if (a === undefined || a === null || a === '') return '（未作答）'
+  if (type === 'JUDGE') return getJudgeOptionLabel(a)
   return a
 }
 
@@ -212,11 +214,11 @@ const dimDifficultyChartOption = computed(() => {
         </div>
         <div class="row">
           <span class="lbl">你的答案：</span>
-          <span :class="a.isCorrect === 1 ? 'ok-text' : 'ng-text'">{{ answerText(a.userAnswer) }}</span>
+          <span :class="a.isCorrect === 1 ? 'ok-text' : 'ng-text'">{{ answerText(a.userAnswer, a.questionType) }}</span>
         </div>
         <div class="row">
           <span class="lbl">正确答案：</span>
-          <span class="ok-text">{{ answerText(a.standardAnswer) }}</span>
+          <span class="ok-text">{{ answerText(a.standardAnswer, a.questionType) }}</span>
         </div>
         <div class="row" v-if="a.analysis">
           <span class="lbl">解析：</span>

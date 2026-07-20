@@ -23,6 +23,7 @@ export interface ExamResultItem {
   userId?: number
   username?: string
   realName?: string
+  avatar?: string
   sessionId?: number
   sessionName?: string
   paperId?: number

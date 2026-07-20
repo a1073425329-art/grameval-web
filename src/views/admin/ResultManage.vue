@@ -183,13 +183,15 @@ onMounted(load)
       <!-- 表格布局 -->
       <el-table v-if="viewMode === 'table'" :data="list" style="width:100%">
         <el-table-column type="index" label="#" width="60" />
-        <el-table-column label="学生" min-width="150">
+        <el-table-column label="头像" width="80" align="center">
           <template #default="{ row }">
-            <el-avatar :size="24" style="margin-right:8px">
+            <el-avatar :size="36" :src="row.avatar || ''">
               <el-icon><User /></el-icon>
             </el-avatar>
-            <span>{{ row.realName || row.username }}</span>
           </template>
+        </el-table-column>
+        <el-table-column label="学生" min-width="140">
+          <template #default="{ row }">{{ row.realName || row.username }}</template>
         </el-table-column>
         <el-table-column prop="paperName" label="试卷" min-width="120" show-overflow-tooltip />
         <el-table-column prop="sessionName" label="场次" min-width="120" show-overflow-tooltip />
@@ -233,7 +235,7 @@ onMounted(load)
           </div>
           <div class="card-title">{{ item.sessionName }}</div>
           <div class="card-student">
-            <el-avatar :size="32">
+            <el-avatar :size="32" :src="item.avatar || ''">
               <el-icon><User /></el-icon>
             </el-avatar>
             <div class="student-info">

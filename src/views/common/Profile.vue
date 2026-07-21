@@ -14,8 +14,13 @@ import { useAuthStore } from '@/stores/auth'
 import type { UserDetail, UserUpdateForm, PasswordChangeForm } from '@/types/user'
 import type { TrainingSchedule } from '@/types/stats'
 
+const MAX_FILE_SIZE = 1024 * 1024
+const MAX_WIDTH = 512
+const MAX_HEIGHT = 512
+
 const authStore = useAuthStore()
 
+const avatarInputRef = ref<HTMLInputElement | null>(null)
 const detail = ref<UserDetail | null>(null)
 const loading = ref(false)
 const submitting = ref(false)
@@ -137,6 +142,67 @@ const saveTraining = async () => {
 }
 
 /* ============================================================ *
+ *  头像上传与压缩
+ * ============================================================ */
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        let { width, height } = img
+        if (width > MAX_WIDTH || height > MAX_HEIGHT) {
+          const ratio = Math.min(MAX_WIDTH / width, MAX_HEIGHT / height)
+          width = Math.round(width * ratio)
+          height = Math.round(height * ratio)
+        }
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { reject(new Error('无法创建画布')); return }
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob((blob) => {
+          if (!blob) { reject(new Error('压缩失败')); return }
+          const blobReader = new FileReader()
+          blobReader.onload = (ev) => {
+            resolve(ev.target?.result as string)
+          }
+          blobReader.readAsDataURL(blob)
+        }, file.type || 'image/jpeg', 0.8)
+      }
+      img.onerror = () => reject(new Error('图片加载失败'))
+      img.src = e.target?.result as string
+    }
+    reader.onerror = () => reject(new Error('文件读取失败'))
+    reader.readAsDataURL(file)
+  })
+}
+
+const handleAvatarUpload = async (event: Event) => {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  if (!file) return
+
+  if (!file.type.startsWith('image/')) {
+    ElMessage.error('请选择图片文件')
+    return
+  }
+
+  if (file.size > MAX_FILE_SIZE) {
+    ElMessage.error(`图片大小不能超过 ${(MAX_FILE_SIZE / 1024).toFixed(0)}KB`)
+    return
+  }
+
+  try {
+    form.avatar = await compressImage(file)
+    ElMessage.success('头像上传成功')
+  } catch (e) {
+    ElMessage.error('头像上传失败：' + (e as Error).message)
+  }
+}
+
+/* ============================================================ *
  *  Helpers
  * ============================================================ */
 const genderText = (g?: number) => (g === 1 ? '男' : g === 2 ? '女' : '未知')
@@ -225,7 +291,14 @@ onMounted(load)
         <el-form-item label="头像">
           <div style="display:flex;align-items:center;gap:12px">
             <el-avatar v-if="form.avatar" :size="48" :src="form.avatar" shape="square" />
-            <el-input v-model="form.avatar" placeholder="图片 URL 或 base64" style="flex:1" />
+            <div style="flex:1;display:flex;gap:8px">
+              <el-button type="primary" @click="avatarInputRef?.click()">
+                <el-icon><Upload /></el-icon>上传头像
+              </el-button>
+              <el-button v-if="form.avatar" @click="form.avatar = ''">移除</el-button>
+              <span style="font-size:12px;color:#909399">支持 jpg/png，最大 1MB</span>
+              <input ref="avatarInputRef" type="file" accept="image/jpeg,image/png,image/gif" style="display:none" @change="handleAvatarUpload" />
+            </div>
           </div>
         </el-form-item>
       </el-form>

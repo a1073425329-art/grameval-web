@@ -239,10 +239,33 @@ const onAnswerChange = () => {
 
 const typeLabel = (t: QuestionType) =>
   ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
+
+const fontSize = ref<'small' | 'medium' | 'large'>('medium')
+const fontSizes = [
+  { value: 'small', label: '小' },
+  { value: 'medium', label: '中' },
+  { value: 'large', label: '大' },
+] as const
+
+const markedSet = reactive(new Set<number>())
+const toggleMark = () => {
+  if (!currentIdx.value) return
+  if (markedSet.has(currentIdx.value)) {
+    markedSet.delete(currentIdx.value)
+  } else {
+    markedSet.add(currentIdx.value)
+  }
+}
+
+const filterType = ref('')
+const questionTypes = computed(() => questions.value.map(q => q.questionType))
+const handleFilter = (type: string) => {
+  filterType.value = type
+}
 </script>
 
 <template>
-  <div class="exam-room" v-loading="loading">
+  <div class="exam-room" v-loading="loading" :data-font-size="fontSize">
     <!-- 顶栏 -->
     <div class="top-bar">
       <div class="left">
@@ -261,6 +284,12 @@ const typeLabel = (t: QuestionType) =>
         />
       </div>
       <div class="right">
+        <div class="font-switch">
+          <span class="font-label">字号</span>
+          <el-radio-group v-model="fontSize" size="small">
+            <el-radio v-for="fs in fontSizes" :key="fs.value" :value="fs.value">{{ fs.label }}</el-radio>
+          </el-radio-group>
+        </div>
         <el-button v-if="paperView?.resumeCount != null" size="small" @click="doResume">
           <el-icon><Refresh /></el-icon>重新同步
         </el-button>
@@ -276,10 +305,19 @@ const typeLabel = (t: QuestionType) =>
         <template v-if="current">
           <div class="q-head">
             <span class="q-idx">第 {{ currentIdx }} 题 / 共 {{ questions.length }} 题</span>
-            <span class="q-meta">
+            <div class="q-meta">
               <el-tag size="small">{{ typeLabel(current.questionType) }}</el-tag>
               <el-tag size="small" type="info">{{ current.questionScore }} 分</el-tag>
-            </span>
+              <el-button 
+                size="small" 
+                :type="markedSet.has(currentIdx) ? 'warning' : 'default'"
+                @click="toggleMark"
+                class="mark-btn"
+              >
+                <el-icon><StarFilled /></el-icon>
+                {{ markedSet.has(currentIdx) ? '已标记' : '标记' }}
+              </el-button>
+            </div>
           </div>
 
           <!-- 阅读理解：先渲染文章 -->
@@ -351,7 +389,11 @@ const typeLabel = (t: QuestionType) =>
           :total="questions.length"
           :current="currentIdx"
           :answered="Array.from(answeredIdx)"
+          :marked="Array.from(markedSet)"
+          :filter-type="filterType"
+          :question-types="questionTypes"
           @jump="jumpTo"
+          @filter="handleFilter"
         />
       </div>
     </div>
@@ -364,6 +406,21 @@ const typeLabel = (t: QuestionType) =>
   display: flex;
   flex-direction: column;
   gap: 12px;
+  --exam-font-size: 16px;
+  --exam-opt-font-size: 15px;
+  --exam-passage-font-size: 14px;
+}
+
+[data-font-size="small"] {
+  --exam-font-size: 14px;
+  --exam-opt-font-size: 13px;
+  --exam-passage-font-size: 12px;
+}
+
+[data-font-size="large"] {
+  --exam-font-size: 18px;
+  --exam-opt-font-size: 17px;
+  --exam-passage-font-size: 16px;
 }
 
 .top-bar {
@@ -377,7 +434,9 @@ const typeLabel = (t: QuestionType) =>
 
   .left { display: flex; align-items: center; gap: 8px; .exam-title { font-size: 16px; font-weight: 600; } }
   .middle { display: flex; align-items: center; gap: 10px; .label { color: #909399; font-size: 13px; } }
-  .right { display: flex; gap: 6px; }
+  .right { display: flex; align-items: center; gap: 12px; }
+  .font-switch { display: flex; align-items: center; gap: 6px; }
+  .font-label { font-size: 13px; color: #606266; }
 }
 
 .body {
@@ -399,8 +458,21 @@ const typeLabel = (t: QuestionType) =>
 .q-head {
   display: flex; align-items: center; justify-content: space-between;
   padding-bottom: 12px; border-bottom: 1px solid #f0f0f0; margin-bottom: 20px;
-  .q-idx { font-weight: 600; }
-  .q-meta { display: inline-flex; gap: 8px; }
+  .q-idx { 
+    display: inline-flex; align-items: center; gap: 6px;
+    background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
+    color: #fff; padding: 6px 14px; border-radius: 20px;
+    font-weight: 600; font-size: 14px;
+    box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
+    transition: all 0.2s;
+    &:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(64, 158, 255, 0.4); }
+  }
+  .q-meta { display: inline-flex; align-items: center; gap: 8px; }
+  .mark-btn { 
+    border-radius: 20px; 
+    transition: all 0.2s;
+    &:hover { transform: translateY(-1px); }
+  }
 }
 
 .passage {
@@ -412,18 +484,26 @@ const typeLabel = (t: QuestionType) =>
   max-height: 240px;
   overflow-y: auto;
 }
-.passage-title { margin: 0 0 8px; font-size: 14px; color: #303133; }
-.passage-content { line-height: 1.9; color: #606266; font-size: 13px; white-space: pre-wrap; }
+.passage-title { margin: 0 0 8px; font-size: var(--exam-font-size); color: #303133; font-weight: 500; }
+.passage-content { line-height: 1.9; color: #606266; font-size: var(--exam-passage-font-size); white-space: pre-wrap; }
 
-.q-stem { font-size: 16px; line-height: 1.9; color: #303133; margin-bottom: 20px; white-space: pre-wrap; }
+.q-stem { font-size: var(--exam-font-size); line-height: 1.9; color: #303133; margin-bottom: 20px; white-space: pre-wrap; }
 .opt-list { display: flex; flex-direction: column; gap: 12px; }
 .opt-row {
   display: flex !important; align-items: flex-start;
-  padding: 12px 16px; margin: 0; border-radius: 4px;
-  background: #fafafa; transition: background 0.15s;
-  &:hover { background: #f0f9ff; }
+  padding: 14px 18px; margin: 0; border-radius: 8px;
+  background: #fafafa; transition: all 0.2s;
+  font-size: var(--exam-opt-font-size);
+  border-left: 3px solid transparent;
+  &:hover { background: #f0f9ff; border-left-color: #b3d8ff; }
 }
-.opt-key { font-weight: 600; color: #409eff; margin-right: 6px; }
+.opt-key { font-weight: 700; color: #409eff; margin-right: 8px; font-size: var(--exam-font-size); }
+
+:deep(.opt-row.is-checked) {
+  background: #ecf5ff;
+  border-left-color: #409eff;
+  & .opt-key { color: #409eff; }
+}
 
 .footer {
   margin-top: auto;

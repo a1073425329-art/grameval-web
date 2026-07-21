@@ -14,7 +14,7 @@ import { useAuthStore } from '@/stores/auth'
 import type { UserDetail, UserUpdateForm, PasswordChangeForm } from '@/types/user'
 import type { TrainingSchedule } from '@/types/stats'
 
-const MAX_FILE_SIZE = 1024 * 1024
+const MAX_FILE_SIZE = 5 * 1024 * 1024
 const MAX_WIDTH = 512
 const MAX_HEIGHT = 512
 
@@ -296,7 +296,7 @@ onMounted(load)
                 <el-icon><Upload /></el-icon>上传头像
               </el-button>
               <el-button v-if="form.avatar" @click="form.avatar = ''">移除</el-button>
-              <span style="font-size:12px;color:#909399">支持 jpg/png，最大 1MB</span>
+              <span style="font-size:12px;color:#909399">支持 jpg/png，最大 5MB</span>
               <input ref="avatarInputRef" type="file" accept="image/jpeg,image/png,image/gif" style="display:none" @change="handleAvatarUpload" />
             </div>
           </div>

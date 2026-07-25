@@ -468,7 +468,7 @@ const doValidate = async () => {
   await formRef.value.validate(async (valid) => {
     if (!valid) return
 
-    let standardAnswer = ''
+    let standardAnswer: string
     if (activeTab.value === 'MULTIPLE') {
       if (!normalForm.answerMulti.length) return
       standardAnswer = [...normalForm.answerMulti].sort().join(',')

@@ -129,6 +129,9 @@ const getRoleLabel = (role: string) => {
  };
  return roles[role] || role;
 };
+
+// 便于单元测试断言(生产运行时无副作用)
+defineExpose({ showCreateModal, showDetailModal, myGroups, searchResult, createForm, handleCreate });
 </script>
 
 <template>

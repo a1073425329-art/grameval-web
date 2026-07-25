@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './tests',
+  // 只跑 e2e 与 api 测试, unit(vitest 负责的)跳过
+  testMatch: /(e2e|api)\/.*\.(test|spec)\.ts$|^tests\/(admin|student)\.test\.ts$/,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

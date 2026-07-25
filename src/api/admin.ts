@@ -8,7 +8,7 @@ import type { Category, CategoryForm } from '@/types/category'
 import type { Question, QuestionForm } from '@/types/question'
 import type { ReadingPassage, ReadingPassageForm, ReadingQuestionItem } from '@/types/reading'
 import type { Paper, PaperForm } from '@/types/paper'
-import type { ExamSession, SessionForm } from '@/types/exam'
+import type { ExamSession, SessionForm, ExamRecord } from '@/types/exam'
 import type { ExamResultItem } from '@/types/result'
 import type {
   AdminDashboardData,
@@ -173,6 +173,28 @@ export const updateSession = (id: number, data: SessionForm) =>
 
 export const deleteSession = (id: number) =>
   request.delete<ApiResponse<void>>(`/sessions/${id}`)
+
+/* ============================================================ *
+ *  5.5 考试记录（ExamRecord）—— /exams（管理员可看全部）
+ * ============================================================ */
+
+export interface ExamRecordQuery extends PageQuery {
+  userId?: number
+  sessionId?: number
+  submitStatus?: number
+}
+
+export const listExamRecords = (params: ExamRecordQuery) =>
+  request.get<ApiResponse<PageResult<ExamRecord>>>('/exams', { params })
+
+/* ============================================================ *
+ *  5.6 教师 / 老师列表（用于选择器）
+ * ============================================================ */
+
+export const listTeachers = () =>
+  request.get<ApiResponse<PageResult<UserDetail>>>('/users', {
+    params: { pageNum: 1, pageSize: 200, role: 'TEACHER' },
+  })
 
 /* ============================================================ *
  *  6. 管理端专用操作 /admin/*

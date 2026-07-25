@@ -1,6 +1,19 @@
 import request from '@/utils/request'
-import type { ApiResponse } from '@/types/common'
+import type { ApiResponse, PageQuery, PageResult } from '@/types/common'
 import type { ExamComment, ExamCommentForm } from '@/types/examComment'
+
+export interface ExamCommentQuery extends PageQuery {
+  commentType?: string
+  isRead?: boolean
+  teacherId?: number
+  examId?: number
+}
+
+export const pageExamComments = (params: ExamCommentQuery) =>
+  request.get<ApiResponse<PageResult<ExamComment>>>('/exam-comments', { params })
+
+export const getExamCommentStats = () =>
+  request.get<ApiResponse<Record<string, number>>>('/exam-comments/stats')
 
 export const getExamComments = (examId: number) =>
   request.get<ApiResponse<ExamComment[]>>(`/exam-comments/exam/${examId}`)

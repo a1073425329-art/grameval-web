@@ -72,8 +72,9 @@ function extractBindings(scriptContent) {
     }
   }
   // const|let|var name = ... / const { a, b } = ... / const [a, b] = ...
-  for (const m of scriptContent.matchAll(/\b(?:const|let|var)\s+(\{[^}]+\}|\[[^\]]+\]|\w+)/g)) {
-    const decl = m[1]
+  // 排除 "as const" 断言里的 const 字面, 且要求关键字前面是 行首/分号/换行/空格
+  for (const m of scriptContent.matchAll(/(?:^|[;{\n\r])\s*(?:export\s+)?(const|let|var)\s+(\{[^}]+\}|\[[^\]]+\]|[a-zA-Z_$][\w$]*)/g)) {
+    const decl = m[2]
     if (decl.startsWith('{') || decl.startsWith('[')) {
       for (const p of decl.matchAll(/\b(\w+)(?:\s*:\s*(\w+))?/g)) {
         const name = p[2] || p[1]
@@ -85,7 +86,32 @@ function extractBindings(scriptContent) {
   }
   // function foo() { ... }
   for (const m of scriptContent.matchAll(/\bfunction\s+(\w+)/g)) bindings.add(m[1])
-  // defineProps / defineEmits 产出的对象也可用, 但通常不在 template 顶层引用
+  // defineProps({ a, b }) 或 defineProps<{ a: X; b: Y }>()
+  for (const m of scriptContent.matchAll(/defineProps\s*(?:<\s*\{([\s\S]*?)\}\s*>)?\s*\(\s*(?:\{([\s\S]*?)\})?\s*\)/g)) {
+    const bag = (m[1] || m[2] || '')
+    for (const p of bag.matchAll(/([a-zA-Z_$][\w$]*)\s*[?:]/g)) bindings.add(p[1])
+    for (const p of bag.matchAll(/(?:^|,)\s*([a-zA-Z_$][\w$]*)\s*(?:,|$)/g)) bindings.add(p[1])
+  }
+  // withDefaults(defineProps<{...}>(), {...})
+  for (const m of scriptContent.matchAll(/withDefaults\s*\(\s*defineProps\s*<\s*\{([\s\S]*?)\}\s*>/g)) {
+    for (const p of m[1].matchAll(/([a-zA-Z_$][\w$]*)\s*[?:]/g)) bindings.add(p[1])
+  }
+  // interface Props { a: T; b: U } / type Props = { ... } 后跟 defineProps<Props>()
+  const interfaceProps = new Map()
+  for (const m of scriptContent.matchAll(/(?:interface|type)\s+(\w+)\s*(?:=\s*)?\{([\s\S]*?)\}/g)) {
+    const bag = m[2]
+    const props = []
+    for (const p of bag.matchAll(/([a-zA-Z_$][\w$]*)\s*[?:]/g)) props.push(p[1])
+    interfaceProps.set(m[1], props)
+  }
+  for (const m of scriptContent.matchAll(/defineProps\s*<\s*(\w+)\s*>/g)) {
+    for (const n of interfaceProps.get(m[1]) || []) bindings.add(n)
+  }
+  // defineExpose({ a, b })
+  for (const m of scriptContent.matchAll(/defineExpose\s*\(\s*\{([\s\S]*?)\}/g)) {
+    for (const p of m[1].matchAll(/([a-zA-Z_$][\w$]*)\s*[,}:]/g)) bindings.add(p[1])
+  }
+  // computed / ref / reactive 定义的普通对象里, 通常已经通过 const 抓到, 这里补一层保险
   return bindings
 }
 
@@ -140,11 +166,56 @@ function scanTemplate(file, templateBlock, scriptBindings, rawSrc) {
     if (!identifiersLocs.has(name)) identifiersLocs.set(name, off)
   }
   const captureFromExpr = (expr, offInFile) => {
-    for (const m of expr.matchAll(idRe)) {
+    // 移除 string / template literal / 注释 / 正则字面量, 避免误报
+    const cleaned = expr
+      .replace(/'(?:\\'|[^'])*'/g, "''")
+      .replace(/"(?:\\"|[^"])*"/g, '""')
+      .replace(/`(?:\\`|[^`])*`/g, '``')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      // 尝试擦掉正则字面量 (为简单起见: /.../ 内出现 <>|\/ 特殊符号才算)
+      .replace(/\/[^\/\n]*[<>|\\][^\/\n]*\/[gimsuy]*/g, '//')
+    // 收集箭头函数参数(简单启发): (a,b) => 或 x =>
+    const localParams = new Set()
+    for (const am of cleaned.matchAll(/(?:\(([^)]*)\)|\b([a-zA-Z_$][\w$]*))\s*=>/g)) {
+      const bag = am[1] || am[2]
+      for (const p of bag.split(',')) {
+        const n = p.trim().split(/[:\s=]/)[0]
+        if (n) localParams.add(n)
+      }
+    }
+    // 收集 for 循环里的 v 变量 (如果表达式内嵌了 for/some/map)
+    for (const fm of cleaned.matchAll(/\.(?:map|filter|find|forEach|some|every|reduce|flatMap|sort)\s*\(\s*(?:\(([^)]*)\)|([a-zA-Z_$][\w$]*))/g)) {
+      const bag = fm[1] || fm[2]
+      for (const p of bag.split(',')) {
+        const n = p.trim().split(/[:\s=]/)[0]
+        if (n) localParams.add(n)
+      }
+    }
+    // TS 类型断言里的关键字 as / any / string / number 等
+    const TS_KEYWORDS = new Set(['as', 'any', 'string', 'number', 'boolean', 'unknown', 'never', 'void', 'null', 'undefined', 'object', 'symbol', 'bigint',
+      // JS 语句/关键字 (v-on 里的多行 handler 会出现)
+      'if', 'else', 'return', 'throw', 'new', 'delete', 'in', 'of', 'instanceof', 'typeof', 'void', 'yield', 'await', 'async', 'for', 'while', 'do', 'break', 'continue', 'switch', 'case', 'default', 'try', 'catch', 'finally'])
+    // 收集对象字面量的 key (放在 { key: value } 中), 避免把 key 名当变量
+    const objKeys = new Set()
+    for (const km of cleaned.matchAll(/\{[^}]*\}/g)) {
+      for (const kk of km[0].matchAll(/([a-zA-Z_$][\w$]*)\s*:/g)) objKeys.add(kk[1])
+    }
+    for (const m of cleaned.matchAll(idRe)) {
       const w = m[0]
-      // 跳过在 . 或 [ ' 之后 (对象属性)
-      const before = expr[m.index - 1]
+      const before = cleaned[m.index - 1]
+      const after = cleaned[m.index + w.length]
       if (before === '.' || before === "'" || before === '"' || before === '`') continue
+      if (localParams.has(w)) continue
+      if (TS_KEYWORDS.has(w)) continue
+      if (after === ':' && objKeys.has(w)) continue
+      if (w.length === 1) continue
+      // TS 类型注解: (x: SomeType) => ... 里的 SomeType — 前面从 : 到 w 之间只有空格, 且大写开头
+      if (/^[A-Z]/.test(w)) {
+        // 向前跳过空格找非空字符
+        let i = m.index - 1
+        while (i >= 0 && cleaned[i] === ' ') i--
+        if (i >= 0 && (cleaned[i] === ':' || cleaned[i] === '<')) continue
+      }
       push2(w, offInFile + m.index)
     }
   }

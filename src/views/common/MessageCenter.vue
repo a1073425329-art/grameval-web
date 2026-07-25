@@ -310,6 +310,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
         <span>{{ formatTime(selectedMsg.createTime) }}</span>
         <span v-if="selectedMsg.senderName">来自 {{ selectedMsg.senderName }}</span>
       </div>
+      <!-- eslint-disable-next-line vue/no-v-html —— 通知内容是可信后端下发的 HTML, 展示需要 -->
       <div class="detail-content" v-html="selectedMsg.content || selectedMsg.summary" />
       <div class="detail-actions" v-if="selectedMsg.actionUrl">
         <el-button type="primary" @click="handleClickAction(selectedMsg)">{{ selectedMsg.actionText || '查看详情' }}</el-button>

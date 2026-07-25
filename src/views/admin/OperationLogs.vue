@@ -345,8 +345,8 @@ onMounted(async () => {
               <span v-else>-</span>
             </template>
           </el-table-column>
-          <el-table-column prop="requestUri" label="接口"  show-overflow-tooltip />
-          <el-table-column prop="requestParams" label="请求参数"  show-overflow-tooltip />
+          <el-table-column prop="requestUri" label="接口" show-overflow-tooltip />
+          <el-table-column prop="requestParams" label="请求参数" show-overflow-tooltip />
           <el-table-column label="耗时" width="100" align="center">
             <template #default="{ row }">
               <span :class="{ 'text-danger': row.durationMs && row.durationMs > 5000 }">

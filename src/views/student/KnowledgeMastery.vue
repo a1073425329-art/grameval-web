@@ -166,7 +166,7 @@ const formulaTooltip = '综合评分 = 正确率×50% + 连续正确/10×30% + �
           <template #default="{ row }">{{ row.lastPracticeTime?.substring(0, 10) ?? '-' }}</template>
         </el-table-column>
         <el-table-column label="操作" width="80" fixed="right">
-          <template #default="{ row }">
+          <template #default="{ row: _row }">
             <el-button size="small" type="primary" link @click="$router.push('/student/practice')">练习</el-button>
           </template>
         </el-table-column>

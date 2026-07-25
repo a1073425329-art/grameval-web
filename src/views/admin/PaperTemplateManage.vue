@@ -146,14 +146,14 @@ const statusMap: Record<number, string> = { 0: '停用', 1: '启用' }
         <el-form-item label="题型配置" prop="questionConfig">
           <template #label>
             题型配置
-            <el-tooltip content='JSON数组格式。每项定义一种题型：type=SINGLE/MULTIPLE/JUDGE/FILL_HINT/READING，count=数量，score=每题分值，difficulty=难度范围[1,2,3]。生成试卷时系统从题库随机抽题。' placement="right" effect="light">
+            <el-tooltip content="JSON数组格式。每项定义一种题型：type=SINGLE/MULTIPLE/JUDGE/FILL_HINT/READING，count=数量，score=每题分值，difficulty=难度范围[1,2,3]。生成试卷时系统从题库随机抽题。" placement="right" effect="light">
               <el-icon style="cursor:help;color:#909399;margin-left:4px"><QuestionFilled /></el-icon>
             </el-tooltip>
           </template>
-          <el-input v-model="form.questionConfig" type="textarea" :rows="4" placeholder='[{"type":"SINGLE","count":20,"score":2,"difficulty":[1,2]}]' />
+          <el-input v-model="form.questionConfig" type="textarea" :rows="4" placeholder="[{&quot;type&quot;:&quot;SINGLE&quot;,&quot;count&quot;:20,&quot;score&quot;:2,&quot;difficulty&quot;:[1,2]}]" />
         </el-form-item>
-        <el-form-item label="难度分布"><el-input v-model="form.difficultyDistribution" placeholder='{"easy":30,"medium":50,"hard":20}' /></el-form-item>
-        <el-form-item label="知识点要求"><el-input v-model="form.knowledgeRequirements" type="textarea" :rows="2" placeholder='[{"tagId":1,"tagName":"一般现在时","count":3}]' /></el-form-item>
+        <el-form-item label="难度分布"><el-input v-model="form.difficultyDistribution" placeholder="{&quot;easy&quot;:30,&quot;medium&quot;:50,&quot;hard&quot;:20}" /></el-form-item>
+        <el-form-item label="知识点要求"><el-input v-model="form.knowledgeRequirements" type="textarea" :rows="2" placeholder="[{&quot;tagId&quot;:1,&quot;tagName&quot;:&quot;一般现在时&quot;,&quot;count&quot;:3}]" /></el-form-item>
         <el-row :gutter="16">
           <el-col :span="8"><el-form-item label="适用年级"><el-input v-model="form.gradeLevel" /></el-form-item></el-col>
           <el-col :span="8"><el-form-item label="总分"><el-input-number v-model="form.totalScore" :min="0" :max="500" /></el-form-item></el-col>

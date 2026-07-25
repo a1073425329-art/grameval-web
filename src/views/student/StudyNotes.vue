@@ -184,6 +184,9 @@ const getCategoryName = (categoryId?: number) => {
 const getTagsArray = (tags: string) => {
  return tags ? tags.split(',').filter(t => t.trim()) : [];
 };
+
+// 便于单元测试断言内部状态 (对生产运行时无副作用)
+defineExpose({ dialogVisible, isAdding, isEditing, editingNote, form, openAddModal, openEditModal, handleSave, closeModal });
 </script>
 
 <template>

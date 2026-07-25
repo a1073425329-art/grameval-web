@@ -16,6 +16,9 @@ export const getExamMonitorEvents = (examId: number) =>
 export const getMonitorStats = (examId: number) =>
   request.get<ApiResponse<Record<string, number>>>(`/monitor/events/${examId}/stats`)
 
+export const getGlobalMonitorStats = () =>
+  request.get<ApiResponse<Record<string, number>>>('/monitor/events/stats')
+
 export const handleMonitorEvent = (id: number, note?: string) =>
   request.put<ApiResponse<void>>(`/monitor/events/${id}/handle`, null, { params: { note } })
 

@@ -3,11 +3,18 @@ import type { ApiResponse, PageQuery, PageResult } from '@/types/common'
 import type { ClassGroup, ClassGroupForm, ClassStudent } from '@/types/classGroup'
 
 export interface ClassGroupQuery extends PageQuery {
-  // 后端使用简单分页
+  className?: string
+  schoolName?: string
+  grade?: string
+  status?: number
+  teacherId?: number
 }
 
 export const listClassGroups = (params: ClassGroupQuery) =>
   request.get<ApiResponse<PageResult<ClassGroup>>>('/classes', { params })
+
+export const getClassGroupStats = () =>
+  request.get<ApiResponse<Record<string, number>>>('/classes/stats')
 
 export const getMyClasses = () =>
   request.get<ApiResponse<ClassGroup[]>>('/classes/my')

@@ -5,10 +5,14 @@
 export interface WorkflowNode {
   nodeId: string
   nodeName: string
-  nodeType: 'HTTP' | 'LLM' | 'CODE'
+  nodeType: 'HTTP' | 'LLM' | 'CODE' | 'CONDITION' | 'SWITCH' | 'LOOP' | 'PARALLEL' | 'DELAY' | 'TEMPLATE'
   description: string
   icon: string
   model?: string
+  /** 画布 X 坐标（由后端提供） */
+  x?: number
+  /** 画布 Y 坐标（由后端提供） */
+  y?: number
   inputs: WorkflowNodeInput[]
   outputs: WorkflowNodeOutput[]
 }

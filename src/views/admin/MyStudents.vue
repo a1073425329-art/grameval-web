@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, UserFilled, Plus, Close, DataAnalysis, Clock, Warning, InfoFilled, List, Grid } from '@element-plus/icons-vue'
+import { Search, Refresh, UserFilled, Plus, Close, DataAnalysis, Clock, Warning, InfoFilled, List, Grid, Cpu } from '@element-plus/icons-vue'
 import { listMyStudents, listUnassignedStudents, bindMyStudents } from '@/api/admin'
 import type { AdminStudent } from '@/types/admin'
 import type { UserDetail } from '@/types/user'
@@ -272,6 +272,9 @@ onMounted(load)
           </el-select>
           <el-button :icon="Refresh" @click="load" :loading="loading">刷新</el-button>
           <el-button type="primary" :icon="Plus" @click="openBind">管理绑定</el-button>
+          <el-button type="primary" size="small" @click="$router.push('/admin/ai-assistant')">
+            <el-icon><Cpu /></el-icon>AI学生分析
+          </el-button>
           <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
             <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
             {{ viewMode === 'card' ? '表格' : '卡片' }}

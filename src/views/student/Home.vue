@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Calendar, Check, Aim, Trophy, Document } from '@element-plus/icons-vue'
+import { Calendar, Check, Aim, Trophy, Document, Cpu } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { getMySummary, getAvailableExams, getStudentStatistics, getMyResults, listPractices, getMyLearningProgress, getWeakCategories, checkIn, updateMyProfile, getMyProfile } from '@/api/student'
@@ -277,7 +277,12 @@ const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d =
           <template #header>
             <div class="card-head">
               <span class="card-title-text">📊 各分类学习进度</span>
-              <el-link type="primary" :underline="false" @click="router.push('/student/question-bank')">去练习 →</el-link>
+              <div class="card-actions">
+                <el-button type="primary" size="small" @click="router.push('/student/ai-assistant')">
+                  <el-icon><Cpu /></el-icon>AI学习分析
+                </el-button>
+                <el-link type="primary" :underline="false" @click="router.push('/student/question-bank')">去练习 →</el-link>
+              </div>
             </div>
           </template>
           <div class="progress-grid">
@@ -458,6 +463,7 @@ const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d =
 
 .card-head { display: flex; align-items: center; justify-content: space-between; }
 .card-title-text { font-size: 14px; font-weight: 600; color: #303133; }
+.card-actions { display: flex; align-items: center; gap: 10px; }
 .mini-chart-card {
   border-radius: 8px;
   :deep(.el-card__body) { padding: 0 12px 12px; }

@@ -81,10 +81,13 @@
               </el-button>
             </el-form-item>
             <el-form-item label="默认模型">
-              <el-select v-model="aiForm.deepseekModel" style="width: 200px">
-                <el-option label="deepseek-chat" value="deepseek-chat" />
-                <el-option label="deepseek-r1.5b" value="deepseek-r1.5b" />
+              <el-select v-model="aiForm.deepseekModel" style="width: 250px">
+                <el-option label="deepseek-v4-pro（最新旗舰）" value="deepseek-v4-pro" />
+                <el-option label="deepseek-v4-flash（高速轻量）" value="deepseek-v4-flash" />
+                <el-option label="deepseek-chat（标准）" value="deepseek-chat" />
+                <el-option label="deepseek-r1.5b（推理模型）" value="deepseek-r1.5b" />
               </el-select>
+              <div class="form-tip">推荐使用 deepseek-v4-pro，性能最强</div>
             </el-form-item>
             <el-form-item label="请求超时">
               <el-input-number v-model="aiForm.timeout" :min="5" :max="120" style="width: 150px" />

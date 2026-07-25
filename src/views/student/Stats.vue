@@ -10,6 +10,7 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
+import { Cpu } from '@element-plus/icons-vue'
 
 use([CanvasRenderer, BarChart, LineChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
@@ -160,9 +161,14 @@ const tagChartOption = computed(() => {
   <div class="page" v-loading="loading">
     <div class="page-header">
       <h3 class="page-title">📊 学习数据</h3>
-      <el-radio-group v-model="currentModule" @change="switchModule" size="small">
-        <el-radio-button v-for="m in moduleOptions" :key="m.value" :value="m.value">{{ m.label }}</el-radio-button>
-      </el-radio-group>
+      <div class="page-header-actions">
+        <el-radio-group v-model="currentModule" @change="switchModule" size="small">
+          <el-radio-button v-for="m in moduleOptions" :key="m.value" :value="m.value">{{ m.label }}</el-radio-button>
+        </el-radio-group>
+        <el-button type="primary" size="small" @click="$router.push('/student/ai-assistant')">
+          <el-icon><Cpu /></el-icon>AI数据分析
+        </el-button>
+      </div>
     </div>
 
     <template v-if="stats">
@@ -334,6 +340,7 @@ const tagChartOption = computed(() => {
 
 // KPI row
 .stat-row { margin: 0 !important; }
+.page-header-actions { display: flex; align-items: center; gap: 16px; }
 .kpi {
   text-align: center; background: #fff; border-radius: 8px; padding: 18px 12px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06); cursor: pointer; transition: transform 0.15s;

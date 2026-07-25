@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { List, Grid } from '@element-plus/icons-vue'
+import { List, Grid, Cpu } from '@element-plus/icons-vue'
 import { listAdminResults, exportResults } from '@/api/admin'
 import { getResultDetail } from '@/api/student'
 import type { ExamResultItem, ResultDetail } from '@/types/result'
@@ -168,6 +168,9 @@ onMounted(load)
             <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
               <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
               {{ viewMode === 'card' ? '表格' : '卡片' }}
+            </el-button>
+            <el-button type="primary" size="small" @click="$router.push('/admin/ai-assistant')">
+              <el-icon><Cpu /></el-icon>AI成绩分析
             </el-button>
           </el-form-item>
         </el-row>

@@ -7,6 +7,7 @@ import type { Question } from '@/types/question'
 import type { Category } from '@/types/category'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { getJudgeOptionLabel } from '@/utils/dict'
+import { Cpu } from '@element-plus/icons-vue'
 
 const query = reactive({
   source: 'ALL' as 'ALL' | 'EXAM' | 'PRACTICE',
@@ -253,9 +254,14 @@ onMounted(async () => {
 
       <div class="filter-summary">
         共 <b>{{ total }}</b> 道错题<span v-if="list.length"> · 当前第 {{ (query.pageNum - 1) * query.pageSize + 1 }} - {{ Math.min(query.pageNum * query.pageSize, total) }} 题</span>
-        <el-button v-if="total > 0" type="primary" @click="startRedo" :loading="redoSubmitting">
-          <el-icon><Refresh /></el-icon> 开始重做
-        </el-button>
+        <div class="filter-actions">
+          <el-button type="primary" @click="startRedo" :loading="redoSubmitting">
+            <el-icon><Refresh /></el-icon> 开始重做
+          </el-button>
+          <el-button type="primary" @click="$router.push('/student/ai-assistant')">
+            <el-icon><Cpu /></el-icon>AI错题分析
+          </el-button>
+        </div>
       </div>
     </div>
 
@@ -412,8 +418,10 @@ onMounted(async () => {
 }
 .filter-summary {
   margin-top: 12px; font-size: 13px; color: #606266;
+  display: flex; align-items: center; justify-content: space-between;
   b { color: #f56c6c; font-size: 18px; margin: 0 2px; }
 }
+.filter-actions { display: flex; align-items: center; gap: 10px; }
 
 // Card
 .wrong-list { display: flex; flex-direction: column; gap: 12px; }

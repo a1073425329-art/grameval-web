@@ -8,6 +8,7 @@ import { BarChart, PieChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import { getSessionStatistics } from '@/api/admin'
 import type { SessionStatistics } from '@/types/admin'
+import { Cpu } from '@element-plus/icons-vue'
 
 use([CanvasRenderer, BarChart, PieChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
@@ -87,13 +88,18 @@ const passRateOption = computed(() => {
         <el-icon><ArrowLeft /></el-icon>返回考试列表
       </el-button>
       <h3 class="page-title">场次统计 · {{ stat?.sessionName || '' }}</h3>
-      <el-button
-        size="small"
-        type="primary"
-        @click="router.push(`/admin/exams/${sessionId}/monitor`)"
-      >
-        <el-icon><View /></el-icon>实时监控
-      </el-button>
+      <div class="page-header-actions">
+        <el-button
+          size="small"
+          type="primary"
+          @click="router.push(`/admin/exams/${sessionId}/monitor`)"
+        >
+          <el-icon><View /></el-icon>实时监控
+        </el-button>
+        <el-button type="primary" size="small" @click="$router.push('/admin/ai-assistant')">
+          <el-icon><Cpu /></el-icon>AI考试分析
+        </el-button>
+      </div>
     </div>
 
     <template v-if="stat">
@@ -185,6 +191,7 @@ const passRateOption = computed(() => {
   display: flex; align-items: center; gap: 12px;
   .page-title { margin: 0; font-size: 18px; font-weight: 600; flex: 1; }
 }
+.page-header-actions { display: flex; align-items: center; gap: 10px; }
 
 .stat-card {
   background: #fff; border-radius: 8px; padding: 16px;

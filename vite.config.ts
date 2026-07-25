@@ -2,11 +2,20 @@ import { resolve } from 'path'
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import compression from 'vite-plugin-compression'
+import Icons from 'unplugin-icons/vite'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     vue(),
+    // 图标:按需自动引入,支持 <i-mdi-home /> / <i-ep-search /> 等写法
+    // 组件内直接以 kebab-case 使用,Vite 会按需按图标级别 tree-shake
+    Icons({
+      compiler: 'vue3',
+      autoInstall: false,
+      // 兼容 Element Plus 的 <el-icon><Search /></el-icon> 图标风格
+      defaultClass: 'icon',
+    }),
     // Gzip 压缩
     (compression as any)({
       algorithm: 'gzip',
@@ -55,6 +64,15 @@ export default defineConfig({
             }
             if (id.includes('dayjs')) {
               return 'dayjs'
+            }
+            // 图标相关单独一块,避免和 vendor 混在一起
+            if (
+              id.includes('@iconify') ||
+              id.includes('unplugin-icons') ||
+              id.includes('@fuxishi/svg-icon') ||
+              id.includes('@yh-ui/icons')
+            ) {
+              return 'icons'
             }
             return 'vendor'
           }

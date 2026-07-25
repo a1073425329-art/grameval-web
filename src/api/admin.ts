@@ -235,12 +235,37 @@ export const exportResults = (params: AdminResultQuery) =>
 export interface OperationLogQuery extends PageQuery {
   operationType?: string
   userId?: number
+  username?: string
+  clientIp?: string
+  resultCode?: string
+  targetType?: string
   startTime?: string
   endTime?: string
+  requestUri?: string
 }
 
 export const listOperationLogs = (params: OperationLogQuery) =>
   request.get<ApiResponse<PageResult<OperationLog>>>('/admin/operation-logs', { params })
+
+export const getOperationLogDetail = (id: number) =>
+  request.get<ApiResponse<OperationLog>>(`/admin/operation-logs/${id}`)
+
+export const deleteOperationLog = (id: number) =>
+  request.delete<ApiResponse<void>>(`/admin/operation-logs/${id}`)
+
+export const clearAllOperationLogs = () =>
+  request.delete<ApiResponse<void>>('/admin/operation-logs')
+
+export const deleteOperationLogsByRange = (startTime: string, endTime: string) =>
+  request.delete<ApiResponse<void>>('/admin/operation-logs/range', {
+    params: { startTime, endTime },
+  })
+
+export const getOperationLogStatistics = (groupBy = 'operation_type') =>
+  request.get<ApiResponse<{ groupBy: string; data: Array<[string, number]> }>>(
+    '/admin/operation-logs/statistics',
+    { params: { groupBy } }
+  )
 
 export const getOperationLogTypes = () =>
   request.get<ApiResponse<Array<{ value: string; label: string }>>>(

@@ -3,16 +3,25 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "engines": {
+    "node": ">=20.19.0",
+    "npm": ">=10.0.0"
+  },
+  "engineStrict": true,
   "scripts": {
+    "preinstall": "node scripts/check-env.cjs",
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
+    "@fuxishi/svg-icon": "^1.0.7",
+    "@iconify/vue": "^5.0.1",
     "@vue-flow/controls": "^1.1.3",
     "@vue-flow/core": "^1.48.2",
     "@vue-flow/minimap": "^1.5.4",
+    "@yh-ui/icons": "^1.0.63",
     "axios": "^1.18.1",
     "dayjs": "^1.11.21",
     "echarts": "^6.1.0",
@@ -24,11 +33,13 @@
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
+    "@iconify/json": "^2.2.505",
     "@types/node": "^24.13.2",
     "@vitejs/plugin-vue": "^6.0.7",
     "@vue/tsconfig": "^0.9.1",
     "terser": "^5.49.0",
     "typescript": "~6.0.2",
+    "unplugin-icons": "^23.0.1",
     "vite": "^8.1.1",
     "vite-plugin-compression": "^0.5.1",
     "vue-tsc": "^3.3.5"

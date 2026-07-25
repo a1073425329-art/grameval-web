@@ -11,6 +11,13 @@ export interface SysConfig {
   isEncrypted: boolean
   valueType: string
   status: number
+  sortOrder: number
+  defaultValue: string
+  options: string
+  isPublic: boolean
+  isReadonly: boolean
+  placeholder: string
+  validationRule: string
   createTime: string
   updateTime: string
 }
@@ -55,6 +62,22 @@ export const updateConfig = (key: string, value: string) =>
 /** 批量更新配置 */
 export const batchUpdateConfigs = (configs: Record<string, string>) =>
   request.put<ApiResponse<SysConfig[]>>('/admin/system-config/batch', configs)
+
+/** 获取公开配置 */
+export const getPublicConfigs = () =>
+  request.get<ApiResponse<SysConfig[]>>('/admin/system-config/public')
+
+/** 获取菜单配置 */
+export const getMenuConfigs = () =>
+  request.get<ApiResponse<Record<string, boolean>>>('/admin/system-config/menu')
+
+/** 重置配置为默认值 */
+export const resetConfig = (key: string) =>
+  request.post<ApiResponse<SysConfig>>(`/admin/system-config/${key}/reset`)
+
+/** 刷新配置缓存 */
+export const refreshConfigs = () =>
+  request.post<ApiResponse<string>>('/admin/system-config/refresh')
 
 // ==================== AI 相关 ====================
 

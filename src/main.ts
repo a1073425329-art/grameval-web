@@ -12,6 +12,7 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/controls/dist/style.css'
 import '@vue-flow/minimap/dist/style.css'
 import { useDictStore } from './stores/dict'
+import { setupIcons } from './plugins/icons'
 
 const app = createApp(App)
 
@@ -19,6 +20,9 @@ const app = createApp(App)
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
+
+// 全局注册 Iconify / @fuxishi/svg-icon / @yh-ui/icons
+setupIcons(app)
 
 const pinia = createPinia()
 

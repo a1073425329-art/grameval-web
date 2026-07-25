@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { listCategoryTree, createCategory, updateCategory, deleteCategory } from '@/api/admin'
 import type { Category, CategoryForm } from '@/types/category'
+import { FormLimits } from '@/utils/formLimits'
 
 const tree = ref<Category[]>([])
 const loading = ref(false)
@@ -152,10 +153,10 @@ onMounted(load)
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
         <el-form-item label="名称" prop="categoryName">
-          <el-input v-model="form.categoryName" placeholder="如：时态 / 从句" />
+          <el-input v-model="form.categoryName" :maxlength="FormLimits.shortText.max" show-word-limit placeholder="如：时态 / 从句" />
         </el-form-item>
         <el-form-item label="描述">
-          <el-input v-model="form.description" type="textarea" :rows="2" />
+          <el-input v-model="form.description" type="textarea" :rows="2" :maxlength="FormLimits.mediumText.max" show-word-limit />
         </el-form-item>
         <el-form-item label="排序">
           <el-input-number v-model="form.sortNo" :min="0" />

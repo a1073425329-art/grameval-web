@@ -3,21 +3,21 @@ import { ref, onMounted, onUnmounted, computed } from 'vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart, BarChart, PieChart } from 'echarts/charts'
+import { LineChart, BarChart, PieChart, RadarChart } from 'echarts/charts'
 import {
   TitleComponent,
   TooltipComponent,
   LegendComponent,
   GridComponent,
+  RadarComponent,
 } from 'echarts/components'
-import { getDashboard, listCategoryTree, getQuestionAnalytics } from '@/api/admin'
+import { getDashboard } from '@/api/admin'
 import type { AdminDashboardData } from '@/types/admin'
-import type { Category } from '@/types/category'
 
 use([
   CanvasRenderer,
-  LineChart, BarChart, PieChart,
-  TitleComponent, TooltipComponent, LegendComponent, GridComponent,
+  LineChart, BarChart, PieChart, RadarChart,
+  TitleComponent, TooltipComponent, LegendComponent, GridComponent, RadarComponent,
 ])
 
 const loading = ref(false)
@@ -27,32 +27,26 @@ const stats = ref<AdminDashboardData>({
   recentTrend: [],
 })
 
-/** 语法分类树（已有接口，用于柱状图） */
-const categories = ref<Category[]>([])
-
-/** 题目分析数据（已有接口，用于难度饼图） */
-const analytics = ref<{ byDifficulty?: Array<{ difficulty: number; total: number }> } | null>(null)
-
 /* ============================================================ *
- *  Stats Cards
+ *  Stats Cards - 统计卡片（12个）
  * ============================================================ */
 const statsCards = computed(() => {
   const cards: Array<{ title: string; value: number | string; icon: string; color: string }> = [
+    // 基础统计
     { title: '学生总数', value: stats.value.studentCount, icon: 'UserFilled', color: '#409eff' },
     { title: '题库总数', value: stats.value.questionCount, icon: 'Notebook', color: '#67c23a' },
     { title: '试卷数', value: stats.value.paperCount, icon: 'Files', color: '#e6a23c' },
     { title: '考试场次', value: stats.value.sessionCount, icon: 'Calendar', color: '#909399' },
+    // 今日指标
+    { title: '今日活跃', value: stats.value.todayActiveStudents ?? 0, icon: 'Sunny', color: '#e040fb' },
+    { title: '今日提交', value: stats.value.todayExamSubmissions ?? 0, icon: 'Send', color: '#79bbff' },
+    { title: '总正确率', value: (stats.value.overallAccuracy ?? 0).toFixed(1) + '%', icon: 'Odometer', color: '#00bcd4' },
+    { title: '平均分', value: (stats.value.averageScore ?? 0).toFixed(1), icon: 'Scoreboard', color: '#9c27b0' },
+    { title: '及格率', value: (stats.value.passRate ?? 0).toFixed(1) + '%', icon: 'CheckCircle', color: '#8bc34a' },
+    { title: '阅读文章', value: stats.value.passageCount ?? 0, icon: 'BookOpen', color: '#ff9800' },
+    { title: '错题总数', value: stats.value.totalWrongQuestions ?? 0, icon: 'Warning', color: '#f44336' },
+    { title: '练习次数', value: stats.value.practiceCount, icon: 'DataAnalysis', color: '#607d8b' },
   ]
-  if (stats.value.todayActiveStudents != null) {
-    cards.push({ title: '今日活跃', value: stats.value.todayActiveStudents, icon: 'Sunny', color: '#e040fb' })
-  }
-  cards.push(
-    { title: '考试记录', value: stats.value.examRecordCount, icon: 'EditPen', color: '#f56c6c' },
-    { title: '练习次数', value: stats.value.practiceCount, icon: 'DataAnalysis', color: '#9c27b0' },
-  )
-  if (stats.value.overallAccuracy != null) {
-    cards.push({ title: '总正确率', value: stats.value.overallAccuracy.toFixed(1) + '%', icon: 'Odometer', color: '#00bcd4' })
-  }
   return cards
 })
 
@@ -97,61 +91,42 @@ const avgScoreOption = computed(() => {
 })
 
 /* ============================================================ *
- *  Chart 3: 语法分类题目分布（柱状图）
- *  数据来源：GET /api/categories/tree（已有接口）
+ *  Chart 3: 近 7 日活跃度趋势
  * ============================================================ */
-const categoryBarOption = computed(() => {
-  const cats = stats.value.categoryDistribution
-  const fallback = categories.value
-    .filter(c => c.questionCount != null && c.questionCount > 0)
-    .sort((a, b) => (b.questionCount || 0) - (a.questionCount || 0))
-    .slice(0, 10)
-
-  const source: Array<{ categoryName?: string; questionCount?: number }> = (cats && cats.length > 0) ? cats.slice(0, 10) : fallback
-  const names = source.map(c => c.categoryName ?? '')
-  const values = source.map(c => c.questionCount ?? 0)
-
-  if (!names.length) return {}
-
+const activityOption = computed(() => {
+  const data = stats.value.activityTrend
+  if (!data || !data.length) return {}
   return {
-    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
-    legend: { data: ['题目数量'], bottom: 0 },
-    xAxis: { type: 'category', data: names, axisLabel: { rotate: 30, fontSize: 11 } },
-    yAxis: { type: 'value', name: '题', minInterval: 1 },
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['活跃学生'], bottom: 0 },
+    xAxis: { type: 'category', boundaryGap: false, data: data.map(d => d.date) },
+    yAxis: { type: 'value', name: '人数', minInterval: 1 },
     series: [{
-      name: '题目数量', type: 'bar',
-      data: values,
+      name: '活跃学生', type: 'bar',
+      data: data.map(d => d.count),
       itemStyle: {
         color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
-          colorStops: [{ offset: 0, color: '#409eff' }, { offset: 1, color: '#79bbff' }] },
+          colorStops: [{ offset: 0, color: '#e040fb' }, { offset: 1, color: '#e91e63' }] },
         borderRadius: [4, 4, 0, 0],
       },
       barMaxWidth: 40,
     }],
-    grid: { left: 50, right: 20, bottom: 60, top: 20 },
+    grid: { left: 50, right: 20, bottom: 40, top: 20 },
   }
 })
 
 /* ============================================================ *
  *  Chart 4: 难度分布（饼图）
- *  数据来源：GET /api/admin/questions/analytics（已有接口）
- *            fallback: dashboard.difficultyDistribution
  * ============================================================ */
 const difficultyPieOption = computed(() => {
   const dist = stats.value.difficultyDistribution
-  const byDifficulty = analytics.value?.byDifficulty
+  if (!dist) return {}
 
-  let data: Array<{ name: string; value: number }> = []
-  if (dist && (dist.easyCount || dist.mediumCount || dist.hardCount)) {
-    data = [
-      { name: '简单', value: dist.easyCount },
-      { name: '中等', value: dist.mediumCount },
-      { name: '困难', value: dist.hardCount },
-    ]
-  } else if (byDifficulty && byDifficulty.length) {
-    const labels: Record<number, string> = { 1: '简单', 2: '中等', 3: '困难' }
-    data = byDifficulty.map(d => ({ name: labels[d.difficulty] || String(d.difficulty), value: d.total }))
-  }
+  const data = [
+    { name: '简单', value: dist.easyCount },
+    { name: '中等', value: dist.mediumCount },
+    { name: '困难', value: dist.hardCount },
+  ].filter(d => d.value > 0)
 
   if (!data.length) return {}
 
@@ -171,19 +146,102 @@ const difficultyPieOption = computed(() => {
 })
 
 /* ============================================================ *
- *  Chart 5: 高频错题语法分类（横向柱状图 Top 5）
+ *  Chart 5: 分数段分布（柱状图）
+ * ============================================================ */
+const scoreDistributionOption = computed(() => {
+  const data = stats.value.scoreDistribution
+  if (!data || !data.length) return {}
+  return {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' },
+      formatter: (params: Array<{ name: string; value: number; data: { percentage: number } }>) => {
+        const p = params[0]
+        return `${p.name}分<br/>人数: ${p.value}人 (${p.data.percentage}%)`
+      },
+    },
+    legend: { data: ['人数'], bottom: 0 },
+    xAxis: { type: 'category', data: data.map(d => d.range), axisLabel: { fontSize: 11 } },
+    yAxis: { type: 'value', name: '人', minInterval: 1 },
+    series: [{
+      name: '人数', type: 'bar',
+      data: data.map(d => ({ value: d.count, percentage: d.percentage })),
+      itemStyle: {
+        color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: '#ff6b6b' }, { offset: 1, color: '#ff8e53' }] },
+        borderRadius: [4, 4, 0, 0],
+      },
+      barMaxWidth: 40,
+    }],
+    grid: { left: 50, right: 20, bottom: 40, top: 20 },
+  }
+})
+
+/* ============================================================ *
+ *  Chart 6: 题型分布（饼图）
+ * ============================================================ */
+const questionTypeOption = computed(() => {
+  const data = stats.value.questionTypeDistribution
+  if (!data || !data.length) return {}
+  return {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} 题 ({d}%)' },
+    legend: { orient: 'vertical', right: 10, top: 'center' },
+    series: [{
+      name: '题型分布', type: 'pie', radius: ['45%', '75%'], center: ['40%', '50%'],
+      avoidLabelOverlap: false,
+      itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
+      label: { show: false },
+      emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } },
+      data: data.map(d => ({ name: d.questionTypeName, value: d.count })),
+      color: ['#409eff', '#67c23a', '#e6a23c', '#909399', '#f56c6c', '#9c27b0'],
+    }],
+  }
+})
+
+/* ============================================================ *
+ *  Chart 7: 语法分类题目分布（柱状图）
+ * ============================================================ */
+const categoryBarOption = computed(() => {
+  const data = stats.value.categoryDistribution
+  if (!data || !data.length) return {}
+  const top10 = data.slice(0, 10)
+
+  return {
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' },
+      formatter: (params: Array<{ name: string; value: number; data: { accuracy: number } }>) => {
+        const p = params[0]
+        return `${p.name}<br/>题目数: ${p.value}<br/>正确率: ${p.data.accuracy}%`
+      },
+    },
+    legend: { data: ['题目数量'], bottom: 0 },
+    xAxis: { type: 'category', data: top10.map(d => d.categoryName), axisLabel: { rotate: 30, fontSize: 11 } },
+    yAxis: { type: 'value', name: '题', minInterval: 1 },
+    series: [{
+      name: '题目数量', type: 'bar',
+      data: top10.map(d => ({ value: d.questionCount, accuracy: d.accuracy })),
+      itemStyle: {
+        color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: '#409eff' }, { offset: 1, color: '#79bbff' }] },
+        borderRadius: [4, 4, 0, 0],
+      },
+      barMaxWidth: 40,
+    }],
+    grid: { left: 50, right: 20, bottom: 60, top: 20 },
+  }
+})
+
+/* ============================================================ *
+ *  Chart 8: 高频错题语法分类（横向柱状图）
  * ============================================================ */
 const wrongCategoryOption = computed(() => {
   const list = stats.value.topWrongCategories
   if (!list || !list.length) return {}
-  const top5 = list.slice(0, 5).reverse() // 反转让最高的在上面
+  const top5 = list.slice(0, 5).reverse()
 
   return {
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow' },
       formatter: (params: Array<{ name: string; value: number; data: { errorRate: number } }>) => {
         const p = params[0]
-        return `${p.name}<br/>错题数: ${p.value}<br/>错误率: ${p.data.errorRate?.toFixed(1)}%`
+        return `${p.name}<br/>错题数: ${p.value}<br/>错误率: ${p.data.errorRate}%`
       },
     },
     legend: { data: ['错题数'], bottom: 0 },
@@ -204,20 +262,73 @@ const wrongCategoryOption = computed(() => {
 })
 
 /* ============================================================ *
+ *  Chart 9: 错题掌握情况（饼图）
+ * ============================================================ */
+const wrongMasteryOption = computed(() => {
+  const data = stats.value.wrongMasteryStat
+  if (!data) return {}
+
+  const items = [
+    { name: '未复习', value: data.notReviewed, color: '#f56c6c' },
+    { name: '待复习', value: data.pendingReview, color: '#e6a23c' },
+    { name: '已复习', value: data.reviewed, color: '#409eff' },
+    { name: '已掌握', value: data.mastered, color: '#67c23a' },
+  ].filter(d => d.value > 0)
+
+  if (!items.length) return {}
+
+  return {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} 题 ({d}%)' },
+    legend: { orient: 'vertical', right: 10, top: 'center' },
+    series: [{
+      name: '错题掌握', type: 'pie', radius: ['45%', '75%'], center: ['40%', '50%'],
+      avoidLabelOverlap: false,
+      itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
+      label: { show: false },
+      emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } },
+      data: items.map(d => ({ name: d.name, value: d.value, itemStyle: { color: d.color } })),
+    }],
+  }
+})
+
+/* ============================================================ *
+ *  Chart 10: 学习进度概览（雷达图）
+ * ============================================================ */
+const learningProgressOption = computed(() => {
+  const data = stats.value.learningProgressOverview
+  if (!data || !data.length) return {}
+  const top8 = data.slice(0, 8)
+
+  return {
+    tooltip: { trigger: 'item' },
+    legend: { bottom: 0 },
+    radar: {
+      indicator: top8.map(d => ({ name: d.categoryName, max: 100 })),
+      shape: 'polygon',
+      splitNumber: 5,
+      axisName: { fontSize: 11 },
+    },
+    series: [{
+      name: '掌握率', type: 'radar',
+      data: [{
+        value: top8.map(d => d.masteryRate),
+        name: '掌握率',
+        areaStyle: { color: 'rgba(64,158,255,0.2)' },
+        lineStyle: { color: '#409eff', width: 2 },
+        itemStyle: { color: '#409eff' },
+      }],
+    }],
+  }
+})
+
+/* ============================================================ *
  *  Load
  * ============================================================ */
 const load = async () => {
   loading.value = true
   try {
-    // 并行拉取：dashboard + 分类树 + 题目分析（均可独立失败）
-    const [d, c, a] = await Promise.allSettled([
-      getDashboard(),
-      listCategoryTree(),
-      getQuestionAnalytics(),
-    ])
-    if (d.status === 'fulfilled') stats.value = d.value.data
-    if (c.status === 'fulfilled') categories.value = c.value.data ?? []
-    if (a.status === 'fulfilled') analytics.value = a.value.data
+    const res = await getDashboard()
+    stats.value = res.data
   } finally { loading.value = false }
 }
 
@@ -238,9 +349,9 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
 
 <template>
   <div class="dashboard" v-loading="loading">
-    <!-- ==================== Stats Cards ==================== -->
+    <!-- ==================== Stats Cards (12个) ==================== -->
     <el-row :gutter="16" class="stats-row">
-      <el-col v-for="card in statsCards" :key="card.title" :xs="12" :sm="8" :md="6" :lg="Math.max(3, Math.floor(24 / statsCards.length))">
+      <el-col v-for="card in statsCards" :key="card.title" :xs="12" :sm="8" :md="6" :lg="4">
         <el-card shadow="hover" class="stats-card">
           <div class="stats-card-inner">
             <div class="stats-info">
@@ -255,51 +366,136 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
       </el-col>
     </el-row>
 
-    <!-- ==================== Row 1: 提交趋势 + 平均分趋势 ==================== -->
-    <el-row :gutter="16">
-      <el-col :span="12">
+    <!-- ==================== Row 1: 考试趋势 + 平均分趋势 + 活跃度趋势 ==================== -->
+    <el-row :gutter="16" style="margin-top:16px">
+      <el-col :span="8">
         <el-card shadow="hover" class="chart-card">
           <template #header><div class="card-title">近 7 日考试提交趋势</div></template>
           <v-chart v-if="trendOption.series" :option="trendOption" :style="{ height: chartHeight + 'px' }" autoresize />
           <el-empty v-else description="暂无数据" :image-size="80" />
         </el-card>
       </el-col>
-      <el-col :span="12">
+      <el-col :span="8">
         <el-card shadow="hover" class="chart-card">
           <template #header><div class="card-title">近 7 日平均分趋势</div></template>
           <v-chart v-if="avgScoreOption.series" :option="avgScoreOption" :style="{ height: chartHeight + 'px' }" autoresize />
-          <el-empty v-else description="暂无数据（需后端补 avgScoreTrend）" :image-size="80" />
+          <el-empty v-else description="暂无数据" :image-size="80" />
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover" class="chart-card">
+          <template #header><div class="card-title">近 7 日活跃度趋势</div></template>
+          <v-chart v-if="activityOption.series" :option="activityOption" :style="{ height: chartHeight + 'px' }" autoresize />
+          <el-empty v-else description="暂无数据" :image-size="80" />
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- ==================== Row 2: 语法分类柱状图 + 难度饼图 ==================== -->
+    <!-- ==================== Row 2: 分数段分布 + 难度分布 + 题型分布 ==================== -->
     <el-row :gutter="16" style="margin-top:16px">
-      <el-col :span="14">
+      <el-col :span="10">
         <el-card shadow="hover" class="chart-card">
-          <template #header><div class="card-title">语法分类题目分布</div></template>
-          <v-chart v-if="categoryBarOption.series" :option="categoryBarOption" :style="{ height: chartHeight + 'px' }" autoresize />
-          <el-empty v-else description="暂无分类数据" :image-size="80" />
+          <template #header><div class="card-title">分数段分布</div></template>
+          <v-chart v-if="scoreDistributionOption.series" :option="scoreDistributionOption" :style="{ height: chartHeight + 'px' }" autoresize />
+          <el-empty v-else description="暂无数据" :image-size="80" />
         </el-card>
       </el-col>
-      <el-col :span="10">
+      <el-col :span="7">
         <el-card shadow="hover" class="chart-card">
           <template #header><div class="card-title">题目难度分布</div></template>
           <v-chart v-if="difficultyPieOption.series" :option="difficultyPieOption" :style="{ height: chartHeight + 'px' }" autoresize />
-          <el-empty v-else description="暂无数据（需后端补 difficultyDistribution）" :image-size="80" />
+          <el-empty v-else description="暂无数据" :image-size="80" />
+        </el-card>
+      </el-col>
+      <el-col :span="7">
+        <el-card shadow="hover" class="chart-card">
+          <template #header><div class="card-title">题型分布</div></template>
+          <v-chart v-if="questionTypeOption.series" :option="questionTypeOption" :style="{ height: chartHeight + 'px' }" autoresize />
+          <el-empty v-else description="暂无数据" :image-size="80" />
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- ==================== Row 3: 高频错题 + 最近考试 ==================== -->
+    <!-- ==================== Row 3: 语法分类 + 高频错题 + 学习进度雷达 ==================== -->
     <el-row :gutter="16" style="margin-top:16px">
-      <el-col :span="12">
+      <el-col :span="10">
+        <el-card shadow="hover" class="chart-card">
+          <template #header><div class="card-title">语法分类题目分布</div></template>
+          <v-chart v-if="categoryBarOption.series" :option="categoryBarOption" :style="{ height: chartHeight + 'px' }" autoresize />
+          <el-empty v-else description="暂无数据" :image-size="80" />
+        </el-card>
+      </el-col>
+      <el-col :span="7">
         <el-card shadow="hover" class="chart-card">
           <template #header><div class="card-title">高频错题语法 Top 5</div></template>
           <v-chart v-if="wrongCategoryOption.series" :option="wrongCategoryOption" :style="{ height: chartHeight + 'px' }" autoresize />
-          <el-empty v-else description="暂无数据（需后端补 topWrongCategories）" :image-size="80" />
+          <el-empty v-else description="暂无数据" :image-size="80" />
         </el-card>
       </el-col>
+      <el-col :span="7">
+        <el-card shadow="hover" class="chart-card">
+          <template #header><div class="card-title">学习进度雷达</div></template>
+          <v-chart v-if="learningProgressOption.series" :option="learningProgressOption" :style="{ height: chartHeight + 'px' }" autoresize />
+          <el-empty v-else description="暂无数据" :image-size="80" />
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- ==================== Row 4: 错题掌握 + 优等生 + 待进步学生 ==================== -->
+    <el-row :gutter="16" style="margin-top:16px">
+      <el-col :span="8">
+        <el-card shadow="hover" class="chart-card">
+          <template #header><div class="card-title">错题掌握情况</div></template>
+          <v-chart v-if="wrongMasteryOption.series" :option="wrongMasteryOption" :style="{ height: chartHeight + 'px' }" autoresize />
+          <el-empty v-else description="暂无数据" :image-size="80" />
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover">
+          <template #header><div class="card-title">🏆 优等生 Top 5</div></template>
+          <el-table v-if="stats.topStudents?.length" :data="stats.topStudents" size="small">
+            <el-table-column type="index" label="#" width="50" />
+            <el-table-column prop="realName" label="姓名" width="80" />
+            <el-table-column prop="englishName" label="英文名" width="80" />
+            <el-table-column label="平均分" width="80" align="center">
+              <template #default="{ row }">
+                <span :style="{ color: row.avgScore >= 90 ? '#67c23a' : row.avgScore >= 75 ? '#e6a23c' : '#f56c6c', fontWeight: 600 }">
+                  {{ row.avgScore }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="正确率" width="80" align="center">
+              <template #default="{ row }">{{ row.accuracy }}%</template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-else description="暂无数据" :image-size="80" />
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card shadow="hover">
+          <template #header><div class="card-title">📈 待进步学生 Top 5</div></template>
+          <el-table v-if="stats.bottomStudents?.length" :data="stats.bottomStudents" size="small">
+            <el-table-column type="index" label="#" width="50" />
+            <el-table-column prop="realName" label="姓名" width="80" />
+            <el-table-column prop="englishName" label="英文名" width="80" />
+            <el-table-column label="平均分" width="80" align="center">
+              <template #default="{ row }">
+                <span :style="{ color: row.avgScore >= 90 ? '#67c23a' : row.avgScore >= 75 ? '#e6a23c' : '#f56c6c', fontWeight: 600 }">
+                  {{ row.avgScore }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="错题数" width="80" align="center">
+              <template #default="{ row }"><span style="color:#f56c6c">{{ row.wrongCount }}</span></template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-else description="暂无数据" :image-size="80" />
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- ==================== Row 5: 最近考试 + 最近提交记录 ==================== -->
+    <el-row :gutter="16" style="margin-top:16px">
       <el-col :span="12">
         <el-card shadow="hover" class="chart-card">
           <template #header><div class="card-title">最近考试概况</div></template>
@@ -316,31 +512,26 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
               <template #default="{ row }">{{ row.passRate?.toFixed(1) }}%</template>
             </el-table-column>
           </el-table>
-          <el-empty v-else description="暂无数据（需后端补 recentSessions）" :image-size="80" />
+          <el-empty v-else description="暂无数据" :image-size="80" />
         </el-card>
       </el-col>
-    </el-row>
-
-    <!-- ==================== Row 4: 优等生 Top 5 ==================== -->
-    <el-row :gutter="16" style="margin-top:16px" v-if="stats.topStudents?.length">
-      <el-col :span="24">
-        <el-card shadow="hover">
-          <template #header><div class="card-title">🏆 优等生 Top 5</div></template>
-          <el-table :data="stats.topStudents" size="small">
-            <el-table-column type="index" label="#" width="50" />
-            <el-table-column prop="realName" label="姓名" width="120" />
-            <el-table-column prop="examCount" label="考试次数" width="100" align="center" />
-            <el-table-column label="平均分" width="100" align="center">
+      <el-col :span="12">
+        <el-card shadow="hover" class="chart-card">
+          <template #header><div class="card-title">最近考试提交记录</div></template>
+          <el-table v-if="stats.recentExams?.length" :data="stats.recentExams" size="small">
+            <el-table-column prop="studentName" label="学生" width="80" />
+            <el-table-column prop="sessionName" label="考试" min-width="100" show-overflow-tooltip />
+            <el-table-column label="分数" width="80" align="center">
               <template #default="{ row }">
-                <span :style="{ color: row.avgScore >= 90 ? '#67c23a' : row.avgScore >= 75 ? '#e6a23c' : '#f56c6c', fontWeight: 600 }">
-                  {{ row.avgScore?.toFixed(1) }}
-                </span>
+                <span :style="{ color: row.score >= 60 ? '#67c23a' : '#f56c6c', fontWeight: 600 }">{{ row.score }}</span>
               </template>
             </el-table-column>
-            <el-table-column label="正确率" width="100" align="center">
-              <template #default="{ row }">{{ row.accuracy?.toFixed(1) }}%</template>
+            <el-table-column label="正确率" width="80" align="center">
+              <template #default="{ row }">{{ row.accuracy }}%</template>
             </el-table-column>
+            <el-table-column prop="submitTime" label="提交时间" width="120" />
           </el-table>
+          <el-empty v-else description="暂无数据" :image-size="80" />
         </el-card>
       </el-col>
     </el-row>

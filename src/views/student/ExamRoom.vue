@@ -274,7 +274,12 @@ const handleFilter = (type: string) => {
         <el-tag v-if="paperView?.resumeCount" size="small" type="warning">续考 {{ paperView.resumeCount }} 次</el-tag>
       </div>
       <div class="middle">
-        <span class="label">剩余时间</span>
+        <span class="label">
+          剩余时间
+          <el-tooltip content="倒计时由服务器计算，不可篡改。断网或关闭浏览器后，计时继续。超时自动提交。" placement="bottom" effect="light">
+            <el-icon style="cursor:help;color:#909399;font-size:13px"><QuestionFilled /></el-icon>
+          </el-tooltip>
+        </span>
         <Countdown
           v-if="deadlineTs"
           :deadline="deadlineTs"
@@ -293,6 +298,9 @@ const handleFilter = (type: string) => {
         <el-button v-if="paperView?.resumeCount != null" size="small" @click="doResume">
           <el-icon><Refresh /></el-icon>重新同步
         </el-button>
+        <el-tooltip content="本系统会检测切屏、复制粘贴等浏览器层面的异常行为。请自觉诚信考试。系统不能检测第二设备（手机）等物理作弊手段。" placement="bottom" effect="light">
+          <el-icon style="cursor:help;color:#E6A23C;margin-right:6px"><WarningFilled /></el-icon>
+        </el-tooltip>
         <el-button type="danger" :loading="submitting" @click="handleSubmit">
           <el-icon><Finished /></el-icon>提交试卷
         </el-button>

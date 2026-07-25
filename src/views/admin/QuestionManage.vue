@@ -126,9 +126,19 @@ const dialogVisible = ref(false)
 const editMode = ref<'create' | 'edit'>('create')
 const formRef = ref<FormInstance>()
 
-/* 出题模式：普通单题 / 阅读理解组题 */
-type ComposeMode = 'normal' | 'reading'
-const composeMode = ref<ComposeMode>('normal')
+/* 当前活动标签页（同时作为当前题型） */
+type TabType = QuestionType | 'READING'
+const activeTab = ref<TabType>('SINGLE')
+
+/* tab 配置 */
+const tabOptions: { label: string; value: TabType }[] = [
+  { label: '单选题', value: 'SINGLE' },
+  { label: '多选题', value: 'MULTIPLE' },
+  { label: '判断题', value: 'JUDGE' },
+  { label: '填空题', value: 'FILL' },
+  { label: '带提示填空', value: 'FILL_HINT' },
+  { label: '阅读理解', value: 'READING' },
+]
 
 /* ---------- 普通题型表单 ---------- */
 type NormalForm = {
@@ -211,22 +221,6 @@ const resetNormalForm = () => {
     passageId: undefined,
   })
 }
-
-watch(
-  () => normalForm.questionType,
-  (t) => {
-    if (t === 'JUDGE' || t === 'FILL_HINT' || t === 'FILL') {
-      normalForm.options = []
-    } else if (!normalForm.options.length) {
-      normalForm.options = [
-        { optionLabel: 'A', optionContent: '', sortNo: 1 },
-        { optionLabel: 'B', optionContent: '', sortNo: 2 },
-        { optionLabel: 'C', optionContent: '', sortNo: 3 },
-        { optionLabel: 'D', optionContent: '', sortNo: 4 },
-      ]
-    }
-  }
-)
 
 const nextLabel = () => {
   const used = new Set(normalForm.options.map((o) => o.optionLabel))
@@ -468,21 +462,20 @@ const validationResult = ref<{
 } | null>(null)
 
 const doValidate = async () => {
-  if (!formRef.value || composeMode.value !== 'normal') return
+  if (!formRef.value || activeTab.value === 'READING') return
+  // 将当前 tab 赋值给 questionType
+  normalForm.questionType = activeTab.value
   await formRef.value.validate(async (valid) => {
     if (!valid) return
 
     let standardAnswer = ''
-    if (normalForm.questionType === 'MULTIPLE') {
+    if (activeTab.value === 'MULTIPLE') {
       if (!normalForm.answerMulti.length) return
       standardAnswer = [...normalForm.answerMulti].sort().join(',')
-    } else if (normalForm.questionType === 'JUDGE') {
+    } else if (activeTab.value === 'JUDGE') {
       if (!normalForm.answerJudge) return
       standardAnswer = normalForm.answerJudge
-    } else if (
-      normalForm.questionType === 'FILL_HINT' ||
-      normalForm.questionType === 'FILL'
-    ) {
+    } else if (activeTab.value === 'FILL_HINT' || activeTab.value === 'FILL') {
       if (!normalForm.answerFill.trim()) return
       standardAnswer = normalForm.answerFill.trim().toUpperCase()
     } else {
@@ -523,16 +516,17 @@ const doValidate = async () => {
 /* ---------- 弹窗打开/关闭 ---------- */
 const dialogTitle = computed(() => {
   if (editMode.value === 'edit') return '编辑试题'
-  return composeMode.value === 'reading' ? '新增阅读理解题' : '新增试题'
+  const tabLabel = tabOptions.find((t) => t.value === activeTab.value)?.label || ''
+  return `新增${tabLabel}`
 })
 
-const openCreate = (mode: ComposeMode = 'normal') => {
+const openCreate = (tab: TabType = 'SINGLE') => {
   editMode.value = 'create'
-  composeMode.value = mode
+  activeTab.value = tab
   resetNormalForm()
   resetReadingForm()
   validationResult.value = null
-  if (mode === 'reading') {
+  if (tab === 'READING') {
     loadPassages()
     // 默认添加 5 道题
     for (let i = 0; i < 5; i++) addSubQuestion()
@@ -546,8 +540,10 @@ const openEdit = (row: Question) => {
   resetReadingForm()
   validationResult.value = null
 
+  // 设置活动标签页
+  activeTab.value = row.questionType
+
   if (row.questionType === 'READING') {
-    composeMode.value = 'reading'
     readingForm.selectedPassageId = row.passageId
     readingForm.categoryId = row.categoryId
     readingForm.difficulty = row.difficulty
@@ -570,7 +566,6 @@ const openEdit = (row: Question) => {
       : normalForm.options
     normalForm.answerSingle = row.standardAnswer || ''
   } else {
-    composeMode.value = 'normal'
     normalForm.id = row.id
     normalForm.categoryId = row.categoryId
     normalForm.questionType = row.questionType
@@ -609,25 +604,26 @@ const openEdit = (row: Question) => {
 const submit = async () => {
   if (!formRef.value) return
 
-  if (composeMode.value === 'reading' && editMode.value === 'create') {
+  // 阅读理解批量提交
+  if (activeTab.value === 'READING' && editMode.value === 'create') {
     await submitReadingBatch()
     return
   }
+
+  // 将当前 tab 赋值给 questionType
+  normalForm.questionType = activeTab.value
 
   await formRef.value.validate(async (valid) => {
     if (!valid) return
 
     let standardAnswer = ''
-    if (
-      normalForm.questionType === 'SINGLE' ||
-      normalForm.questionType === 'READING'
-    ) {
+    if (activeTab.value === 'SINGLE' || activeTab.value === 'READING') {
       if (!normalForm.answerSingle) {
         ElMessage.warning('请选择正确答案')
         return
       }
       standardAnswer = normalForm.answerSingle
-    } else if (normalForm.questionType === 'MULTIPLE') {
+    } else if (activeTab.value === 'MULTIPLE') {
       if (!normalForm.answerMulti.length) {
         ElMessage.warning('请选择正确答案')
         return
@@ -637,13 +633,13 @@ const submit = async () => {
         return
       }
       standardAnswer = [...normalForm.answerMulti].sort().join(',')
-    } else if (normalForm.questionType === 'JUDGE') {
+    } else if (activeTab.value === 'JUDGE') {
       if (!normalForm.answerJudge) {
         ElMessage.warning('请选择正确答案')
         return
       }
       standardAnswer = normalForm.answerJudge
-    } else if (normalForm.questionType === 'FILL_HINT') {
+    } else if (activeTab.value === 'FILL_HINT') {
       if (!normalForm.fillHint.trim()) {
         ElMessage.warning('请输入提示词')
         return
@@ -657,7 +653,7 @@ const submit = async () => {
         return
       }
       standardAnswer = normalForm.answerFill.trim().toUpperCase()
-    } else if (normalForm.questionType === 'FILL') {
+    } else if (activeTab.value === 'FILL') {
       if (!normalForm.answerFill.trim()) {
         ElMessage.warning('请输入填空答案')
         return
@@ -683,9 +679,9 @@ const submit = async () => {
       trapNote: normalForm.trapNote,
       passageId: normalForm.passageId,
       options:
-        normalForm.questionType === 'JUDGE' ||
-        normalForm.questionType === 'FILL_HINT' ||
-        normalForm.questionType === 'FILL'
+        activeTab.value === 'JUDGE' ||
+        activeTab.value === 'FILL_HINT' ||
+        activeTab.value === 'FILL'
           ? []
           : normalForm.options.map((o, i) => ({
               optionLabel: o.optionLabel,
@@ -978,12 +974,12 @@ onMounted(async () => {
     <!-- 列表区 -->
     <el-card shadow="never" v-loading="loading">
       <div class="toolbar">
-        <el-button type="primary" @click="openCreate('normal')">
+        <el-button type="primary" @click="openCreate('SINGLE')">
           <el-icon><Plus /></el-icon>新增试题
         </el-button>
         <el-button
           type="success"
-          @click="openCreate('reading')"
+          @click="openCreate('READING')"
           class="reading-btn"
         >
           <el-icon><Reading /></el-icon>新增阅读理解
@@ -1171,524 +1167,573 @@ onMounted(async () => {
       top="5vh"
       class="question-dialog"
     >
-      <!-- 模式切换（仅新增时显示） -->
-      <div v-if="editMode === 'create'" class="mode-tabs">
-        <div
-          class="mode-tab"
-          :class="{ active: composeMode === 'normal' }"
-          @click="composeMode = 'normal'"
-        >
-          <el-icon><Notebook /></el-icon>
-          <span>普通题型</span>
-        </div>
-        <div
-          class="mode-tab"
-          :class="{ active: composeMode === 'reading' }"
-          @click="() => { composeMode = 'reading'; loadPassages() }"
-        >
-          <el-icon><Reading /></el-icon>
-          <span>阅读理解（一篇文章 + 多道题）</span>
-        </div>
-      </div>
-
-      <!-- 普通题型表单 -->
-      <el-form
-        v-show="composeMode === 'normal'"
-        ref="formRef"
-        :model="normalForm"
-        :rules="rules"
-        label-width="90px"
+      <!-- 题型标签页切换 -->
+      <el-tabs
+        v-model="activeTab"
+        type="card"
+        @tab-change="(tab: TabType) => {
+          if (tab === 'READING') loadPassages()
+          // 切换题型时初始化选项
+          if (tab === 'JUDGE' || tab === 'FILL_HINT' || tab === 'FILL') {
+            normalForm.options = []
+          } else if (!normalForm.options.length) {
+            normalForm.options = [
+              { optionLabel: 'A', optionContent: '', sortNo: 1 },
+              { optionLabel: 'B', optionContent: '', sortNo: 2 },
+              { optionLabel: 'C', optionContent: '', sortNo: 3 },
+              { optionLabel: 'D', optionContent: '', sortNo: 4 },
+            ]
+          }
+        }"
       >
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="分类" prop="categoryId">
-              <el-cascader
-                v-model="normalForm.categoryId"
-                :options="categories"
-                :props="{
-                  value: 'id',
-                  label: 'categoryName',
-                  children: 'children',
-                  checkStrictly: true,
-                  emitPath: false,
-                }"
-                clearable
-                style="width: 100%"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="题型" prop="questionType">
-              <el-select v-model="normalForm.questionType" style="width: 100%">
-                <el-option
-                  v-for="op in normalTypeOptions"
-                  :key="op.value"
-                  :label="op.label"
-                  :value="op.value"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :span="6">
-            <el-form-item label="难度" prop="difficulty">
-              <el-select v-model="normalForm.difficulty" style="width: 100%">
-                <el-option
-                  v-for="op in diffOptions"
-                  :key="op.value"
-                  :label="op.label"
-                  :value="op.value"
-                />
-              </el-select>
-            </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <el-form-item label="默认分值">
-              <el-input-number
-                v-model="normalForm.defaultScore"
-                :min="0.5"
-                :max="100"
-                :step="0.5"
-              />
-            </el-form-item>
-          </el-col>
-          <el-col :span="12">
+        <!-- 单选题 -->
+        <el-tab-pane label="单选题" name="SINGLE">
+          <el-form ref="formRef" :model="normalForm" :rules="rules" label-width="90px">
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-form-item label="分类" prop="categoryId">
+                  <el-cascader
+                    v-model="normalForm.categoryId"
+                    :options="categories"
+                    :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
+                    clearable
+                    style="width: 100%"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="难度" prop="difficulty">
+                  <el-select v-model="normalForm.difficulty" style="width: 100%">
+                    <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="默认分值">
+                  <el-input-number v-model="normalForm.defaultScore" :min="0.5" :max="100" :step="0.5" />
+                </el-form-item>
+              </el-col>
+            </el-row>
             <el-form-item label="状态">
               <el-radio-group v-model="normalForm.status">
                 <el-radio :value="1">启用</el-radio>
                 <el-radio :value="0">停用</el-radio>
               </el-radio-group>
             </el-form-item>
-          </el-col>
-        </el-row>
-
-        <el-form-item label="题干" prop="stem">
-          <el-input
-            v-model="normalForm.stem"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入题干"
-          />
-        </el-form-item>
-
-        <el-form-item
-          v-if="
-            normalForm.questionType !== 'JUDGE' &&
-            normalForm.questionType !== 'FILL_HINT' &&
-            normalForm.questionType !== 'FILL'
-          "
-          label="选项"
-        >
-          <div class="opt-list">
-            <div v-for="(op, idx) in normalForm.options" :key="idx" class="opt-row">
-              <el-tag class="opt-key">{{ op.optionLabel }}</el-tag>
-              <el-input v-model="op.optionContent" placeholder="选项内容" />
-              <el-button link type="danger" size="small" @click="removeOption(idx)">
-                <el-icon><Delete /></el-icon>
-              </el-button>
-            </div>
-            <el-button size="small" @click="addOption">
-              <el-icon><Plus /></el-icon>添加选项
-            </el-button>
-          </div>
-        </el-form-item>
-
-        <el-form-item label="正确答案">
-          <!-- 单选题 -->
-          <el-radio-group
-            v-if="normalForm.questionType === 'SINGLE'"
-            v-model="normalForm.answerSingle"
-          >
-            <el-radio
-              v-for="op in normalForm.options"
-              :key="op.optionLabel"
-              :value="op.optionLabel"
-            >
-              {{ op.optionLabel }}
-            </el-radio>
-          </el-radio-group>
-          <!-- 多选题 -->
-          <el-checkbox-group
-            v-else-if="normalForm.questionType === 'MULTIPLE'"
-            v-model="normalForm.answerMulti"
-          >
-            <el-checkbox
-              v-for="op in normalForm.options"
-              :key="op.optionLabel"
-              :value="op.optionLabel"
-            >
-              {{ op.optionLabel }}
-            </el-checkbox>
-            <span v-if="normalForm.answerMulti.length > 0" class="multi-hint">
-              已选 {{ normalForm.answerMulti.length }} 个答案
-            </span>
-          </el-checkbox-group>
-          <!-- 判断题 -->
-          <el-radio-group
-            v-else-if="normalForm.questionType === 'JUDGE'"
-            v-model="normalForm.answerJudge"
-          >
-            <el-radio value="TRUE">正确</el-radio>
-            <el-radio value="FALSE">错误</el-radio>
-          </el-radio-group>
-          <!-- 带提示填空题 -->
-          <template v-else-if="normalForm.questionType === 'FILL_HINT'">
-            <el-input
-              v-model="normalForm.fillHint"
-              placeholder="提示词（括号内的提示，如：verb, noun）"
-              style="margin-bottom: 8px"
-            />
-            <el-input
-              v-model="normalForm.answerFill"
-              placeholder="填空答案（单个单词，会自动转大写）"
-            />
-            <span class="fill-hint">题干中使用 [BLANK] 或 __ 表示填空位置</span>
-          </template>
-          <!-- 填空题 -->
-          <template v-else-if="normalForm.questionType === 'FILL'">
-            <el-input
-              v-model="normalForm.answerFill"
-              placeholder="填空答案（单个单词，会自动转大写）"
-            />
-            <span class="fill-hint">题干中使用 [BLANK] 或 __ 表示填空位置</span>
-          </template>
-        </el-form-item>
-
-        <el-form-item label="陷阱干扰">
-          <el-switch v-model="normalForm.hasTrap" />
-          <el-input
-            v-if="normalForm.hasTrap"
-            v-model="normalForm.trapNote"
-            placeholder="陷阱说明（可选）"
-            style="margin-top: 6px"
-          />
-        </el-form-item>
-
-        <el-form-item label="解析">
-          <el-input
-            v-model="normalForm.analysis"
-            type="textarea"
-            :rows="3"
-            placeholder="题目解析（可选）"
-          />
-        </el-form-item>
-
-        <el-form-item label="知识点">
-          <el-select
-            v-model="normalForm.knowledgePoints"
-            multiple
-            collapse-tags
-            allow-create
-            filterable
-            placeholder="输入知识点标签后按回车添加"
-            style="width: 100%"
-          />
-        </el-form-item>
-
-        <!-- AI验证结果 -->
-        <div
-          v-if="validationResult"
-          class="validation-result"
-          :class="{
-            'validation-success': validationResult.isValid,
-            'validation-fail': !validationResult.isValid,
-          }"
-        >
-          <div class="validation-header">
-            <el-icon>
-              <CircleCheck v-if="validationResult.isValid" />
-              <Warning v-else />
-            </el-icon>
-            <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
-            <span class="validation-confidence">
-              置信度：{{ validationResult.confidence }}%
-            </span>
-          </div>
-          <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
-            <div class="suggestions-title">💡 修改建议：</div>
-            <ul>
-              <li v-for="(s, idx) in validationResult.suggestions" :key="idx">
-                {{ s }}
-              </li>
-            </ul>
-          </div>
-          <div v-if="validationResult.correctedAnswer" class="validation-corrected">
-            <span>修正答案：</span>
-            <span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
-          </div>
-          <div v-if="validationResult.improvedAnalysis" class="validation-improved">
-            <span>优化解析：</span>
-            <span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
-          </div>
-        </div>
-      </el-form>
-
-      <!-- 阅读理解表单 -->
-      <div v-show="composeMode === 'reading'" class="reading-form">
-        <el-form label-width="90px">
-          <el-row :gutter="12">
-            <el-col :span="10">
-              <el-form-item label="分类">
-                <el-cascader
-                  v-model="readingForm.categoryId"
-                  :options="categories"
-                  :props="{
-                    value: 'id',
-                    label: 'categoryName',
-                    children: 'children',
-                    checkStrictly: true,
-                    emitPath: false,
-                  }"
-                  clearable
-                  style="width: 100%"
-                />
-              </el-form-item>
-            </el-col>
-            <el-col :span="6">
-              <el-form-item label="难度">
-                <el-select v-model="readingForm.difficulty" style="width: 100%">
-                  <el-option
-                    v-for="op in diffOptions"
-                    :key="op.value"
-                    :label="op.label"
-                    :value="op.value"
-                  />
-                </el-select>
-              </el-form-item>
-            </el-col>
-            <el-col :span="8">
-              <el-form-item label="文章来源">
-                <el-radio-group v-model="readingForm.passageMode">
-                  <el-radio value="select">从库中选择</el-radio>
-                  <el-radio value="create">临时创建</el-radio>
-                </el-radio-group>
-              </el-form-item>
-            </el-col>
-          </el-row>
-
-          <!-- 文章库选择 -->
-          <div v-if="readingForm.passageMode === 'select'" class="passage-selector">
-            <div class="selector-toolbar">
-              <el-input
-                v-model="passageSearchKw"
-                placeholder="搜索文章标题/内容"
-                clearable
-                size="small"
-                style="width: 240px"
-              >
-                <template #prefix><Search /></template>
-              </el-input>
-              <el-button size="small" type="primary" @click="loadPassages">
-                搜索
-              </el-button>
-            </div>
-            <div class="passage-list" v-loading="passageLoading">
-              <div
-                v-for="p in passageList"
-                :key="p.id"
-                class="passage-item"
-                :class="{ selected: readingForm.selectedPassageId === p.id }"
-                @click="selectPassage(p)"
-              >
-                <div class="passage-item-title">
-                  {{ p.title || '(无标题)' }}
-                  <el-tag size="small" type="info" class="passage-tag">
-                    {{ diffLabel(p.difficulty) }}
-                  </el-tag>
-                  <el-tag size="small" class="passage-tag">{{ p.questionCount ?? 0 }} 题</el-tag>
+            <el-form-item label="题干" prop="stem">
+              <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干" />
+            </el-form-item>
+            <el-form-item label="选项">
+              <div class="opt-list">
+                <div v-for="(op, idx) in normalForm.options" :key="idx" class="opt-row">
+                  <el-tag class="opt-key">{{ op.optionLabel }}</el-tag>
+                  <el-input v-model="op.optionContent" placeholder="选项内容" />
+                  <el-button link type="danger" size="small" @click="removeOption(idx)">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
                 </div>
-                <div class="passage-item-content">{{ p.content }}</div>
+                <el-button size="small" @click="addOption"><el-icon><Plus /></el-icon>添加选项</el-button>
               </div>
-              <el-empty v-if="!passageList.length && !passageLoading" description="暂无文章" />
+            </el-form-item>
+            <el-form-item label="正确答案">
+              <el-radio-group v-model="normalForm.answerSingle">
+                <el-radio v-for="op in normalForm.options" :key="op.optionLabel" :value="op.optionLabel">
+                  {{ op.optionLabel }}
+                </el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="陷阱干扰">
+              <el-switch v-model="normalForm.hasTrap" />
+              <el-input v-if="normalForm.hasTrap" v-model="normalForm.trapNote" placeholder="陷阱说明（可选）" style="margin-top: 6px" />
+            </el-form-item>
+            <el-form-item label="解析">
+              <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
+            </el-form-item>
+            <el-form-item label="知识点">
+              <el-select v-model="normalForm.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入知识点标签后按回车添加" style="width: 100%" />
+            </el-form-item>
+            <div v-if="validationResult" class="validation-result" :class="{ 'validation-success': validationResult.isValid, 'validation-fail': !validationResult.isValid }">
+              <div class="validation-header">
+                <el-icon><CircleCheck v-if="validationResult.isValid" /><Warning v-else /></el-icon>
+                <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
+                <span class="validation-confidence">置信度：{{ validationResult.confidence }}%</span>
+              </div>
+              <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
+                <div class="suggestions-title">💡 修改建议：</div>
+                <ul><li v-for="(s, idx) in validationResult.suggestions" :key="idx">{{ s }}</li></ul>
+              </div>
+              <div v-if="validationResult.correctedAnswer" class="validation-corrected">
+                <span>修正答案：</span><span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
+              </div>
+              <div v-if="validationResult.improvedAnalysis" class="validation-improved">
+                <span>优化解析：</span><span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
+              </div>
             </div>
-          </div>
+          </el-form>
+        </el-tab-pane>
 
-          <!-- 临时创建文章 -->
-          <div v-else class="passage-create">
+        <!-- 多选题 -->
+        <el-tab-pane label="多选题" name="MULTIPLE">
+          <el-form ref="formRef" :model="normalForm" :rules="rules" label-width="90px">
             <el-row :gutter="12">
-              <el-col :span="14">
-                <el-form-item label="标题">
-                  <el-input v-model="readingForm.passageTitle" placeholder="文章标题" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="5">
-                <el-form-item label="主题">
-                  <el-input v-model="readingForm.topic" placeholder="如：科技" />
-                </el-form-item>
-              </el-col>
-              <el-col :span="5">
-                <el-form-item label="类型">
-                  <el-select
-                    v-model="readingForm.passageType"
+              <el-col :span="12">
+                <el-form-item label="分类" prop="categoryId">
+                  <el-cascader
+                    v-model="normalForm.categoryId"
+                    :options="categories"
+                    :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
                     clearable
-                    placeholder="选择类型"
                     style="width: 100%"
-                  >
-                    <el-option
-                      v-for="op in [
-                        { label: '记叙文', value: 'NARRATIVE' },
-                        { label: '说明文', value: 'EXPOSITORY' },
-                        { label: '议论文', value: 'ARGUMENTATIVE' },
-                        { label: '新闻', value: 'NEWS' },
-                        { label: '故事', value: 'STORY' },
-                      ]"
-                      :key="op.value"
-                      :label="op.label"
-                      :value="op.value"
-                    />
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="难度" prop="difficulty">
+                  <el-select v-model="normalForm.difficulty" style="width: 100%">
+                    <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
                   </el-select>
                 </el-form-item>
               </el-col>
+              <el-col :span="6">
+                <el-form-item label="默认分值">
+                  <el-input-number v-model="normalForm.defaultScore" :min="0.5" :max="100" :step="0.5" />
+                </el-form-item>
+              </el-col>
             </el-row>
-            <el-form-item label="文章内容">
-              <el-input
-                v-model="readingForm.passageContent"
-                type="textarea"
-                :rows="6"
-                placeholder="请输入文章正文"
-              />
-            </el-form-item>
-            <el-form-item label="摘要">
-              <el-input
-                v-model="readingForm.summary"
-                type="textarea"
-                :rows="2"
-                placeholder="文章摘要（可选）"
-              />
-            </el-form-item>
-            <el-form-item label="入库方式">
-              <el-radio-group v-model="readingForm.source">
-                <el-radio value="TEMP">仅临时出题（不入库）</el-radio>
-                <el-radio value="MANUAL">存入文章库</el-radio>
-                <el-radio value="AI" disabled>AI 生成</el-radio>
+            <el-form-item label="状态">
+              <el-radio-group v-model="normalForm.status">
+                <el-radio :value="1">启用</el-radio>
+                <el-radio :value="0">停用</el-radio>
               </el-radio-group>
             </el-form-item>
-            <div class="ai-btn-row">
-              <el-button
-                type="primary"
-                :loading="aiGenerating"
-                @click="aiGenerateReading"
-              >
-                <el-icon><MagicStick /></el-icon>
-                AI 生成文章 + 5 道题
-              </el-button>
+            <el-form-item label="题干" prop="stem">
+              <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干" />
+            </el-form-item>
+            <el-form-item label="选项">
+              <div class="opt-list">
+                <div v-for="(op, idx) in normalForm.options" :key="idx" class="opt-row">
+                  <el-tag class="opt-key">{{ op.optionLabel }}</el-tag>
+                  <el-input v-model="op.optionContent" placeholder="选项内容" />
+                  <el-button link type="danger" size="small" @click="removeOption(idx)">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
+                <el-button size="small" @click="addOption"><el-icon><Plus /></el-icon>添加选项</el-button>
+              </div>
+              <span class="fill-hint">提示：多选题至少需要 2 个选项</span>
+            </el-form-item>
+            <el-form-item label="正确答案">
+              <el-checkbox-group v-model="normalForm.answerMulti">
+                <el-checkbox v-for="op in normalForm.options" :key="op.optionLabel" :value="op.optionLabel">
+                  {{ op.optionLabel }}
+                </el-checkbox>
+                <span v-if="normalForm.answerMulti.length > 0" class="multi-hint">
+                  已选 {{ normalForm.answerMulti.length }} 个答案
+                </span>
+              </el-checkbox-group>
+            </el-form-item>
+            <el-form-item label="陷阱干扰">
+              <el-switch v-model="normalForm.hasTrap" />
+              <el-input v-if="normalForm.hasTrap" v-model="normalForm.trapNote" placeholder="陷阱说明（可选）" style="margin-top: 6px" />
+            </el-form-item>
+            <el-form-item label="解析">
+              <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
+            </el-form-item>
+            <el-form-item label="知识点">
+              <el-select v-model="normalForm.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入知识点标签后按回车添加" style="width: 100%" />
+            </el-form-item>
+            <div v-if="validationResult" class="validation-result" :class="{ 'validation-success': validationResult.isValid, 'validation-fail': !validationResult.isValid }">
+              <div class="validation-header">
+                <el-icon><CircleCheck v-if="validationResult.isValid" /><Warning v-else /></el-icon>
+                <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
+                <span class="validation-confidence">置信度：{{ validationResult.confidence }}%</span>
+              </div>
+              <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
+                <div class="suggestions-title">💡 修改建议：</div>
+                <ul><li v-for="(s, idx) in validationResult.suggestions" :key="idx">{{ s }}</li></ul>
+              </div>
+              <div v-if="validationResult.correctedAnswer" class="validation-corrected">
+                <span>修正答案：</span><span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
+              </div>
+              <div v-if="validationResult.improvedAnalysis" class="validation-improved">
+                <span>优化解析：</span><span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
+              </div>
             </div>
-          </div>
+          </el-form>
+        </el-tab-pane>
 
-          <!-- 题目列表 -->
-          <el-divider content-position="left">
-            <span class="divider-title">
-              📝 题目列表（{{ readingForm.subQuestions.length }} 道）
-            </span>
-          </el-divider>
-
-          <div class="sub-questions">
-            <div class="sq-toolbar">
-              <el-button size="small" type="primary" plain @click="addSubQuestion">
-                <el-icon><Plus /></el-icon>添加题目
-              </el-button>
-              <span class="sq-hint">
-                提示：阅读理解通常一篇文章配 3-5 道选择题
-              </span>
-            </div>
-
-            <div
-              v-for="(q, qIdx) in readingForm.subQuestions"
-              :key="qIdx"
-              class="sub-q-card"
-            >
-              <div class="sub-q-header">
-                <span class="sub-q-num">第 {{ qIdx + 1 }} 题</span>
-                <div class="sub-q-actions">
-                  <el-input-number
-                    v-model="q.defaultScore"
-                    :min="0.5"
-                    :max="20"
-                    :step="0.5"
-                    size="small"
+        <!-- 判断题 -->
+        <el-tab-pane label="判断题" name="JUDGE">
+          <el-form ref="formRef" :model="normalForm" :rules="rules" label-width="90px">
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-form-item label="分类" prop="categoryId">
+                  <el-cascader
+                    v-model="normalForm.categoryId"
+                    :options="categories"
+                    :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
+                    clearable
+                    style="width: 100%"
                   />
-                  <span style="margin-left: 4px">分</span>
-                  <el-button link type="danger" size="small" @click="removeSubQuestion(qIdx)">
-                    移除
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="难度" prop="difficulty">
+                  <el-select v-model="normalForm.difficulty" style="width: 100%">
+                    <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="默认分值">
+                  <el-input-number v-model="normalForm.defaultScore" :min="0.5" :max="100" :step="0.5" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-form-item label="状态">
+              <el-radio-group v-model="normalForm.status">
+                <el-radio :value="1">启用</el-radio>
+                <el-radio :value="0">停用</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="题干" prop="stem">
+              <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干" />
+            </el-form-item>
+            <el-form-item label="正确答案">
+              <el-radio-group v-model="normalForm.answerJudge">
+                <el-radio value="TRUE">正确</el-radio>
+                <el-radio value="FALSE">错误</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="陷阱干扰">
+              <el-switch v-model="normalForm.hasTrap" />
+              <el-input v-if="normalForm.hasTrap" v-model="normalForm.trapNote" placeholder="陷阱说明（可选）" style="margin-top: 6px" />
+            </el-form-item>
+            <el-form-item label="解析">
+              <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
+            </el-form-item>
+            <el-form-item label="知识点">
+              <el-select v-model="normalForm.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入知识点标签后按回车添加" style="width: 100%" />
+            </el-form-item>
+            <div v-if="validationResult" class="validation-result" :class="{ 'validation-success': validationResult.isValid, 'validation-fail': !validationResult.isValid }">
+              <div class="validation-header">
+                <el-icon><CircleCheck v-if="validationResult.isValid" /><Warning v-else /></el-icon>
+                <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
+                <span class="validation-confidence">置信度：{{ validationResult.confidence }}%</span>
+              </div>
+              <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
+                <div class="suggestions-title">💡 修改建议：</div>
+                <ul><li v-for="(s, idx) in validationResult.suggestions" :key="idx">{{ s }}</li></ul>
+              </div>
+              <div v-if="validationResult.correctedAnswer" class="validation-corrected">
+                <span>修正答案：</span><span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
+              </div>
+              <div v-if="validationResult.improvedAnalysis" class="validation-improved">
+                <span>优化解析：</span><span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
+              </div>
+            </div>
+          </el-form>
+        </el-tab-pane>
+
+        <!-- 填空题 -->
+        <el-tab-pane label="填空题" name="FILL">
+          <el-form ref="formRef" :model="normalForm" :rules="rules" label-width="90px">
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-form-item label="分类" prop="categoryId">
+                  <el-cascader
+                    v-model="normalForm.categoryId"
+                    :options="categories"
+                    :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
+                    clearable
+                    style="width: 100%"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="难度" prop="difficulty">
+                  <el-select v-model="normalForm.difficulty" style="width: 100%">
+                    <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="默认分值">
+                  <el-input-number v-model="normalForm.defaultScore" :min="0.5" :max="100" :step="0.5" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-form-item label="状态">
+              <el-radio-group v-model="normalForm.status">
+                <el-radio :value="1">启用</el-radio>
+                <el-radio :value="0">停用</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="题干" prop="stem">
+              <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干，使用 [BLANK] 或 __ 表示填空位置" />
+            </el-form-item>
+            <el-form-item label="填空答案">
+              <el-input v-model="normalForm.answerFill" placeholder="填空答案（单个单词，会自动转大写）" />
+              <span class="fill-hint">提示：填空答案应为单个单词，不含空格</span>
+            </el-form-item>
+            <el-form-item label="陷阱干扰">
+              <el-switch v-model="normalForm.hasTrap" />
+              <el-input v-if="normalForm.hasTrap" v-model="normalForm.trapNote" placeholder="陷阱说明（可选）" style="margin-top: 6px" />
+            </el-form-item>
+            <el-form-item label="解析">
+              <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
+            </el-form-item>
+            <el-form-item label="知识点">
+              <el-select v-model="normalForm.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入知识点标签后按回车添加" style="width: 100%" />
+            </el-form-item>
+            <div v-if="validationResult" class="validation-result" :class="{ 'validation-success': validationResult.isValid, 'validation-fail': !validationResult.isValid }">
+              <div class="validation-header">
+                <el-icon><CircleCheck v-if="validationResult.isValid" /><Warning v-else /></el-icon>
+                <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
+                <span class="validation-confidence">置信度：{{ validationResult.confidence }}%</span>
+              </div>
+              <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
+                <div class="suggestions-title">💡 修改建议：</div>
+                <ul><li v-for="(s, idx) in validationResult.suggestions" :key="idx">{{ s }}</li></ul>
+              </div>
+              <div v-if="validationResult.correctedAnswer" class="validation-corrected">
+                <span>修正答案：</span><span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
+              </div>
+              <div v-if="validationResult.improvedAnalysis" class="validation-improved">
+                <span>优化解析：</span><span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
+              </div>
+            </div>
+          </el-form>
+        </el-tab-pane>
+
+        <!-- 带提示填空 -->
+        <el-tab-pane label="带提示填空" name="FILL_HINT">
+          <el-form ref="formRef" :model="normalForm" :rules="rules" label-width="90px">
+            <el-row :gutter="12">
+              <el-col :span="12">
+                <el-form-item label="分类" prop="categoryId">
+                  <el-cascader
+                    v-model="normalForm.categoryId"
+                    :options="categories"
+                    :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
+                    clearable
+                    style="width: 100%"
+                  />
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="难度" prop="difficulty">
+                  <el-select v-model="normalForm.difficulty" style="width: 100%">
+                    <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
+                  </el-select>
+                </el-form-item>
+              </el-col>
+              <el-col :span="6">
+                <el-form-item label="默认分值">
+                  <el-input-number v-model="normalForm.defaultScore" :min="0.5" :max="100" :step="0.5" />
+                </el-form-item>
+              </el-col>
+            </el-row>
+            <el-form-item label="状态">
+              <el-radio-group v-model="normalForm.status">
+                <el-radio :value="1">启用</el-radio>
+                <el-radio :value="0">停用</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="题干" prop="stem">
+              <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干，使用 [BLANK] 或 __ 表示填空位置" />
+            </el-form-item>
+            <el-form-item label="提示词">
+              <el-input v-model="normalForm.fillHint" placeholder="括号内的提示词，如：verb, noun, past tense" />
+            </el-form-item>
+            <el-form-item label="填空答案">
+              <el-input v-model="normalForm.answerFill" placeholder="填空答案（单个单词，会自动转大写）" />
+              <span class="fill-hint">提示：填空答案应为单个单词，不含空格</span>
+            </el-form-item>
+            <el-form-item label="陷阱干扰">
+              <el-switch v-model="normalForm.hasTrap" />
+              <el-input v-if="normalForm.hasTrap" v-model="normalForm.trapNote" placeholder="陷阱说明（可选）" style="margin-top: 6px" />
+            </el-form-item>
+            <el-form-item label="解析">
+              <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
+            </el-form-item>
+            <el-form-item label="知识点">
+              <el-select v-model="normalForm.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入知识点标签后按回车添加" style="width: 100%" />
+            </el-form-item>
+            <div v-if="validationResult" class="validation-result" :class="{ 'validation-success': validationResult.isValid, 'validation-fail': !validationResult.isValid }">
+              <div class="validation-header">
+                <el-icon><CircleCheck v-if="validationResult.isValid" /><Warning v-else /></el-icon>
+                <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
+                <span class="validation-confidence">置信度：{{ validationResult.confidence }}%</span>
+              </div>
+              <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
+                <div class="suggestions-title">💡 修改建议：</div>
+                <ul><li v-for="(s, idx) in validationResult.suggestions" :key="idx">{{ s }}</li></ul>
+              </div>
+              <div v-if="validationResult.correctedAnswer" class="validation-corrected">
+                <span>修正答案：</span><span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
+              </div>
+              <div v-if="validationResult.improvedAnalysis" class="validation-improved">
+                <span>优化解析：</span><span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
+              </div>
+            </div>
+          </el-form>
+        </el-tab-pane>
+
+        <!-- 阅读理解 -->
+        <el-tab-pane label="阅读理解" name="READING">
+          <div class="reading-form">
+            <el-form label-width="90px">
+              <el-row :gutter="12">
+                <el-col :span="10">
+                  <el-form-item label="分类">
+                    <el-cascader
+                      v-model="readingForm.categoryId"
+                      :options="categories"
+                      :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
+                      clearable
+                      style="width: 100%"
+                    />
+                  </el-form-item>
+                </el-col>
+                <el-col :span="6">
+                  <el-form-item label="难度">
+                    <el-select v-model="readingForm.difficulty" style="width: 100%">
+                      <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
+                    </el-select>
+                  </el-form-item>
+                </el-col>
+                <el-col :span="8">
+                  <el-form-item label="文章来源">
+                    <el-radio-group v-model="readingForm.passageMode">
+                      <el-radio value="select">从库中选择</el-radio>
+                      <el-radio value="create">临时创建</el-radio>
+                    </el-radio-group>
+                  </el-form-item>
+                </el-col>
+              </el-row>
+
+              <!-- 文章库选择 -->
+              <div v-if="readingForm.passageMode === 'select'" class="passage-selector">
+                <div class="selector-toolbar">
+                  <el-input v-model="passageSearchKw" placeholder="搜索文章标题/内容" clearable size="small" style="width: 240px">
+                    <template #prefix><Search /></template>
+                  </el-input>
+                  <el-button size="small" type="primary" @click="loadPassages">搜索</el-button>
+                </div>
+                <div class="passage-list" v-loading="passageLoading">
+                  <div v-for="p in passageList" :key="p.id" class="passage-item" :class="{ selected: readingForm.selectedPassageId === p.id }" @click="selectPassage(p)">
+                    <div class="passage-item-title">
+                      {{ p.title || '(无标题)' }}
+                      <el-tag size="small" type="info" class="passage-tag">{{ diffLabel(p.difficulty) }}</el-tag>
+                      <el-tag size="small" class="passage-tag">{{ p.questionCount ?? 0 }} 题</el-tag>
+                    </div>
+                    <div class="passage-item-content">{{ p.content }}</div>
+                  </div>
+                  <el-empty v-if="!passageList.length && !passageLoading" description="暂无文章" />
+                </div>
+              </div>
+
+              <!-- 临时创建文章 -->
+              <div v-else class="passage-create">
+                <el-row :gutter="12">
+                  <el-col :span="14">
+                    <el-form-item label="标题">
+                      <el-input v-model="readingForm.passageTitle" placeholder="文章标题" />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="5">
+                    <el-form-item label="主题">
+                      <el-input v-model="readingForm.topic" placeholder="如：科技" />
+                    </el-form-item>
+                  </el-col>
+                  <el-col :span="5">
+                    <el-form-item label="类型">
+                      <el-select v-model="readingForm.passageType" clearable placeholder="选择类型" style="width: 100%">
+                        <el-option v-for="op in [{ label: '记叙文', value: 'NARRATIVE' }, { label: '说明文', value: 'EXPOSITORY' }, { label: '议论文', value: 'ARGUMENTATIVE' }, { label: '新闻', value: 'NEWS' }, { label: '故事', value: 'STORY' }]" :key="op.value" :label="op.label" :value="op.value" />
+                      </el-select>
+                    </el-form-item>
+                  </el-col>
+                </el-row>
+                <el-form-item label="文章内容">
+                  <el-input v-model="readingForm.passageContent" type="textarea" :rows="6" placeholder="请输入文章正文" />
+                </el-form-item>
+                <el-form-item label="摘要">
+                  <el-input v-model="readingForm.summary" type="textarea" :rows="2" placeholder="文章摘要（可选）" />
+                </el-form-item>
+                <el-form-item label="入库方式">
+                  <el-radio-group v-model="readingForm.source">
+                    <el-radio value="TEMP">仅临时出题（不入库）</el-radio>
+                    <el-radio value="MANUAL">存入文章库</el-radio>
+                    <el-radio value="AI" disabled>AI 生成</el-radio>
+                  </el-radio-group>
+                </el-form-item>
+                <div class="ai-btn-row">
+                  <el-button type="primary" :loading="aiGenerating" @click="aiGenerateReading">
+                    <el-icon><MagicStick /></el-icon>AI 生成文章 + 5 道题
                   </el-button>
                 </div>
               </div>
-              <el-form-item label="题干" :label-width="60">
-                <el-input v-model="q.stem" placeholder="题目题干" />
-              </el-form-item>
-              <el-form-item label="选项" :label-width="60">
-                <div class="sub-opts-grid">
-                  <div
-                    v-for="(opt, oIdx) in q.options"
-                    :key="oIdx"
-                    class="sub-opt-row"
-                  >
-                    <el-tag class="opt-key">{{ opt.optionLabel }}</el-tag>
-                    <el-input
-                      v-model="opt.optionContent"
-                      placeholder="选项内容"
-                      size="small"
-                    />
-                    <el-button
-                      link
-                      type="danger"
-                      size="small"
-                      @click="removeSubOpt(qIdx, oIdx)"
-                    >
-                      <el-icon><Delete /></el-icon>
-                    </el-button>
-                  </div>
-                </div>
-                <el-button size="small" type="primary" link @click="addSubOpt(qIdx)">
-                  + 添加选项
-                </el-button>
-              </el-form-item>
-              <el-form-item label="答案" :label-width="60">
-                <el-radio-group v-model="q.standardAnswer">
-                  <el-radio
-                    v-for="opt in q.options"
-                    :key="opt.optionLabel"
-                    :value="opt.optionLabel"
-                  >
-                    {{ opt.optionLabel }}
-                  </el-radio>
-                </el-radio-group>
-              </el-form-item>
-              <el-form-item label="解析" :label-width="60">
-                <el-input
-                  v-model="q.analysis"
-                  type="textarea"
-                  :rows="2"
-                  placeholder="答案解析"
-                />
-              </el-form-item>
-              <el-form-item label="知识点" :label-width="60">
-                <el-select
-                  v-model="q.knowledgePoints"
-                  multiple
-                  collapse-tags
-                  allow-create
-                  filterable
-                  placeholder="输入后回车添加"
-                  style="width: 100%"
-                />
-              </el-form-item>
-            </div>
 
-            <el-empty
-              v-if="readingForm.subQuestions.length === 0"
-              description="暂无题目，点击上方按钮添加"
-            />
+              <!-- 题目列表 -->
+              <el-divider content-position="left">
+                <span class="divider-title">📝 题目列表（{{ readingForm.subQuestions.length }} 道）</span>
+              </el-divider>
+
+              <div class="sub-questions">
+                <div class="sq-toolbar">
+                  <el-button size="small" type="primary" plain @click="addSubQuestion"><el-icon><Plus /></el-icon>添加题目</el-button>
+                  <span class="sq-hint">提示：阅读理解通常一篇文章配 3-5 道选择题</span>
+                </div>
+
+                <div v-for="(q, qIdx) in readingForm.subQuestions" :key="qIdx" class="sub-q-card">
+                  <div class="sub-q-header">
+                    <span class="sub-q-num">第 {{ qIdx + 1 }} 题</span>
+                    <div class="sub-q-actions">
+                      <el-input-number v-model="q.defaultScore" :min="0.5" :max="20" :step="0.5" size="small" />
+                      <span style="margin-left: 4px">分</span>
+                      <el-button link type="danger" size="small" @click="removeSubQuestion(qIdx)">移除</el-button>
+                    </div>
+                  </div>
+                  <el-form-item label="题干" :label-width="60">
+                    <el-input v-model="q.stem" placeholder="题目题干" />
+                  </el-form-item>
+                  <el-form-item label="选项" :label-width="60">
+                    <div class="sub-opts-grid">
+                      <div v-for="(opt, oIdx) in q.options" :key="oIdx" class="sub-opt-row">
+                        <el-tag class="opt-key">{{ opt.optionLabel }}</el-tag>
+                        <el-input v-model="opt.optionContent" placeholder="选项内容" size="small" />
+                        <el-button link type="danger" size="small" @click="removeSubOpt(qIdx, oIdx)">
+                          <el-icon><Delete /></el-icon>
+                        </el-button>
+                      </div>
+                    </div>
+                    <el-button size="small" type="primary" link @click="addSubOpt(qIdx)">+ 添加选项</el-button>
+                  </el-form-item>
+                  <el-form-item label="答案" :label-width="60">
+                    <el-radio-group v-model="q.standardAnswer">
+                      <el-radio v-for="opt in q.options" :key="opt.optionLabel" :value="opt.optionLabel">{{ opt.optionLabel }}</el-radio>
+                    </el-radio-group>
+                  </el-form-item>
+                  <el-form-item label="解析" :label-width="60">
+                    <el-input v-model="q.analysis" type="textarea" :rows="2" placeholder="答案解析" />
+                  </el-form-item>
+                  <el-form-item label="知识点" :label-width="60">
+                    <el-select v-model="q.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入后回车添加" style="width: 100%" />
+                  </el-form-item>
+                </div>
+
+                <el-empty v-if="readingForm.subQuestions.length === 0" description="暂无题目，点击上方按钮添加" />
+              </div>
+            </el-form>
           </div>
-        </el-form>
-      </div>
+        </el-tab-pane>
+      </el-tabs>
 
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button
-          v-if="composeMode === 'normal'"
+          v-if="activeTab !== 'READING'"
           type="primary"
           @click="doValidate"
           :loading="validating"

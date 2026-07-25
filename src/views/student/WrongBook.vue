@@ -189,6 +189,15 @@ onMounted(async () => {
 
 <template>
   <div class="wrong-book-page">
+    <el-alert type="info" :closable="false" style="margin-bottom:12px">
+      <template #title>
+        <span style="font-weight:600">📚 艾宾浩斯遗忘曲线复习策略</span>
+        <el-tooltip content="每次答错后，系统自动计算下次复习时间：第1次=1天后、第2次=2天后、第3次=4天后、第4次=7天后、第5次=15天后。连续3次复习正确→标记'已掌握'。再次答错→重置为1天。" placement="bottom" effect="light">
+          <el-icon style="margin-left:4px;cursor:help;color:#909399"><QuestionFilled /></el-icon>
+        </el-tooltip>
+      </template>
+      错题本不是简单的错题列表——每道错题都有复习状态和下次复习时间。点击"重做错题"可以针对薄弱题目进行专项练习。
+    </el-alert>
     <!-- ========== 顶部筛选 ========== -->
     <div class="filter-bar">
       <div class="filter-row">

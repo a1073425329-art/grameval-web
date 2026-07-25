@@ -7,6 +7,7 @@ import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 import type { LoginForm } from '@/types/user'
 import type { Role } from '@/types/common'
+import { FormLimits } from '@/utils/formLimits'
 
 const router = useRouter()
 const route = useRoute()
@@ -157,6 +158,7 @@ const roleLabel = computed(() => (activeRole.value === 'ADMIN' ? '管理员' : '
             v-model="loginForm.username"
             :placeholder="`输入${roleLabel}账号`"
             :prefix-icon="User"
+            :maxlength="FormLimits.username.max"
             autocomplete="username"
           />
         </el-form-item>
@@ -166,6 +168,7 @@ const roleLabel = computed(() => (activeRole.value === 'ADMIN' ? '管理员' : '
             type="password"
             placeholder="请输入密码"
             :prefix-icon="Lock"
+            :maxlength="FormLimits.password.max"
             show-password
             autocomplete="current-password"
           />

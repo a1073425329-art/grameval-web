@@ -17,6 +17,7 @@ import type { ReadingPassage, ReadingPassageForm, ReadingQuestionItem } from '@/
 import type { QuestionOption } from '@/types/question'
 import type { Category } from '@/types/category'
 import type { Difficulty } from '@/types/common'
+import { FormLimits } from '@/utils/formLimits'
 import { useViewMode } from '@/composables/useViewMode'
 
 const { viewMode, toggleViewMode } = useViewMode('reading_passage_manage')
@@ -374,6 +375,7 @@ onMounted(async () => {
             <el-input
               v-model="query.keyword"
               placeholder="标题/内容关键词"
+              :maxlength="FormLimits.keyword.max"
               clearable
               style="width: 180px"
             />
@@ -407,7 +409,7 @@ onMounted(async () => {
         </el-row>
         <el-row :gutter="8" style="margin-top: 8px">
           <el-form-item label="主题">
-            <el-input v-model="query.topic" placeholder="主题标签" clearable style="width: 120px" />
+            <el-input v-model="query.topic" placeholder="主题标签" :maxlength="FormLimits.shortText.max" clearable style="width: 120px" />
           </el-form-item>
           <el-form-item label="来源">
             <el-select v-model="query.source" clearable placeholder="全部" style="width: 110px">
@@ -625,12 +627,12 @@ onMounted(async () => {
         <el-row :gutter="12">
           <el-col :span="14">
             <el-form-item label="标题">
-              <el-input v-model="form.title" placeholder="文章标题（可选）" />
+              <el-input v-model="form.title" :maxlength="FormLimits.paperTitle.max" show-word-limit placeholder="文章标题（可选）" />
             </el-form-item>
           </el-col>
           <el-col :span="6">
             <el-form-item label="主题">
-              <el-input v-model="form.topic" placeholder="如：科技、环保" />
+              <el-input v-model="form.topic" :maxlength="FormLimits.shortText.max" placeholder="如：科技、环保" />
             </el-form-item>
           </el-col>
           <el-col :span="4">
@@ -655,6 +657,8 @@ onMounted(async () => {
             v-model="form.content"
             type="textarea"
             :rows="8"
+            :maxlength="FormLimits.articleText.max"
+            show-word-limit
             placeholder="请输入文章正文"
           />
         </el-form-item>
@@ -664,6 +668,8 @@ onMounted(async () => {
             v-model="form.summary"
             type="textarea"
             :rows="2"
+            :maxlength="FormLimits.mediumText.max"
+            show-word-limit
             placeholder="文章摘要/简介（可选）"
           />
         </el-form-item>
@@ -683,13 +689,13 @@ onMounted(async () => {
               <el-button link type="danger" size="small" @click="removeSubQuestion(qIdx)">移除</el-button>
             </div>
             <el-form-item label="题干" :label-width="60">
-              <el-input v-model="q.stem" placeholder="题目题干" />
+              <el-input v-model="q.stem" :maxlength="FormLimits.questionStem.max" placeholder="题目题干" />
             </el-form-item>
             <el-form-item label="选项" :label-width="60">
               <div class="sub-options">
                 <div v-for="(opt, oIdx) in q.options" :key="oIdx" class="sub-opt-row">
                   <el-tag class="opt-key">{{ opt.optionLabel }}</el-tag>
-                  <el-input v-model="opt.optionContent" placeholder="选项内容" size="small" />
+                  <el-input v-model="opt.optionContent" :maxlength="FormLimits.optionContent.max" placeholder="选项内容" size="small" />
                 </div>
               </div>
             </el-form-item>
@@ -703,7 +709,7 @@ onMounted(async () => {
               <el-input-number v-model="q.defaultScore" :min="0.5" :max="20" :step="0.5" size="small" />
             </el-form-item>
             <el-form-item label="解析" :label-width="60">
-              <el-input v-model="q.analysis" type="textarea" :rows="2" placeholder="答案解析" />
+              <el-input v-model="q.analysis" type="textarea" :rows="2" :maxlength="FormLimits.analysis.max" show-word-limit placeholder="答案解析" />
             </el-form-item>
             <el-form-item label="知识点" :label-width="60">
               <el-select v-model="q.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入后回车添加" style="width: 100%" />

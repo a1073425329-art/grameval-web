@@ -27,7 +27,7 @@ import type {
   TrainingSchedule,
 } from '@/types/stats'
 import type { LearningProgress } from '@/types/progress'
-import type { Notification } from '@/types/notification'
+import type { MessageNotification, UnreadCount, MessageQuery, NotificationPreference, UnreadCountByCategory } from '@/types/notification'
 import type { LeaderboardItem, MyRank } from '@/types/leaderboard'
 
 /* ============================================================ *
@@ -235,24 +235,108 @@ export const resetProgress = (categoryId: number) =>
   request.post<ApiResponse<void>>(`/learning-progress/me/category/${categoryId}/reset`)
 
 /* ============================================================ *
- *  8. 消息通知
+ *  8. 消息中心（企业级）
  * ============================================================ */
 
-/** 获取我的通知列表 */
-export const getMyNotifications = (params?: { pageIndex?: number; pageSize?: number }) =>
-  request.get<ApiResponse<PageResult<Notification>>>('/notifications', { params })
+/** 登录时触发消息计算 */
+export const calculateMessages = () =>
+  request.post<ApiResponse<UnreadCount>>('/notifications/calculate')
 
-/** 获取未读通知数量 */
+/** 消息列表（多维度过滤） */
+export const getMyNotifications = (params?: MessageQuery) =>
+  request.get<ApiResponse<PageResult<MessageNotification>>>('/notifications', { params })
+
+/** 未读总数 + 紧急数 */
 export const getUnreadCount = () =>
-  request.get<ApiResponse<{ count: number }>>('/notifications/unread-count')
+  request.get<ApiResponse<UnreadCount>>('/notifications/unread-count')
 
-/** 标记全部已读 */
-export const markAllRead = () =>
-  request.post<ApiResponse<void>>('/notifications/mark-all-read')
+/** 按分类未读数 */
+export const getUnreadCountByCategory = () =>
+  request.get<ApiResponse<UnreadCountByCategory>>('/notifications/unread-count-by-category')
 
-/** 标记单条已读 */
+/** 标记已读 */
 export const markNotificationRead = (id: number) =>
-  request.post<ApiResponse<void>>(`/notifications/${id}/mark-read`)
+  request.put<ApiResponse<void>>(`/notifications/${id}/read`)
+
+/** 标记未读 */
+export const markNotificationUnread = (id: number) =>
+  request.put<ApiResponse<void>>(`/notifications/${id}/unread`)
+
+/** 切换收藏 */
+export const toggleStar = (id: number) =>
+  request.put<ApiResponse<void>>(`/notifications/${id}/star`)
+
+/** 切换置顶 */
+export const togglePin = (id: number) =>
+  request.put<ApiResponse<void>>(`/notifications/${id}/pin`)
+
+/** 归档 */
+export const archiveNotification = (id: number) =>
+  request.put<ApiResponse<void>>(`/notifications/${id}/archive`)
+
+/** 取消归档 */
+export const unarchiveNotification = (id: number) =>
+  request.put<ApiResponse<void>>(`/notifications/${id}/unarchive`)
+
+/** 删除（软删除） */
+export const deleteNotification = (id: number) =>
+  request.delete<ApiResponse<void>>(`/notifications/${id}`)
+
+/** 全部已读 */
+export const markAllRead = () =>
+  request.put<ApiResponse<number>>('/notifications/mark-all-read')
+
+/** 批量已读 */
+export const batchMarkRead = (ids: number[]) =>
+  request.put<ApiResponse<number>>('/notifications/batch-read', { ids })
+
+/** 批量删除 */
+export const batchDeleteNotifications = (ids: number[]) =>
+  request.post<ApiResponse<number>>('/notifications/batch-delete', { ids })
+
+/** 批量归档 */
+export const batchArchiveNotifications = (ids: number[]) =>
+  request.post<ApiResponse<number>>('/notifications/batch-archive', { ids })
+
+/** 获取通知偏好 */
+export const getNotificationPreferences = () =>
+  request.get<ApiResponse<NotificationPreference>>('/notifications/preferences')
+
+/** 更新通知偏好 */
+export const updateNotificationPreferences = (data: Partial<NotificationPreference>) =>
+  request.put<ApiResponse<NotificationPreference>>('/notifications/preferences', data)
+
+/** 记录操作 */
+export const recordNotificationAction = (id: number) =>
+  request.post<ApiResponse<void>>(`/notifications/${id}/action`)
+
+/** 提交反馈 */
+export const submitNotificationFeedback = (id: number, rating: number, feedback?: string) =>
+  request.put<ApiResponse<void>>(`/notifications/${id}/feedback`, { rating, feedback })
+
+/** 更新反应 */
+export const updateNotificationReaction = (id: number, reaction: string) =>
+  request.put<ApiResponse<void>>(`/notifications/${id}/reaction`, { reaction })
+
+/** 消息统计面板 */
+export const getNotificationStats = () =>
+  request.get<ApiResponse<any>>('/notifications/stats')
+
+/** 获取线程/对话 */
+export const getNotificationThread = (threadId: number) =>
+  request.get<ApiResponse<MessageNotification[]>>(`/notifications/thread/${threadId}`)
+
+/** 投递日志 */
+export const getDeliveryLogs = (page?: number, size?: number) =>
+  request.get<ApiResponse<any>>('/notifications/delivery-logs', { params: { page, size } })
+
+/** 广播给全平台 */
+export const broadcastNotification = (data: { title: string; content: string; summary?: string; priority?: number; actionUrl?: string; expireTime?: string }) =>
+  request.post<ApiResponse<number>>('/notifications/broadcast', data)
+
+/** 按角色广播 */
+export const broadcastByRole = (data: { role: string; title: string; content: string; priority?: number }) =>
+  request.post<ApiResponse<number>>('/notifications/broadcast-role', data)
 
 /* ============================================================ *
  *  9. 学生排行榜
@@ -265,3 +349,239 @@ export const getLeaderboard = (limit?: number) =>
 /** 获取我的排名 */
 export const getMyRank = () =>
   request.get<ApiResponse<MyRank>>('/leaderboard/my-rank')
+
+/* ============================================================ *
+ *  10. 学习笔记
+ * ============================================================ */
+
+export interface StudyNote {
+  id: number
+  userId: number
+  questionId?: number
+  categoryId?: number
+  title: string
+  content: string
+  noteType: 'QUESTION' | 'KNOWLEDGE' | 'REVIEW' | 'OTHER'
+  tags: string
+  isPublic: boolean
+  viewsCount: number
+  createTime: string
+  updateTime?: string
+}
+
+export interface StudyNoteQuery extends PageQuery {
+  noteType?: string
+  categoryId?: number
+  questionId?: number
+  keyword?: string
+}
+
+/** 创建学习笔记 */
+export const createStudyNote = (data: Omit<StudyNote, 'id' | 'userId' | 'viewsCount' | 'createTime' | 'updateTime'>) =>
+  request.post<ApiResponse<StudyNote>>('/study-notes', data)
+
+/** 更新学习笔记 */
+export const updateStudyNote = (id: number, data: Partial<Omit<StudyNote, 'id' | 'userId' | 'viewsCount' | 'createTime'>>) =>
+  request.put<ApiResponse<StudyNote>>(`/study-notes/${id}`, data)
+
+/** 删除学习笔记 */
+export const deleteStudyNote = (id: number) =>
+  request.delete<ApiResponse<void>>(`/study-notes/${id}`)
+
+/** 获取学习笔记详情 */
+export const getStudyNote = (id: number) =>
+  request.get<ApiResponse<StudyNote>>(`/study-notes/${id}`)
+
+/** 分页查询我的笔记 */
+export const listMyNotes = (params: StudyNoteQuery) =>
+  request.get<ApiResponse<PageResult<StudyNote>>>('/study-notes/my-list', { params })
+
+/** 获取公开笔记 */
+export const listPublicNotes = (params: StudyNoteQuery & { userId?: number }) =>
+  request.get<ApiResponse<PageResult<StudyNote>>>('/study-notes/public', { params })
+
+/* ============================================================ *
+ *  11. 学习打卡与目标
+ * ============================================================ */
+
+/** 学习打卡 */
+export const checkIn = () =>
+  request.post<ApiResponse<any>>('/users/check-in')
+
+/** 获取我的资料 */
+export const getMyProfile = () =>
+  request.get<ApiResponse<any>>('/users/my-profile')
+
+/** 更新我的资料 */
+export const updateMyProfile = (data: Partial<any>) =>
+  request.put<ApiResponse<any>>('/users/my-profile', data)
+
+/* ============================================================ *
+ *  12. 徽章系统
+ * ============================================================ */
+
+export interface UserBadge {
+  id: number
+  userId: number
+  badgeCode: string
+  badgeName: string
+  icon: string
+  earnedTime: string
+  earnedDescription: string
+}
+
+/** 获取我的徽章列表 */
+export const getMyBadges = () =>
+  request.get<ApiResponse<UserBadge[]>>('/badges/my-badges')
+
+/** 获取所有徽章定义 */
+export const getAllBadges = () =>
+  request.get<ApiResponse<any[]>>('/badges/all')
+
+/* ============================================================ *
+ *  13. 学习周报
+ * ============================================================ */
+
+export interface StudyWeeklyReport {
+  id: number
+  userId: number
+  weekStart: string
+  weekEnd: string
+  totalStudyDays: number
+  totalQuestionsDone: number
+  totalCorrectCount: number
+  accuracyRate: number
+  studyHours: number
+  categoryStats: Array<{
+    categoryId: number
+    categoryName: string
+    questionsDone: number
+    accuracy: number
+  }>
+  weakCategories: number[]
+  strongCategories: number[]
+  suggestions: string
+  reportUrl?: string
+  generatedAt: string
+}
+
+/** 获取本周周报 */
+export const getWeeklyReport = () =>
+  request.get<ApiResponse<StudyWeeklyReport>>('/weekly-report/current')
+
+/** 获取历史周报列表 */
+export const listWeeklyReports = (params?: PageQuery) =>
+  request.get<ApiResponse<PageResult<StudyWeeklyReport>>>('/weekly-report/list', { params })
+
+/** 生成周报 */
+export const generateWeeklyReport = () =>
+  request.post<ApiResponse<StudyWeeklyReport>>('/weekly-report/generate')
+
+/* ============================================================ *
+ *  14. AI学习助手
+ * ============================================================ */
+
+export interface ChatMessage {
+  id: number
+  userId: number
+  role: 'USER' | 'ASSISTANT'
+  content: string
+  messageType: 'TEXT' | 'IMAGE' | 'DOCUMENT'
+  createTime: string
+}
+
+export interface ChatSession {
+  id: number
+  userId: number
+  title: string
+  messageCount: number
+  lastMessage?: string
+  lastTime: string
+  createTime: string
+}
+
+/** 创建聊天会话 */
+export const createChatSession = (title?: string) =>
+  request.post<ApiResponse<ChatSession>>('/assistant/sessions', { title })
+
+/** 获取聊天会话列表 */
+export const listChatSessions = () =>
+  request.get<ApiResponse<ChatSession[]>>('/assistant/sessions')
+
+/** 获取会话详情 */
+export const getChatSession = (sessionId: number) =>
+  request.get<ApiResponse<ChatSession>>(`/assistant/sessions/${sessionId}`)
+
+/** 删除会话 */
+export const deleteChatSession = (sessionId: number) =>
+  request.delete<ApiResponse<void>>(`/assistant/sessions/${sessionId}`)
+
+/** 获取会话消息列表 */
+export const listChatMessages = (sessionId: number) =>
+  request.get<ApiResponse<ChatMessage[]>>(`/assistant/sessions/${sessionId}/messages`)
+
+/** 发送消息 */
+export const sendChatMessage = (sessionId: number, content: string) =>
+  request.post<ApiResponse<ChatMessage>>(`/assistant/sessions/${sessionId}/messages`, { content })
+
+/* ============================================================ *
+ *  15. 学习小组
+ * ============================================================ */
+
+export interface StudyGroup {
+  id: number
+  groupName: string
+  description: string
+  avatar?: string
+  maxMembers: number
+  memberCount: number
+  status: 'ACTIVE' | 'INACTIVE'
+  createTime: string
+}
+
+export interface GroupMember {
+  id: number
+  groupId: number
+  userId: number
+  username: string
+  realName: string
+  avatar?: string
+  role: 'OWNER' | 'ADMIN' | 'MEMBER'
+  joinTime: string
+}
+
+/** 创建学习小组 */
+export const createStudyGroup = (data: { groupName: string; description?: string; maxMembers?: number }) =>
+  request.post<ApiResponse<StudyGroup>>('/study-groups', data)
+
+/** 获取我的小组列表 */
+export const listMyGroups = () =>
+  request.get<ApiResponse<StudyGroup[]>>('/study-groups/my-groups')
+
+/** 获取小组详情 */
+export const getStudyGroup = (groupId: number) =>
+  request.get<ApiResponse<StudyGroup>>(`/study-groups/${groupId}`)
+
+/** 更新小组信息 */
+export const updateStudyGroup = (groupId: number, data: Partial<StudyGroup>) =>
+  request.put<ApiResponse<StudyGroup>>(`/study-groups/${groupId}`, data)
+
+/** 删除小组 */
+export const deleteStudyGroup = (groupId: number) =>
+  request.delete<ApiResponse<void>>(`/study-groups/${groupId}`)
+
+/** 获取小组成员 */
+export const listGroupMembers = (groupId: number) =>
+  request.get<ApiResponse<GroupMember[]>>(`/study-groups/${groupId}/members`)
+
+/** 加入小组 */
+export const joinGroup = (groupId: number) =>
+  request.post<ApiResponse<void>>(`/study-groups/${groupId}/join`)
+
+/** 退出小组 */
+export const leaveGroup = (groupId: number) =>
+  request.post<ApiResponse<void>>(`/study-groups/${groupId}/leave`)
+
+/** 搜索小组 */
+export const searchGroups = (keyword: string) =>
+  request.get<ApiResponse<StudyGroup[]>>('/study-groups/search', { params: { keyword } })

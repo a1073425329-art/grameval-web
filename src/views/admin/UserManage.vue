@@ -13,6 +13,8 @@ import {
 import type { UserDetail, UserCreateForm } from '@/types/user'
 import type { Role } from '@/types/common'
 import { useViewMode } from '@/composables/useViewMode'
+import { FormLimits } from '@/utils/formLimits'
+import { commonRules } from '@/utils/formRules'
 
 const { viewMode, toggleViewMode } = useViewMode('user_manage')
 
@@ -83,10 +85,12 @@ const form = reactive<UserCreateForm & { id: number; status?: number }>({
 })
 
 const rules: FormRules = {
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入初始密码', trigger: 'blur' }],
-  realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
+  username: commonRules.username,
+  password: commonRules.password,
+  realName: commonRules.realNameRequired,
   role: [{ required: true, message: '请选择角色', trigger: 'change' }],
+  email: commonRules.email,
+  phone: commonRules.phone,
 }
 
 const openCreate = () => {
@@ -189,16 +193,16 @@ onMounted(load)
       <el-form :inline="true" :model="query">
         <el-row :gutter="8">
           <el-form-item label="用户名">
-            <el-input v-model="query.username" placeholder="用户名" clearable style="width:180px" />
+            <el-input v-model="query.username" placeholder="用户名" :maxlength="FormLimits.keyword.max" clearable style="width:180px" />
           </el-form-item>
           <el-form-item label="姓名">
-            <el-input v-model="query.realName" placeholder="姓名" clearable style="width:180px" />
+            <el-input v-model="query.realName" placeholder="姓名" :maxlength="FormLimits.keyword.max" clearable style="width:180px" />
           </el-form-item>
           <el-form-item label="邮箱">
-            <el-input v-model="query.email" placeholder="邮箱" clearable style="width:180px" />
+            <el-input v-model="query.email" placeholder="邮箱" :maxlength="FormLimits.email.max" clearable style="width:180px" />
           </el-form-item>
           <el-form-item label="手机号">
-            <el-input v-model="query.phone" placeholder="手机号" clearable style="width:160px" />
+            <el-input v-model="query.phone" placeholder="手机号" :maxlength="FormLimits.phone.max" clearable style="width:160px" />
           </el-form-item>
         </el-row>
         <el-row :gutter="8" style="margin-top: 8px;">
@@ -357,16 +361,16 @@ onMounted(load)
     <el-dialog v-model="dialogVisible" :title="editMode === 'create' ? '新增用户' : '编辑用户'" width="520px">
       <el-form ref="formRef" :model="form" :rules="rules" label-width="90px">
         <el-form-item label="用户名" prop="username">
-          <el-input v-model="form.username" :disabled="editMode === 'edit'" />
+          <el-input v-model="form.username" :maxlength="FormLimits.username.max" :disabled="editMode === 'edit'" show-word-limit />
         </el-form-item>
         <el-form-item v-if="editMode === 'create'" label="初始密码" prop="password">
-          <el-input v-model="form.password" type="password" show-password />
+          <el-input v-model="form.password" type="password" :maxlength="FormLimits.password.max" show-password />
         </el-form-item>
         <el-form-item label="姓名" prop="realName">
-          <el-input v-model="form.realName" />
+          <el-input v-model="form.realName" :maxlength="FormLimits.realName.max" show-word-limit />
         </el-form-item>
         <el-form-item label="英文名">
-          <el-input v-model="form.englishName" placeholder="如：Zhang Xiaoming" />
+          <el-input v-model="form.englishName" :maxlength="FormLimits.englishName.max" placeholder="如：Zhang Xiaoming" />
         </el-form-item>
         <el-form-item label="性别">
           <el-radio-group v-model="form.gender">
@@ -381,11 +385,11 @@ onMounted(load)
             <el-option label="管理员" value="ADMIN" />
           </el-select>
         </el-form-item>
-        <el-form-item label="邮箱">
-          <el-input v-model="form.email" />
+        <el-form-item label="邮箱" prop="email">
+          <el-input v-model="form.email" :maxlength="FormLimits.email.max" />
         </el-form-item>
-        <el-form-item label="手机号">
-          <el-input v-model="form.phone" />
+        <el-form-item label="手机号" prop="phone">
+          <el-input v-model="form.phone" :maxlength="FormLimits.phone.max" />
         </el-form-item>
       </el-form>
       <template #footer>

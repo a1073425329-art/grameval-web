@@ -13,6 +13,7 @@ import { getTrainingSchedule, updateTrainingSchedule } from '@/api/student'
 import { useAuthStore } from '@/stores/auth'
 import type { UserDetail, UserUpdateForm, PasswordChangeForm } from '@/types/user'
 import type { TrainingSchedule } from '@/types/stats'
+import { FormLimits } from '@/utils/formLimits'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024
 const MAX_WIDTH = 512
@@ -277,7 +278,7 @@ onMounted(load)
       </el-descriptions>
 
       <el-form v-else :model="form" label-width="100px" style="max-width:640px">
-        <el-form-item label="真实姓名"><el-input v-model="form.realName" /></el-form-item>
+        <el-form-item label="真实姓名"><el-input v-model="form.realName" :maxlength="FormLimits.realName.max" show-word-limit /></el-form-item>
         <el-form-item label="性别">
           <el-radio-group v-model="form.gender">
             <el-radio :value="0">未知</el-radio>
@@ -285,9 +286,9 @@ onMounted(load)
             <el-radio :value="2">女</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="邮箱"><el-input v-model="form.email" /></el-form-item>
-        <el-form-item label="手机号"><el-input v-model="form.phone" /></el-form-item>
-        <el-form-item label="身份证号"><el-input v-model="form.idCard" placeholder="选填，学生可用于登录" /></el-form-item>
+        <el-form-item label="邮箱"><el-input v-model="form.email" :maxlength="FormLimits.email.max" /></el-form-item>
+        <el-form-item label="手机号"><el-input v-model="form.phone" :maxlength="FormLimits.phone.max" /></el-form-item>
+        <el-form-item label="身份证号"><el-input v-model="form.idCard" :maxlength="FormLimits.idCard.max" placeholder="选填，学生可用于登录" /></el-form-item>
         <el-form-item label="头像">
           <div style="display:flex;align-items:center;gap:12px">
             <el-avatar v-if="form.avatar" :size="48" :src="form.avatar" shape="square" />
@@ -366,9 +367,9 @@ onMounted(load)
     <!-- ==================== 修改密码弹窗 ==================== -->
     <el-dialog v-model="pwdVisible" title="修改密码" width="440px">
       <el-form ref="pwdRef" :model="pwdForm" :rules="pwdRules" label-width="90px">
-        <el-form-item label="当前密码" prop="oldPassword"><el-input v-model="pwdForm.oldPassword" type="password" show-password /></el-form-item>
-        <el-form-item label="新密码" prop="newPassword"><el-input v-model="pwdForm.newPassword" type="password" show-password /></el-form-item>
-        <el-form-item label="确认密码" prop="confirm"><el-input v-model="pwdForm.confirm" type="password" show-password /></el-form-item>
+        <el-form-item label="当前密码" prop="oldPassword"><el-input v-model="pwdForm.oldPassword" type="password" :maxlength="FormLimits.password.max" show-password /></el-form-item>
+        <el-form-item label="新密码" prop="newPassword"><el-input v-model="pwdForm.newPassword" type="password" :maxlength="FormLimits.password.max" show-password /></el-form-item>
+        <el-form-item label="确认密码" prop="confirm"><el-input v-model="pwdForm.confirm" type="password" :maxlength="FormLimits.password.max" show-password /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="pwdVisible = false">取消</el-button>

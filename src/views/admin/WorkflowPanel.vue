@@ -214,6 +214,13 @@ const selectedStudents = computed(() =>
   students.value.filter((s) => selectedStudentIds.value.includes(s.id))
 )
 
+// 获取生成的题目列表
+const generatedQuestions = computed(() => {
+  if (!executionResult.value?.result) return []
+  const result = executionResult.value.result
+  return result.taggedQuestions || result.validQuestions || result.questions || []
+})
+
 const statusLabel: Record<string, string> = {
   RUNNING: '执行中',
   SUCCEEDED: '成功',
@@ -231,10 +238,34 @@ const modeLabel: Record<string, string> = {
   batch: '多个学生',
 }
 
-// === 获取学生姓名 ===
+// === 辅助方法 ===
+// 获取学生姓名
 const getStudentName = (userId?: number) => {
   if (!userId) return '批量学生'
   return students.value.find((s) => s.id === userId)?.realName || students.value.find((s) => s.id === userId)?.username || userId.toString()
+}
+
+// 格式化题目类型
+const formatQuestionType = (type?: string) => {
+  if (!type) return '未知'
+  const map: Record<string, string> = {
+    SINGLE: '单选',
+    MULTIPLE: '多选',
+    JUDGE: '判断',
+    FILL_BLANK: '填空',
+    FILL_HINT: '提示填空',
+    READING: '阅读理解',
+  }
+  return map[type.toUpperCase()] || type
+}
+
+// 格式化难度
+const formatDifficulty = (level?: number) => {
+  if (!level) return '未知'
+  if (level === 1) return '简单'
+  if (level === 2) return '中等'
+  if (level === 3) return '困难'
+  return level.toString()
 }
 
 // === 初始化 ===
@@ -448,18 +479,72 @@ onMounted(() => {
             </div>
 
             <!-- 单个学生结果 -->
-            <template v-if="workflowMode === 'single' && executionResult.result?.paper">
-              <div class="final-result">
-                <h4>生成试卷</h4>
-                <div class="paper-info">
-                  <div class="paper-title">{{ executionResult.result.paper.title }}</div>
-                  <div class="paper-stats">
-                    <span>题目数: {{ executionResult.result.paper.questionCount }}</span>
-                    <span>总分: {{ executionResult.result.paper.totalScore }}分</span>
+            <template v-if="workflowMode === 'single' && executionResult.result">
+              <!-- 生成试卷 -->
+              <template v-if="executionResult.result.paper">
+                <div class="final-result">
+                  <h4>📝 生成试卷</h4>
+                  <div class="paper-info">
+                    <div class="paper-title">{{ executionResult.result.paper.title }}</div>
+                    <div class="paper-stats">
+                      <span>题目数: {{ executionResult.result.paper.questionCount }}</span>
+                      <span>总分: {{ executionResult.result.paper.totalScore }}分</span>
+                    </div>
+                    <div v-if="executionResult.result.summary" class="paper-summary">{{ executionResult.result.summary }}</div>
                   </div>
-                  <div v-if="executionResult.result.summary" class="paper-summary">{{ executionResult.result.summary }}</div>
                 </div>
-              </div>
+              </template>
+              
+              <!-- 题目保存状态 -->
+              <template v-if="executionResult.result.savedQuestionCount !== undefined">
+                <div class="save-status">
+                  <h4>💾 题目保存状态</h4>
+                  <div class="save-stats">
+                    <div class="save-stat-item">
+                      <span class="save-stat-label">生成题目数</span>
+                      <span class="save-stat-value">{{ executionResult.result.generatedQuestionCount }}</span>
+                    </div>
+                    <div class="save-stat-item">
+                      <span class="save-stat-label">成功保存</span>
+                      <span class="save-stat-value success">{{ executionResult.result.savedQuestionCount }}</span>
+                    </div>
+                    <div class="save-stat-item">
+                      <span class="save-stat-label">保存状态</span>
+                      <el-tag :type="executionResult.result.savedQuestionCount > 0 ? 'success' : 'warning'">
+                        {{ executionResult.result.savedQuestionCount > 0 ? '已保存到题库' : '未保存' }}
+                      </el-tag>
+                    </div>
+                  </div>
+                </div>
+              </template>
+              
+              <!-- 生成的题目列表 -->
+              <template v-if="executionResult.result.taggedQuestions?.length || executionResult.result.validQuestions?.length || executionResult.result.questions?.length">
+                <div class="generated-questions">
+                  <h4>📋 生成题目预览</h4>
+                  <div class="questions-preview">
+                    <div 
+                      v-for="(q, idx) in generatedQuestions.slice(0, 5)" 
+                      :key="idx" 
+                      class="question-preview-item"
+                    >
+                      <div class="question-index">{{ idx + 1 }}</div>
+                      <div class="question-content">
+                        <div class="question-stem">{{ q.stem }}</div>
+                        <div class="question-meta">
+                          <span class="meta-item">题型: {{ formatQuestionType(q.questionType) }}</span>
+                          <span class="meta-item">难度: {{ formatDifficulty(q.difficulty) }}</span>
+                          <span class="meta-item">答案: {{ q.standardAnswer }}</span>
+                        </div>
+                        <div v-if="q.analysis" class="question-analysis">{{ q.analysis }}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div v-if="generatedQuestions.length > 5" class="more-hint">
+                    还有 {{ generatedQuestions.length - 5 }} 道题目未显示...
+                  </div>
+                </div>
+              </template>
             </template>
 
             <!-- 批量学生结果 - 班级统计 -->
@@ -1308,5 +1393,127 @@ onMounted(() => {
   gap: 16px;
   font-size: 13px;
   color: #606266;
+}
+
+/* 保存状态 */
+.save-status {
+  margin-bottom: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed #dcdfe6;
+}
+
+.save-status h4 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.save-stats {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.save-stat-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.save-stat-label {
+  font-size: 12px;
+  color: #909399;
+}
+
+.save-stat-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+
+  &.success {
+    color: #67c23a;
+  }
+}
+
+/* 生成题目预览 */
+.generated-questions {
+  margin-bottom: 16px;
+  padding-top: 12px;
+  border-top: 1px dashed #dcdfe6;
+}
+
+.generated-questions h4 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.questions-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.question-preview-item {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
+.question-index {
+  width: 28px;
+  height: 28px;
+  line-height: 28px;
+  text-align: center;
+  background: #409eff;
+  color: #fff;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.question-content {
+  flex: 1;
+}
+
+.question-stem {
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: #303133;
+}
+
+.question-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 8px;
+}
+
+.meta-item {
+  background: #f0f0f0;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.question-analysis {
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.5;
+  padding-left: 12px;
+  border-left: 2px solid #409eff;
+}
+
+.more-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #909399;
+  text-align: center;
 }
 </style>

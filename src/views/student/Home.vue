@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
+import { Calendar, Check, Aim, Trophy, Document } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { getMySummary, getAvailableExams, getStudentStatistics, getMyResults, listPractices, getMyLearningProgress, getWeakCategories } from '@/api/student'
+import { getMySummary, getAvailableExams, getStudentStatistics, getMyResults, listPractices, getMyLearningProgress, getWeakCategories, checkIn, updateMyProfile, getMyProfile } from '@/api/student'
 import type { ResultSummary, ExamResultItem } from '@/types/result'
 import type { AvailableExam } from '@/types/exam'
 import type { StudentStatistics } from '@/types/stats'
@@ -28,6 +30,16 @@ const recentPractices = ref<PracticeRecord[]>([])
 const learningProgress = ref<LearningProgress[]>([])
 const weakProgress = ref<LearningProgress[]>([])
 
+// 学习打卡状态
+const streakDays = ref(0)
+const totalStudyDays = ref(0)
+const dailyTargetCount = ref(10)
+const todayCompleted = ref(0)
+const totalQuestionsDone = ref(0)
+const totalCorrectCount = ref(0)
+const isCheckedIn = ref(false)
+const checkInLoading = ref(false)
+
 const shortcuts = [
   { title: '语法题库', desc: '按专题浏览 + 学习模式看解析', path: '/student/question-bank', icon: 'Notebook', color: '#409eff' },
   { title: '专项练习', desc: '选专题刷题即时反馈', path: '/student/practice', icon: 'EditPen', color: '#67c23a' },
@@ -49,8 +61,9 @@ const load = async () => {
       listPractices({ pageNum: 1, pageSize: 5 }),
       getMyLearningProgress(),
       getWeakCategories(5),
+      getMyProfile(),
     ]
-    const [s, e, st, r, p, lp, wp] = await Promise.allSettled(tasks)
+    const [s, e, st, r, p, lp, wp, prof] = await Promise.allSettled(tasks)
     if (s.status === 'fulfilled' && s.value) summary.value = (s.value as any).data
     if (e.status === 'fulfilled' && e.value) availableExams.value = (e.value as any).data ?? []
     if (st.status === 'fulfilled' && st.value) stats.value = (st.value as any).data
@@ -58,6 +71,20 @@ const load = async () => {
     if (p.status === 'fulfilled' && p.value) recentPractices.value = (p.value as any).data?.records ?? []
     if (lp.status === 'fulfilled' && lp.value) learningProgress.value = (lp.value as any).data ?? []
     if (wp.status === 'fulfilled' && wp.value) weakProgress.value = (wp.value as any).data ?? []
+    if (prof.status === 'fulfilled' && prof.value) {
+      const profile = (prof.value as any).data
+      streakDays.value = profile.streakDays || 0
+      totalStudyDays.value = profile.totalStudyDays || 0
+      dailyTargetCount.value = profile.dailyTargetCount || 10
+      totalQuestionsDone.value = profile.totalQuestionsDone || 0
+      totalCorrectCount.value = profile.totalCorrectCount || 0
+      // 判断今天是否已打卡
+      const lastDate = profile.lastStudyDate
+      if (lastDate) {
+        const today = new Date().toISOString().split('T')[0]
+        isCheckedIn.value = lastDate === today
+      }
+    }
   } finally { loading.value = false }
 }
 
@@ -108,6 +135,24 @@ const scoreMiniOption = computed(() => {
   }
 })
 
+const doCheckIn = async () => {
+  if (isCheckedIn.value || checkInLoading.value) return
+  checkInLoading.value = true
+  try {
+    const res = await checkIn()
+    if (res && res.data) {
+      streakDays.value = res.data.streakDays || streakDays.value
+      totalStudyDays.value = res.data.totalStudyDays || totalStudyDays.value
+      isCheckedIn.value = true
+      ElMessage.success('打卡成功！继续保持！')
+    }
+  } catch {
+    ElMessage.error('打卡失败')
+  } finally {
+    checkInLoading.value = false
+  }
+}
+
 const isOngoing = (e: AvailableExam) => {
   const now = Date.now()
   return now >= Date.parse(e.startTime) && now <= Date.parse(e.endTime)
@@ -127,8 +172,22 @@ const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d =
   <div class="student-home" v-loading="loading">
     <!-- Hero -->
     <div class="hero">
-      <h2>你好，{{ authStore.userInfo?.displayName || authStore.userInfo?.username || '同学' }} 👋</h2>
-      <p class="hero-sub">坚持每天练习，语法能力会越来越强！</p>
+      <div class="hero-content">
+        <h2>你好，{{ authStore.userInfo?.displayName || authStore.userInfo?.username || '同学' }} 👋</h2>
+        <p class="hero-sub">坚持每天练习，语法能力会越来越强！</p>
+      </div>
+      <div class="hero-checkin">
+        <div v-if="!isCheckedIn" class="checkin-btn-wrap">
+          <el-button type="primary" @click="doCheckIn" :loading="checkInLoading" class="checkin-btn">
+            <el-icon><Calendar /></el-icon>今日打卡
+          </el-button>
+        </div>
+        <div v-else class="checkin-success">
+          <el-icon color="#67c23a"><Check /></el-icon>
+          <span>今日已打卡</span>
+          <span class="streak-badge">🔥 连续 {{ streakDays }} 天</span>
+        </div>
+      </div>
     </div>
 
     <!-- ====== Stats Row ====== -->
@@ -167,6 +226,46 @@ const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d =
         <div class="mini-stat" @click="router.push('/student/wrong-book')">
           <div class="mini-num" style="color:#f56c6c">{{ stats?.distinctWrongCount ?? '-' }}</div>
           <div class="mini-label">错题数</div>
+        </div>
+      </el-col>
+    </el-row>
+
+    <!-- ====== 学习目标与打卡统计 ====== -->
+    <el-row :gutter="16" class="stat-row">
+      <el-col :span="4">
+        <div class="mini-stat">
+          <div class="mini-num" style="color:#e6a23c">{{ streakDays }}</div>
+          <div class="mini-label">连续学习天数</div>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="mini-stat">
+          <div class="mini-num" style="color:#9c27b0">{{ totalStudyDays }}</div>
+          <div class="mini-label">累计学习天数</div>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="mini-stat">
+          <div class="mini-num" style="color:#409eff">{{ totalQuestionsDone }}</div>
+          <div class="mini-label">累计做题数</div>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="mini-stat">
+          <div class="mini-num" style="color:#67c23a">{{ totalCorrectCount }}</div>
+          <div class="mini-label">累计正确数</div>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="mini-stat">
+          <div class="mini-num" style="color:#f56c6c">{{ totalQuestionsDone > 0 ? ((totalCorrectCount / totalQuestionsDone) * 100).toFixed(1) : '0' }}%</div>
+          <div class="mini-label">总正确率</div>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="mini-stat">
+          <div class="mini-num" style="color:#10b981">{{ dailyTargetCount }}</div>
+          <div class="mini-label">每日目标题数</div>
         </div>
       </el-col>
     </el-row>
@@ -322,8 +421,30 @@ const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d =
 .hero {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: #fff; padding: 24px 28px; border-radius: 8px; margin-bottom: 16px;
+  display: flex; justify-content: space-between; align-items: center;
   h2 { margin: 0; font-size: 22px; font-weight: 600; }
   .hero-sub { margin: 6px 0 0; opacity: 0.85; font-size: 13px; }
+}
+
+.hero-content { flex: 1; }
+
+.hero-checkin {
+  display: flex; align-items: center; gap: 12px;
+}
+
+.checkin-btn {
+  background: #fff; color: #667eea; border-color: #fff;
+  &:hover { background: #f0f0f0; color: #667eea; border-color: #f0f0f0; }
+}
+
+.checkin-success {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 16px; background: rgba(255,255,255,0.2); border-radius: 20px;
+  font-size: 14px;
+  .streak-badge {
+    background: rgba(255,165,0,0.9); padding: 2px 8px; border-radius: 10px;
+    font-size: 12px; font-weight: 600;
+  }
 }
 
 .stat-row { margin-bottom: 16px; }

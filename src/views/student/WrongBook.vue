@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { getWrongBook, getCategoryTree } from '@/api/student'
+import { ElMessage } from 'element-plus'
+import { getWrongBook, getCategoryTree, getRedoQuestions, submitPractice } from '@/api/student'
 import type { WrongBookItem } from '@/types/result'
+import type { Question } from '@/types/question'
 import type { Category } from '@/types/category'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { getJudgeOptionLabel } from '@/utils/dict'
@@ -74,6 +76,96 @@ const expandedAnalysis = ref<Set<number>>(new Set())
 const toggleAnalysis = (idx: number) => {
   if (expandedAnalysis.value.has(idx)) expandedAnalysis.value.delete(idx)
   else expandedAnalysis.value.add(idx)
+}
+
+// ====== 错题重做 ======
+const redoModal = ref(false)
+const redoQuestions = ref<Question[]>([])
+const redoCurrentIndex = ref(0)
+const redoAnswers = ref<Record<number, string>>({})
+const redoSubmitting = ref(false)
+const redoResult = ref<{ total: number; correct: number } | null>(null)
+
+const currentRedoQuestion = computed(() => redoQuestions.value[redoCurrentIndex.value])
+const redoProgress = computed(() => ({
+  current: redoCurrentIndex.value + 1,
+  total: redoQuestions.value.length,
+  percent: redoQuestions.value.length > 0 ? ((redoCurrentIndex.value + 1) / redoQuestions.value.length) * 100 : 0,
+}))
+
+const startRedo = async () => {
+  redoSubmitting.value = true
+  try {
+    const res = await getRedoQuestions({ categoryId: query.categoryId, count: 10 })
+    redoQuestions.value = res.data ?? []
+    if (!redoQuestions.value.length) {
+      ElMessage.info('当前没有可重做的错题')
+      return
+    }
+    redoCurrentIndex.value = 0
+    redoAnswers.value = {}
+    redoResult.value = null
+    redoModal.value = true
+  } finally {
+    redoSubmitting.value = false
+  }
+}
+
+const selectRedoOption = (optionLabel: string) => {
+  const q = currentRedoQuestion.value
+  if (!q) return
+  if (q.questionType === 'MULTIPLE') {
+    const current = redoAnswers.value[q.id] || ''
+    if (current.includes(optionLabel)) {
+      redoAnswers.value[q.id] = current.replace(optionLabel, '')
+    } else {
+      redoAnswers.value[q.id] = [...current.split(''), optionLabel].sort().join('')
+    }
+  } else {
+    redoAnswers.value[q.id] = optionLabel
+  }
+}
+
+const isOptionSelected = (optionLabel: string) => {
+  const answer = redoAnswers.value[currentRedoQuestion.value?.id] || ''
+  return answer.includes(optionLabel)
+}
+
+const submitRedo = async () => {
+  const q = currentRedoQuestion.value
+  if (!q || !redoAnswers.value[q.id]) {
+    ElMessage.warning('请选择答案')
+    return
+  }
+  redoSubmitting.value = true
+  try {
+    await submitPractice({
+      questionId: q.id,
+      userAnswer: redoAnswers.value[q.id],
+    })
+    if (redoCurrentIndex.value < redoQuestions.value.length - 1) {
+      redoCurrentIndex.value++
+    } else {
+      // 完成所有重做题目，计算结果
+      let correct = 0
+      redoQuestions.value.forEach(rq => {
+        const user = (redoAnswers.value[rq.id] || '').trim().toUpperCase()
+        const standard = (rq.standardAnswer || '').trim().toUpperCase()
+        if (user === standard) correct++
+      })
+      redoResult.value = { total: redoQuestions.value.length, correct }
+    }
+  } finally {
+    redoSubmitting.value = false
+  }
+}
+
+const closeRedoModal = () => {
+  redoModal.value = false
+  redoQuestions.value = []
+  redoAnswers.value = {}
+  redoResult.value = null
+  load()
 }
 
 /** 从分类树拍平，供级联选择器直接识别（不用 children 嵌套也可用） */
@@ -152,6 +244,9 @@ onMounted(async () => {
 
       <div class="filter-summary">
         共 <b>{{ total }}</b> 道错题<span v-if="list.length"> · 当前第 {{ (query.pageNum - 1) * query.pageSize + 1 }} - {{ Math.min(query.pageNum * query.pageSize, total) }} 题</span>
+        <el-button v-if="total > 0" type="primary" @click="startRedo" :loading="redoSubmitting">
+          <el-icon><Refresh /></el-icon> 开始重做
+        </el-button>
       </div>
     </div>
 
@@ -240,6 +335,58 @@ onMounted(async () => {
         background
       />
     </div>
+
+    <!-- ====== 错题重做模态框 ====== -->
+    <el-dialog v-model="redoModal" title="错题重做" width="700px" class="redo-modal" :close-on-click-modal="false">
+      <!-- 进度条 -->
+      <div v-if="redoQuestions.length" class="redo-progress">
+        <div class="rp-info">第 {{ redoProgress.current }} / {{ redoProgress.total }} 题</div>
+        <el-progress :percentage="redoProgress.percent" :stroke-width="8" />
+      </div>
+
+      <!-- 答题界面 -->
+      <div v-if="redoQuestions.length && !redoResult" class="redo-content">
+        <div v-if="currentRedoQuestion" key="question">
+          <div class="rq-head">
+            <el-tag size="small">{{ typeLabel(currentRedoQuestion.questionType) }}</el-tag>
+            <el-tag :type="diffTagType(currentRedoQuestion.difficulty)" size="small">{{ diffLabel(currentRedoQuestion.difficulty) }}</el-tag>
+            <el-tag type="info" size="small">{{ currentRedoQuestion.categoryName }}</el-tag>
+          </div>
+          <div class="rq-stem">{{ currentRedoQuestion.stem }}</div>
+          <div v-if="currentRedoQuestion.options?.length" class="rq-options">
+            <div
+              v-for="op in currentRedoQuestion.options"
+              :key="op.optionLabel"
+              class="rq-opt"
+              :class="{ selected: isOptionSelected(op.optionLabel) }"
+              @click="selectRedoOption(op.optionLabel)"
+            >
+              <span class="rq-opt-key">{{ op.optionLabel }}.</span>
+              <span>{{ op.optionContent }}</span>
+              <el-icon v-if="isOptionSelected(op.optionLabel)"><Check /></el-icon>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 结果界面 -->
+      <div v-if="redoResult" class="redo-result">
+        <div class="result-icon" :class="redoResult.correct === redoResult.total ? 'success' : redoResult.correct >= redoResult.total / 2 ? 'warning' : 'danger'">
+          <el-icon :size="48">{{ redoResult.correct === redoResult.total ? 'CircleCheck' : redoResult.correct >= redoResult.total / 2 ? 'Warning' : 'Close' }}</el-icon>
+        </div>
+        <div class="result-title">{{ redoResult.correct === redoResult.total ? '太棒了！全部正确！' : `重做完成，正确 ${redoResult.correct}/${redoResult.total} 题` }}</div>
+        <div class="result-desc">正确率 {{ Math.round((redoResult.correct / redoResult.total) * 100) }}%</div>
+      </div>
+
+      <!-- 按钮 -->
+      <template #footer>
+        <el-button @click="closeRedoModal">关闭</el-button>
+        <el-button v-if="redoQuestions.length && !redoResult" type="primary" @click="submitRedo" :loading="redoSubmitting">
+          {{ redoCurrentIndex < redoQuestions.length - 1 ? '下一题' : '提交答案' }}
+        </el-button>
+        <el-button v-if="redoResult" type="primary" @click="startRedo">再做一次</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -326,4 +473,35 @@ onMounted(async () => {
 }
 
 .pagination { display: flex; justify-content: center; padding: 8px 0; }
+
+// Redo Modal
+.redo-progress { margin-bottom: 20px; }
+.rp-info { font-size: 14px; color: #606266; margin-bottom: 8px; }
+
+.redo-content { padding: 10px 0; }
+.rq-head { display: flex; gap: 8px; margin-bottom: 16px; }
+.rq-stem { font-size: 16px; line-height: 1.8; color: #303133; margin-bottom: 20px; white-space: pre-wrap; }
+.rq-options { display: flex; flex-direction: column; gap: 10px; }
+.rq-opt {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-radius: 8px;
+  border: 2px solid #e4e7ed;
+  background: #fff; cursor: pointer;
+  transition: all 0.2s;
+  &:hover { border-color: #c0c4cc; background: #fafafa; }
+  &.selected { border-color: #409eff; background: #ecf5ff; }
+  .rq-opt-key { font-weight: 700; color: #409eff; min-width: 24px; }
+}
+
+.redo-result {
+  display: flex; flex-direction: column; align-items: center; padding: 30px 0;
+  .result-icon {
+    margin-bottom: 16px;
+    &.success { color: #67c23a; }
+    &.warning { color: #e6a23c; }
+    &.danger { color: #f56c6c; }
+  }
+  .result-title { font-size: 20px; font-weight: 600; color: #303133; margin-bottom: 8px; }
+  .result-desc { font-size: 14px; color: #606266; }
+}
 </style>

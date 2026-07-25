@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePermissionStore } from '@/stores/permission'
 import { ElMessageBox } from 'element-plus'
+import { getUnreadCount, markAllRead } from '@/api/student'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -58,6 +59,29 @@ const handleLogout = async () => {
     // cancelled
   }
 }
+
+// ====== 通知 ======
+const unreadCount = ref(0)
+
+const loadUnreadCount = async () => {
+  try {
+    const res = await getUnreadCount()
+    unreadCount.value = res.data?.count ?? 0
+  } catch {
+    unreadCount.value = 0
+  }
+}
+
+const handleMarkAllRead = async () => {
+  try {
+    await markAllRead()
+    unreadCount.value = 0
+  } catch { }
+}
+
+onMounted(() => {
+  loadUnreadCount()
+})
 </script>
 
 <template>
@@ -66,6 +90,21 @@ const handleLogout = async () => {
       <span class="header-title">英语语法专项在线考试系统</span>
     </div>
     <div class="header-right">
+      <!-- 通知图标 -->
+      <el-dropdown trigger="click" @command="handleMarkAllRead">
+        <span class="notification-icon">
+          <el-icon :size="20"><Bell /></el-icon>
+          <el-badge v-if="unreadCount > 0" :value="unreadCount > 99 ? '99+' : unreadCount" :max="99" class="notification-badge" />
+        </span>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="mark-all-read">
+              <el-icon><Check /></el-icon>标记全部已读
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+
       <el-dropdown trigger="click">
         <span class="header-user">
           <el-avatar :size="32" :src="avatarUrl">
@@ -123,6 +162,27 @@ const handleLogout = async () => {
 .header-right {
   display: flex;
   align-items: center;
+  gap: 16px;
+}
+
+.notification-icon {
+  position: relative;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background 0.2s;
+  color: #606266;
+
+  &:hover {
+    background: #f5f7fa;
+    color: #409eff;
+  }
+}
+
+.notification-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
 }
 
 .header-user {

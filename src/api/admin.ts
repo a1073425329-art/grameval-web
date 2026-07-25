@@ -6,6 +6,7 @@ import type {
 } from '@/types/user'
 import type { Category, CategoryForm } from '@/types/category'
 import type { Question, QuestionForm } from '@/types/question'
+import type { ReadingPassage, ReadingPassageForm, ReadingQuestionItem } from '@/types/reading'
 import type { Paper, PaperForm } from '@/types/paper'
 import type { ExamSession, SessionForm } from '@/types/exam'
 import type { ExamResultItem } from '@/types/result'
@@ -263,3 +264,47 @@ export const listStudentAdmins = (studentId: number) =>
   request.get<ApiResponse<Array<{ id: number; username: string; realName?: string }>>>(
     `/admin/students/${studentId}/admins`
   )
+
+/* ============================================================ *
+ *  7. 阅读理解文章库 /reading-passages
+ * ============================================================ */
+
+export interface ReadingPassageQuery extends PageQuery {
+  keyword?: string
+  categoryId?: number
+  difficulty?: Difficulty
+  passageType?: string
+  topic?: string
+  source?: string
+  status?: number
+  includeTemp?: boolean
+}
+
+export const listReadingPassages = (params: ReadingPassageQuery) =>
+  request.get<ApiResponse<PageResult<ReadingPassage>>>('/reading-passages', { params })
+
+export const getReadingPassageDetail = (id: number, includeQuestions = true) =>
+  request.get<ApiResponse<ReadingPassage>>(`/reading-passages/${id}`, {
+    params: { includeQuestions },
+  })
+
+export const getPassageQuestions = (id: number) =>
+  request.get<ApiResponse<Question[]>>(`/reading-passages/${id}/questions`)
+
+export const createReadingPassage = (data: ReadingPassageForm) =>
+  request.post<ApiResponse<ReadingPassage>>('/reading-passages', data)
+
+export const updateReadingPassage = (id: number, data: Partial<ReadingPassageForm>) =>
+  request.put<ApiResponse<ReadingPassage>>(`/reading-passages/${id}`, data)
+
+export const deleteReadingPassage = (id: number) =>
+  request.delete<ApiResponse<void>>(`/reading-passages/${id}`)
+
+export const addPassageQuestion = (passageId: number, data: ReadingQuestionItem) =>
+  request.post<ApiResponse<Question>>(`/reading-passages/${passageId}/questions`, data)
+
+export const batchStatusReadingPassages = (ids: number[], status: 0 | 1) =>
+  request.post<ApiResponse<void>>('/reading-passages/batch-status', { ids, status })
+
+export const batchDeleteReadingPassages = (ids: number[]) =>
+  request.post<ApiResponse<number>>('/reading-passages/batch-delete', { ids })

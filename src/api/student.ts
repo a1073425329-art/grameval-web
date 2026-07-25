@@ -26,6 +26,9 @@ import type {
   DimensionAnalysis,
   TrainingSchedule,
 } from '@/types/stats'
+import type { LearningProgress } from '@/types/progress'
+import type { Notification } from '@/types/notification'
+import type { LeaderboardItem, MyRank } from '@/types/leaderboard'
 
 /* ============================================================ *
  *  1. 分类
@@ -169,6 +172,10 @@ export const getResultDetail = (resultId: number) =>
 export const getWrongBook = (params?: WrongBookQuery) =>
   request.get<ApiResponse<PageResult<WrongBookItem>>>('/results/wrong-book', { params })
 
+/** 错题重做题目列表（不含答案） */
+export const getRedoQuestions = (params?: { categoryId?: number; count?: number }) =>
+  request.get<ApiResponse<Question[]>>('/results/wrong-book/redo', { params })
+
 /* ============================================================ *
  *  6. 学生个人多维度统计
  * ============================================================ */
@@ -198,3 +205,63 @@ export const getTrainingSchedule = (id: number) =>
 /** 修改学生的训练时间设置（只传变更字段） */
 export const updateTrainingSchedule = (id: number, data: Partial<TrainingSchedule>) =>
   request.put<ApiResponse<TrainingSchedule>>(`/students/${id}/training-schedule`, data)
+
+/* ============================================================ *
+ *  7. 学习进度
+ * ============================================================ */
+
+/** 获取当前用户学习进度 */
+export const getMyLearningProgress = () =>
+  request.get<ApiResponse<LearningProgress[]>>('/learning-progress/me')
+
+/** 获取当前用户指定分类进度 */
+export const getMyProgressByCategory = (categoryId: number) =>
+  request.get<ApiResponse<LearningProgress>>(`/learning-progress/me/category/${categoryId}`)
+
+/** 获取薄弱分类 */
+export const getWeakCategories = (limit = 5) =>
+  request.get<ApiResponse<LearningProgress[]>>('/learning-progress/me/weak', {
+    params: { limit },
+  })
+
+/** 获取掌握较好的分类 */
+export const getStrongCategories = (limit = 5) =>
+  request.get<ApiResponse<LearningProgress[]>>('/learning-progress/me/strong', {
+    params: { limit },
+  })
+
+/** 重置指定分类进度 */
+export const resetProgress = (categoryId: number) =>
+  request.post<ApiResponse<void>>(`/learning-progress/me/category/${categoryId}/reset`)
+
+/* ============================================================ *
+ *  8. 消息通知
+ * ============================================================ */
+
+/** 获取我的通知列表 */
+export const getMyNotifications = (params?: { pageIndex?: number; pageSize?: number }) =>
+  request.get<ApiResponse<PageResult<Notification>>>('/notifications', { params })
+
+/** 获取未读通知数量 */
+export const getUnreadCount = () =>
+  request.get<ApiResponse<{ count: number }>>('/notifications/unread-count')
+
+/** 标记全部已读 */
+export const markAllRead = () =>
+  request.post<ApiResponse<void>>('/notifications/mark-all-read')
+
+/** 标记单条已读 */
+export const markNotificationRead = (id: number) =>
+  request.post<ApiResponse<void>>(`/notifications/${id}/mark-read`)
+
+/* ============================================================ *
+ *  9. 学生排行榜
+ * ============================================================ */
+
+/** 获取学生排行榜 */
+export const getLeaderboard = (limit?: number) =>
+  request.get<ApiResponse<LeaderboardItem[]>>('/leaderboard', { params: { limit } })
+
+/** 获取我的排名 */
+export const getMyRank = () =>
+  request.get<ApiResponse<MyRank>>('/leaderboard/my-rank')

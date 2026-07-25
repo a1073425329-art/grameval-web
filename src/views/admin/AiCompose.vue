@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { listUsers, listCategoryTree } from '@/api/admin'
-import { analyzeStudent, generatePreview, confirmPaper } from '@/api/ai'
+import { analyzeStudent, analyzeStudents, generatePreview, confirmPaper } from '@/api/ai'
 import type { UserDetail } from '@/types/user'
 import type { Category } from '@/types/category'
 import type { Question } from '@/types/question'
@@ -13,15 +13,17 @@ import type {
   GeneratePaperForm,
   GeneratePaperPreview,
 } from '@/types/ai'
+import type { BatchStudentAnalysis } from '@/api/ai'
 
 /* ============================================================ *
  *  1. 学生 & 学情分析
  * ============================================================ */
 
 const students = ref<UserDetail[]>([])
-const selectedStudentId = ref<number | undefined>(undefined)
-const selectedStudent = computed<UserDetail | undefined>(() =>
-  students.value.find((s) => s.id === selectedStudentId.value)
+// 支持多选学生
+const selectedStudentIds = ref<number[]>([])
+const selectedStudents = computed(() =>
+  students.value.filter((s) => selectedStudentIds.value.includes(s.id))
 )
 
 const loadStudents = async () => {
@@ -32,19 +34,38 @@ const loadStudents = async () => {
 }
 
 const analysis = ref<StudentAnalysis | null>(null)
+const batchAnalysis = ref<BatchStudentAnalysis | null>(null)
 const analysisLoading = ref(false)
 /** 老师可编辑的学情文本，独立于 analysis.analysis */
 const analysisDraft = ref('')
 
 const fetchAnalysis = async () => {
-  if (!selectedStudentId.value) return
+  if (selectedStudentIds.value.length === 0) {
+    analysis.value = null
+    batchAnalysis.value = null
+    analysisDraft.value = ''
+    return
+  }
+  
   analysisLoading.value = true
   try {
-    const res = await analyzeStudent(selectedStudentId.value)
-    analysis.value = res.data
-    analysisDraft.value = res.data.analysis || ''
+    if (selectedStudentIds.value.length === 1) {
+      // 单选学生：使用单个分析接口
+      const res = await analyzeStudent(selectedStudentIds.value[0])
+      analysis.value = res.data
+      batchAnalysis.value = null
+      analysisDraft.value = res.data.analysis || ''
+    } else {
+      // 多选学生：使用批量分析接口（整体分析）
+      const res = await analyzeStudents(selectedStudentIds.value)
+      batchAnalysis.value = res.data
+      analysis.value = null
+      // 使用整体分析文本作为分析草稿
+      analysisDraft.value = res.data.overallAnalysis || ''
+    }
   } catch {
     analysis.value = null
+    batchAnalysis.value = null
     analysisDraft.value = ''
   } finally {
     analysisLoading.value = false
@@ -53,8 +74,8 @@ const fetchAnalysis = async () => {
 
 /* 选学生时自动分析 */
 import { watch } from 'vue'
-watch(selectedStudentId, (id) => {
-  if (id) fetchAnalysis()
+watch(selectedStudentIds, (ids) => {
+  if (ids.length > 0) fetchAnalysis()
   else { analysis.value = null; analysisDraft.value = '' }
 })
 
@@ -92,14 +113,16 @@ const form = reactive({
   withTrap: true,
   focusWeak: true,
   questionCount: 25,
-  singleWeight: 60,
-  multipleWeight: 20,
-  readingWeight: 20,
+  singleWeight: 50,
+  multipleWeight: 15,
+  readingWeight: 15,
+  judgeWeight: 10,
+  fillWeight: 10,
 })
 
 const difficultySum = computed(() => form.easyPct + form.mediumPct + form.hardPct)
 const difficultyValid = computed(() => difficultySum.value === 100)
-const typeSum = computed(() => form.singleWeight + form.multipleWeight + form.readingWeight)
+const typeSum = computed(() => form.singleWeight + form.multipleWeight + form.readingWeight + form.judgeWeight + form.fillWeight)
 const typeValid = computed(() => typeSum.value === 100)
 
 const rules: FormRules = {
@@ -115,12 +138,23 @@ const rules: FormRules = {
 
 /** 一键加入薄弱分类 */
 const pickWeakCategories = () => {
-  const weaks = analysis.value?.categoryStats
-    ?.filter((s) => s.wrongCount > 0)
-    ?.sort((a, b) => b.wrongCount - a.wrongCount)
-    ?.slice(0, 5)
-    ?.map((s) => s.categoryId) ?? []
-  if (!weaks.length) return ElMessage.info('该学生尚无薄弱专题数据')
+  let weaks: number[] = []
+  
+  if (analysis.value?.categoryStats) {
+    // 单选学生：使用单个学生的薄弱分类
+    weaks = analysis.value.categoryStats
+      .filter((s) => s.wrongCount > 0)
+      .sort((a, b) => b.wrongCount - a.wrongCount)
+      .slice(0, 5)
+      .map((s) => s.categoryId)
+  } else if (batchAnalysis.value?.commonWeakCategories) {
+    // 多选学生：使用共同薄弱分类
+    weaks = batchAnalysis.value.commonWeakCategories
+      .slice(0, 5)
+      .map((c) => c.categoryId)
+  }
+  
+  if (!weaks.length) return ElMessage.info('暂无薄弱专题数据')
   const merged = new Set([...form.categoryIds, ...weaks])
   form.categoryIds = Array.from(merged)
   ElMessage.success(`已加入 ${weaks.length} 个薄弱专题`)
@@ -131,6 +165,8 @@ const typeOptions = [
   { label: '单选题', field: 'singleWeight' as const },
   { label: '多选题', field: 'multipleWeight' as const },
   { label: '阅读理解', field: 'readingWeight' as const },
+  { label: '判断题', field: 'judgeWeight' as const },
+  { label: '填空题', field: 'fillWeight' as const },
 ]
 
 /* ============================================================ *
@@ -141,7 +177,7 @@ const composing = ref(false)
 const preview = ref<GeneratePaperPreview | null>(null)
 
 const doCompose = async () => {
-  if (!selectedStudentId.value) return ElMessage.warning('请先选择学生')
+  if (selectedStudentIds.value.length === 0) return ElMessage.warning('请先选择学生')
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
     if (!valid) return
@@ -151,24 +187,29 @@ const doCompose = async () => {
     composing.value = true
     preview.value = null
 
-    const payload: GeneratePaperForm = {
-      targetUserId: selectedStudentId.value!,
-      analysisText: analysisDraft.value,
-      categoryIds: [...form.categoryIds],
-      easyPct: form.easyPct,
-      mediumPct: form.mediumPct,
-      hardPct: form.hardPct,
-      withTrap: form.withTrap,
-      focusWeak: form.focusWeak,
-      questionCount: form.questionCount,
-      singleWeight: form.singleWeight,
-      multipleWeight: form.multipleWeight,
-      readingWeight: form.readingWeight,
-    }
+    // 构建出题参数
+        const payload: GeneratePaperForm = {
+          targetUserId: selectedStudentIds.value[0],
+          targetUserIds: selectedStudentIds.value,  // 传递所有选中的学生 ID
+          analysisText: analysisDraft.value,
+          categoryIds: [...form.categoryIds],
+          easyPct: form.easyPct,
+          mediumPct: form.mediumPct,
+          hardPct: form.hardPct,
+          withTrap: form.withTrap,
+          focusWeak: form.focusWeak,
+          questionCount: form.questionCount,
+          singleWeight: form.singleWeight,
+          multipleWeight: form.multipleWeight,
+          readingWeight: form.readingWeight,
+          judgeWeight: form.judgeWeight,
+          fillWeight: form.fillWeight,
+        }
     try {
       const res = await generatePreview(payload)
       preview.value = res.data
-      ElMessage.success(`已生成 ${res.data.questions?.length ?? 0} 道题`)
+      const studentNames = selectedStudents.value.map(s => s.realName || s.username).join('、')
+      ElMessage.success(`已为 ${studentNames} 生成 ${res.data.questions?.length ?? 0} 道题`)
       setTimeout(() => {
         document.querySelector('#preview-anchor')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 100)
@@ -196,7 +237,8 @@ const fmt = (d: Date) => {
 
 const openConfirm = () => {
   if (!preview.value) return ElMessage.warning('请先生成题目')
-  const name = selectedStudent.value?.realName || selectedStudent.value?.username || ''
+  const names = selectedStudents.value.map(s => s.realName || s.username).join('、')
+  const name = names || '学生'
   const stamp = new Date().toISOString().slice(0, 10)
   confirmForm.paperName = `AI · ${name} · ${stamp}`
   confirmForm.sessionName = `${name} 专项训练 (${stamp})`
@@ -224,7 +266,8 @@ const doConfirm = async () => {
       endTime: confirmForm.timeRange[1],
     })
     confirmVisible.value = false
-    ElMessage.success(`已入库并为 ${selectedStudent.value?.realName} 生成考试`)
+    const studentNames = selectedStudents.value.map(s => s.realName || s.username).join('、')
+    ElMessage.success(`已入库并为 ${studentNames} 生成考试`)
     preview.value = null
   } catch { /* handled */ } finally { confirming.value = false }
 }
@@ -278,11 +321,12 @@ onMounted(async () => {
           </div>
         </template>
 
-        <el-form-item label="选择学生">
+        <el-form-item label="选择学生（支持多选）">
           <el-select
-            v-model="selectedStudentId"
+            v-model="selectedStudentIds"
+            multiple
             filterable
-            placeholder="搜索学生（姓名/用户名）"
+            placeholder="搜索学生（姓名/用户名），支持多选"
             style="width: 100%"
           >
             <el-option
@@ -292,18 +336,76 @@ onMounted(async () => {
               :value="s.id"
             />
           </el-select>
+          <div v-if="selectedStudentIds.length > 0" class="selected-students-info">
+            <span class="selected-count">已选择 {{ selectedStudentIds.length }} 名学生</span>
+            <span v-if="selectedStudentIds.length <= 5" class="selected-names">{{ selectedStudents.map(s => s.realName || s.username).join('、') }}</span>
+            <span v-else class="selected-names">已选择 {{ selectedStudentIds.length }} 名学生，点击查看详情</span>
+          </div>
         </el-form-item>
 
-        <div v-if="!selectedStudentId" class="analysis-empty">
+        <div v-if="selectedStudentIds.length === 0" class="analysis-empty">
           <el-empty description="请先选择学生，加载其学情" :image-size="60" />
         </div>
 
         <template v-else>
+          <!-- 批量分析概览（多选学生时显示） -->
+          <div v-if="batchAnalysis" class="batch-overview">
+            <el-card shadow="never" class="batch-summary-card">
+              <template #header>
+                <div class="batch-summary-header">
+                  <span><el-icon><Users /></el-icon> 班级整体分析</span>
+                </div>
+              </template>
+              <div class="batch-stats">
+                <div class="stat-item">
+                  <span class="stat-value">{{ batchAnalysis.studentCount }}</span>
+                  <span class="stat-label">名学生</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-value">{{ batchAnalysis.avgExams?.toFixed(1) }}</span>
+                  <span class="stat-label">平均考试次数</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-value">{{ batchAnalysis.avgScore?.toFixed(1) }}</span>
+                  <span class="stat-label">平均分数</span>
+                </div>
+                <div class="stat-item">
+                  <span class="stat-value">{{ batchAnalysis.avgAccuracy?.toFixed(1) }}%</span>
+                  <span class="stat-label">平均正确率</span>
+                </div>
+              </div>
+              
+              <!-- 共同薄弱分类 -->
+              <div v-if="batchAnalysis.commonWeakCategories?.length" class="common-weak-section">
+                <div class="common-weak-title">
+                  <el-icon><Warning /></el-icon> 共同薄弱专题
+                </div>
+                <div class="common-weak-list">
+                  <div v-for="cat in batchAnalysis.commonWeakCategories.slice(0, 5)" :key="cat.categoryId" class="common-weak-item">
+                    <span class="weak-name">{{ cat.categoryName }}</span>
+                    <span class="weak-meta">
+                      {{ cat.affectedStudentCount }}人受影响 · 共{{ cat.totalWrongCount }}错题 · {{ cat.avgAccuracy }}%正确率
+                    </span>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- 教学建议 -->
+              <div v-if="batchAnalysis.teachingSuggestions" class="teaching-suggestions">
+                <div class="suggestions-title">
+                  <el-icon><Lightbulb /></el-icon> 教学建议
+                </div>
+                <pre class="suggestions-content">{{ batchAnalysis.teachingSuggestions }}</pre>
+              </div>
+            </el-card>
+          </div>
+
+          <!-- AI 学情分析（可编辑） -->
           <div class="analysis-box" v-loading="analysisLoading">
             <div class="analysis-head">
               <span>
                 <el-icon><ChatRound /></el-icon>
-                AI 一句话学情分析（可编辑）
+                {{ batchAnalysis ? '整体学情分析' : 'AI 一句话学情分析' }}（可编辑）
               </span>
               <el-button size="small" text @click="fetchAnalysis" :loading="analysisLoading">
                 <el-icon><Refresh /></el-icon>重新分析
@@ -320,7 +422,8 @@ onMounted(async () => {
             </p>
           </div>
 
-          <div v-if="analysis?.categoryStats?.length" class="weak-list">
+          <!-- 薄弱分类（单选学生时显示） -->
+          <div v-if="analysis?.categoryStats?.length && !batchAnalysis" class="weak-list">
             <div class="weak-title">分类错题统计（Top 5 薄弱专题）：</div>
             <el-tag
               v-for="w in analysis.categoryStats.filter(s => s.wrongCount > 0).slice(0, 5)"
@@ -333,6 +436,13 @@ onMounted(async () => {
             </el-tag>
             <el-button size="small" link type="primary" @click="pickWeakCategories">
               一键加入语法选择
+            </el-button>
+          </div>
+          
+          <!-- 一键加入共同薄弱分类（多选学生时显示） -->
+          <div v-if="batchAnalysis?.commonWeakCategories?.length" class="weak-list">
+            <el-button size="small" link type="primary" @click="pickWeakCategories">
+              一键加入共同薄弱专题
             </el-button>
           </div>
         </template>
@@ -432,7 +542,7 @@ onMounted(async () => {
               type="primary"
               size="large"
               :loading="composing"
-              :disabled="!selectedStudentId || !difficultyValid || !typeValid"
+              :disabled="selectedStudentIds.length === 0 || !difficultyValid || !typeValid"
               @click="doCompose"
             >
               <el-icon><MagicStick /></el-icon>
@@ -657,4 +767,138 @@ onMounted(async () => {
 }
 .q-meta .ans b { color: #67c23a; }
 .q-meta .ana { color: #909399; }
+
+.selected-students-info {
+  margin-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  
+  .selected-count {
+    font-size: 13px;
+    font-weight: 500;
+    color: #409eff;
+  }
+  
+  .selected-names {
+    font-size: 12px;
+    color: #909399;
+  }
+}
+
+/* 批量分析样式 */
+.batch-overview {
+  margin-bottom: 12px;
+}
+
+.batch-summary-card {
+  border: 1px solid #e6f7ff;
+  background: #f0f9ff;
+}
+
+.batch-summary-header {
+  font-weight: 600;
+  color: #1890ff;
+}
+
+.batch-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+}
+
+@media (max-width: 600px) {
+  .batch-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.stat-item {
+  text-align: center;
+  padding: 12px 8px;
+  background: #fff;
+  border-radius: 6px;
+}
+
+.stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1890ff;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #909399;
+}
+
+.common-weak-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #d9ecff;
+}
+
+.common-weak-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d93026;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.common-weak-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.common-weak-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: #fff7ed;
+  border-radius: 4px;
+}
+
+.weak-name {
+  font-size: 13px;
+  color: #d93026;
+  font-weight: 500;
+}
+
+.weak-meta {
+  font-size: 12px;
+  color: #909399;
+}
+
+.teaching-suggestions {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid #d9ecff;
+}
+
+.suggestions-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #722ed1;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.suggestions-content {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  background: #faf5ff;
+  padding: 10px 12px;
+  border-radius: 4px;
+  margin: 0;
+}
 </style>

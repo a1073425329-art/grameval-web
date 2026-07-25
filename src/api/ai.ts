@@ -10,13 +10,40 @@ import type {
 } from '@/types/ai'
 
 /**
- * ① 分析学生历史 —— POST /admin/ai/analyze-student?targetUserId=xxx
+ * ① 分析单个学生历史 —— POST /admin/ai/analyze-student?targetUserId=xxx
  * 返回一句话学习建议 + 各分类错题统计（Dify + DeepSeek）
  */
 export const analyzeStudent = (targetUserId: number) =>
   request.post<ApiResponse<StudentAnalysis>>('/admin/ai/analyze-student', null, {
     params: { targetUserId },
     timeout: 120_000,
+  })
+
+/**
+ * ①-2 批量分析多个学生 —— POST /admin/ai/analyze-students
+ * 返回整体学情分析、共同薄弱分类、教学建议等（多学生整体分析）
+ */
+export interface BatchStudentAnalysis {
+  studentCount: number
+  studentNames: string[]
+  overallAnalysis: string
+  avgExams: number
+  avgScore: number
+  avgAccuracy: number
+  commonWeakCategories: Array<{
+    categoryId: number
+    categoryName: string
+    affectedStudentCount: number
+    totalWrongCount: number
+    avgAccuracy: number
+  }>
+  studentDetails: StudentAnalysis[]
+  teachingSuggestions: string
+}
+
+export const analyzeStudents = (targetUserIds: number[]) =>
+  request.post<ApiResponse<BatchStudentAnalysis>>('/admin/ai/analyze-students', targetUserIds, {
+    timeout: 180_000,
   })
 
 /**
@@ -54,3 +81,28 @@ export const listGenerationLogs = (params: AiLogQuery) =>
 
 export const getGenerationLog = (logId: number) =>
   request.get<ApiResponse<PaperGenerationLog>>(`/admin/ai/generation-logs/${logId}`)
+
+/**
+ * AI验证题目 —— POST /admin/ai/validate-question
+ * 验证题目答案和解析的正确性，提供修改建议
+ */
+export interface ValidateQuestionForm {
+  questionType: string
+  stem: string
+  options?: Array<{ optionLabel: string; optionContent: string }>
+  standardAnswer: string
+  analysis?: string
+}
+
+export interface ValidateQuestionResult {
+  isValid: boolean
+  confidence: number
+  suggestions: string[]
+  correctedAnswer?: string
+  improvedAnalysis?: string
+}
+
+export const validateQuestion = (data: ValidateQuestionForm) =>
+  request.post<ApiResponse<ValidateQuestionResult>>('/admin/ai/validate-question', data, {
+    timeout: 60_000,
+  })

@@ -50,6 +50,12 @@ export const asyncRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/student/Stats.vue'),
     meta: { title: '学习数据', icon: 'TrendCharts', roles: ['STUDENT'] },
   },
+  {
+    path: 'student/leaderboard',
+    name: 'Leaderboard',
+    component: () => import('@/views/student/Leaderboard.vue'),
+    meta: { title: '学生排行榜', icon: 'Trophy', roles: ['STUDENT'] },
+  },
   // hidden routes
   { path: 'student/exam-room/:examId', name: 'ExamRoom', component: () => import('@/views/student/ExamRoom.vue'), meta: { title: '考试中', roles: ['STUDENT'], hidden: true } },
   { path: 'student/results/:id', name: 'ResultDetail', component: () => import('@/views/student/ResultDetail.vue'), meta: { title: '成绩详情', roles: ['STUDENT'], hidden: true } },
@@ -65,23 +71,13 @@ export const asyncRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/dashboard/index.vue'),
     meta: { title: '工作台', icon: 'HomeFilled', roles: ['ADMIN'] },
   },
+
+  // 题库管理（出题流程第一步：智能出题→试题管理→语法分类→题目分析）
   {
-    path: 'admin/users',
-    name: 'AdminUsers',
-    component: () => import('@/views/admin/UserManage.vue'),
-    meta: { title: '用户管理', icon: 'UserFilled', roles: ['ADMIN'], group: '用户权限' },
-  },
-  {
-    path: 'admin/my-students',
-    name: 'AdminMyStudents',
-    component: () => import('@/views/admin/MyStudents.vue'),
-    meta: { title: '我的学生', icon: 'Avatar', roles: ['ADMIN'], group: '用户权限' },
-  },
-  {
-    path: 'admin/categories',
-    name: 'AdminCategories',
-    component: () => import('@/views/admin/CategoryManage.vue'),
-    meta: { title: '语法分类', icon: 'Menu', roles: ['ADMIN'], group: '题库管理' },
+    path: 'admin/ai-compose',
+    name: 'AdminAiCompose',
+    component: () => import('@/views/admin/AiCompose.vue'),
+    meta: { title: '智能出题', icon: 'MagicStick', roles: ['ADMIN'], group: '题库管理' },
   },
   {
     path: 'admin/questions',
@@ -90,22 +86,29 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '试题管理', icon: 'Notebook', roles: ['ADMIN'], group: '题库管理' },
   },
   {
+    path: 'admin/categories',
+    name: 'AdminCategories',
+    component: () => import('@/views/admin/CategoryManage.vue'),
+    meta: { title: '语法分类', icon: 'Menu', roles: ['ADMIN'], group: '题库管理' },
+  },
+  {
     path: 'admin/questions/analytics',
     name: 'AdminQuestionAnalytics',
     component: () => import('@/views/admin/QuestionAnalytics.vue'),
     meta: { title: '题目分析', icon: 'TrendCharts', roles: ['ADMIN'], group: '题库管理' },
   },
   {
+    path: 'admin/reading-passages',
+    name: 'AdminReadingPassages',
+    component: () => import('@/views/admin/ReadingPassageManage.vue'),
+    meta: { title: '阅读文章库', icon: 'Reading', roles: ['ADMIN'], group: '题库管理' },
+  },
+  // 考试管理（出题流程第二步：试卷管理→考试管理→成绩管理）
+  {
     path: 'admin/papers',
     name: 'AdminPapers',
     component: () => import('@/views/admin/PaperManage.vue'),
     meta: { title: '试卷管理', icon: 'Files', roles: ['ADMIN'], group: '考试管理' },
-  },
-  {
-    path: 'admin/ai-compose',
-    name: 'AdminAiCompose',
-    component: () => import('@/views/admin/AiCompose.vue'),
-    meta: { title: '智能出题', icon: 'MagicStick', roles: ['ADMIN'], group: '题库管理' },
   },
   {
     path: 'admin/exams',
@@ -119,11 +122,37 @@ export const asyncRoutes: RouteRecordRaw[] = [
     component: () => import('@/views/admin/ResultManage.vue'),
     meta: { title: '成绩管理', icon: 'DataAnalysis', roles: ['ADMIN'], group: '考试管理' },
   },
+    // 用户权限
+  {
+    path: 'admin/users',
+    name: 'AdminUsers',
+    component: () => import('@/views/admin/UserManage.vue'),
+    meta: { title: '用户管理', icon: 'UserFilled', roles: ['ADMIN'], group: '系统管理' },
+  },
+  {
+    path: 'admin/my-students',
+    name: 'AdminMyStudents',
+    component: () => import('@/views/admin/MyStudents.vue'),
+    meta: { title: '我的学生', icon: 'Avatar', roles: ['ADMIN'], group: '系统管理' },
+  },
+  // 系统管理
+  {
+    path: 'admin/workflow',
+    name: 'AdminWorkflow',
+    component: () => import('@/views/admin/WorkflowPanel.vue'),
+    meta: { title: '工作流编排', icon: 'Reading', roles: ['ADMIN'], group: '系统管理' },
+  },
   {
     path: 'admin/operation-logs',
     name: 'AdminOperationLogs',
     component: () => import('@/views/admin/OperationLogs.vue'),
     meta: { title: '操作日志', icon: 'Document', roles: ['ADMIN'], group: '系统管理' },
+  },
+  {
+    path: 'admin/system-settings',
+    name: 'AdminSystemSettings',
+    component: () => import('@/views/admin/SystemSettings.vue'),
+    meta: { title: '系统设置', icon: 'Setting', roles: ['ADMIN'], group: '系统管理' },
   },
   // hidden routes
   { path: 'admin/exams/:sessionId/monitor', name: 'AdminExamMonitor', component: () => import('@/views/admin/ExamMonitor.vue'), meta: { title: '考试监控', roles: ['ADMIN'], hidden: true } },

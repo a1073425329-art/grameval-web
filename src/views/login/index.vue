@@ -49,8 +49,8 @@ const PRESET_ACCOUNTS: Record<Role, { username: string; password: string; label:
     { username: 'teacher01', password: '123456', label: '王老师' },
   ],
   STUDENT: [
-    { username: 'student01', password: '123456', label: '演示学生' },
-    { username: 'student02', password: '123456', label: '李小红' },
+    { username: 'user01', password: '123456', label: '演示学生' },
+    { username: 'student01', password: '123456', label: '李小红' },
     { username: 'student03', password: '123456', label: '王小刚' },
   ],
 }

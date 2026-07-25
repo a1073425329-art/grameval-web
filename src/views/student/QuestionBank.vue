@@ -159,6 +159,9 @@ onMounted(async () => {
               <el-text type="info" size="small">点击查看详情获取选项</el-text>
             </div>
           </div>
+          <div class="card-tags" v-if="item.knowledgePoints?.length">
+            <el-tag v-for="tag in item.knowledgePoints" :key="tag" size="small" type="info">{{ tag }}</el-tag>
+          </div>
           <div class="card-footer">
             <span class="answer-hint">答案：{{ item.standardAnswer || '点击查看' }}</span>
             <el-button type="primary" size="small">查看详情</el-button>

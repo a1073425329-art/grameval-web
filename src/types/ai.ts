@@ -28,6 +28,8 @@ export interface StudentAnalysis {
  */
 export interface GeneratePaperForm {
   targetUserId: number
+  /** 目标学生用户 ID 列表（多选时使用，批量分析和出题） */
+  targetUserIds?: number[]
   /** 教师编辑后的学情分析（作为 prompt 一部分） */
   analysisText?: string
   /** 语法分类多选 */
@@ -46,6 +48,8 @@ export interface GeneratePaperForm {
   singleWeight?: number
   multipleWeight?: number
   readingWeight?: number
+  judgeWeight?: number
+  fillWeight?: number
 }
 
 /** AI 出题预览响应 */

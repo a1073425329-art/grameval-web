@@ -29,6 +29,8 @@ export interface Question {
   /** 标准答案，一律大写；多选 "A,B"；判断 "TRUE"/"FALSE" */
   standardAnswer?: string
   analysis?: string
+  /** 知识点标签列表 */
+  knowledgePoints?: string[]
   difficulty: Difficulty
   defaultScore?: number
   status?: 0 | 1
@@ -52,6 +54,8 @@ export interface QuestionForm {
   stem: string
   standardAnswer: string
   analysis?: string
+  /** 知识点标签列表 */
+  knowledgePoints?: string[]
   difficulty: Difficulty
   defaultScore?: number
   status?: 0 | 1

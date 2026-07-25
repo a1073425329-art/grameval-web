@@ -2,11 +2,12 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { getMySummary, getAvailableExams, getStudentStatistics, getMyResults, listPractices } from '@/api/student'
+import { getMySummary, getAvailableExams, getStudentStatistics, getMyResults, listPractices, getMyLearningProgress, getWeakCategories } from '@/api/student'
 import type { ResultSummary, ExamResultItem } from '@/types/result'
 import type { AvailableExam } from '@/types/exam'
 import type { StudentStatistics } from '@/types/stats'
 import type { PracticeRecord } from '@/types/question'
+import type { LearningProgress } from '@/types/progress'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -24,6 +25,8 @@ const availableExams = ref<AvailableExam[]>([])
 const stats = ref<StudentStatistics | null>(null)
 const recentResults = ref<ExamResultItem[]>([])
 const recentPractices = ref<PracticeRecord[]>([])
+const learningProgress = ref<LearningProgress[]>([])
+const weakProgress = ref<LearningProgress[]>([])
 
 const shortcuts = [
   { title: '语法题库', desc: '按专题浏览 + 学习模式看解析', path: '/student/question-bank', icon: 'Notebook', color: '#409eff' },
@@ -44,13 +47,17 @@ const load = async () => {
       uid ? getStudentStatistics(uid, 'basic,exam,practice,tag') : Promise.resolve(null),
       getMyResults({ pageNum: 1, pageSize: 5 }),
       listPractices({ pageNum: 1, pageSize: 5 }),
+      getMyLearningProgress(),
+      getWeakCategories(5),
     ]
-    const [s, e, st, r, p] = await Promise.allSettled(tasks)
+    const [s, e, st, r, p, lp, wp] = await Promise.allSettled(tasks)
     if (s.status === 'fulfilled' && s.value) summary.value = (s.value as any).data
     if (e.status === 'fulfilled' && e.value) availableExams.value = (e.value as any).data ?? []
     if (st.status === 'fulfilled' && st.value) stats.value = (st.value as any).data
     if (r.status === 'fulfilled' && r.value) recentResults.value = (r.value as any).data?.records ?? []
     if (p.status === 'fulfilled' && p.value) recentPractices.value = (p.value as any).data?.records ?? []
+    if (lp.status === 'fulfilled' && lp.value) learningProgress.value = (lp.value as any).data ?? []
+    if (wp.status === 'fulfilled' && wp.value) weakProgress.value = (wp.value as any).data ?? []
   } finally { loading.value = false }
 }
 
@@ -161,6 +168,35 @@ const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d =
           <div class="mini-num" style="color:#f56c6c">{{ stats?.distinctWrongCount ?? '-' }}</div>
           <div class="mini-label">错题数</div>
         </div>
+      </el-col>
+    </el-row>
+
+    <!-- ====== 学习进度 ====== -->
+    <el-row :gutter="16" v-if="learningProgress.length">
+      <el-col :span="24">
+        <el-card shadow="never">
+          <template #header>
+            <div class="card-head">
+              <span class="card-title-text">📊 各分类学习进度</span>
+              <el-link type="primary" :underline="false" @click="router.push('/student/question-bank')">去练习 →</el-link>
+            </div>
+          </template>
+          <div class="progress-grid">
+            <div v-for="p in learningProgress" :key="p.categoryId" class="progress-item">
+              <div class="pi-header">
+                <span class="pi-name">{{ p.categoryName || '未分类' }}</span>
+                <span class="pi-level" :style="{ color: accuracyColor(p.masteryLevel) }">{{ p.masteryLevel }}%</span>
+              </div>
+              <div class="pi-bar">
+                <el-progress :percentage="p.masteryLevel" :color="accuracyColor(p.masteryLevel)" :stroke-width="8" :show-text="false" />
+              </div>
+              <div class="pi-meta">
+                <span>完成 {{ p.completedCount }}/{{ p.totalCount }}</span>
+                <span>正确率 {{ p.accuracy }}%</span>
+              </div>
+            </div>
+          </div>
+        </el-card>
       </el-col>
     </el-row>
 
@@ -341,5 +377,18 @@ const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d =
   &:hover { background: #f5f7fa; }
   .em-name { flex: 1; color: #303133; font-weight: 500; }
   .em-meta { color: #909399; font-size: 12px; }
+}
+
+// Learning Progress
+.progress-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px;
+}
+.progress-item {
+  padding: 12px 14px; background: #fafafa; border-radius: 6px;
+  .pi-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
+  .pi-name { font-size: 14px; font-weight: 500; color: #303133; }
+  .pi-level { font-size: 14px; font-weight: 600; }
+  .pi-bar { margin-bottom: 6px; }
+  .pi-meta { display: flex; justify-content: space-between; font-size: 12px; color: #909399; }
 }
 </style>

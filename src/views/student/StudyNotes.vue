@@ -28,6 +28,18 @@ const noteTypeOptions = [
 const editingNote = ref<StudyNote | null>(null);
 const isEditing = ref(false);
 const isAdding = ref(false);
+// Element Plus 的 el-dialog 在 Vue 3 里必须用 v-model, 不能用 :visible.sync
+// 用 computed 把两个开关合并成一个 boolean, 关闭时同步复位
+const dialogVisible = computed<boolean>({
+ get: () => isAdding.value || isEditing.value,
+ set: (val) => {
+   if (!val) {
+     isAdding.value = false;
+     isEditing.value = false;
+     editingNote.value = null;
+   }
+ },
+});
 // 表单数据
 const form = ref({
  title: '',
@@ -303,7 +315,7 @@ const getTagsArray = (tags: string) => {
     <!-- 编辑/新建弹窗 -->
     <el-dialog
       :title="isAdding ? '新建笔记' : '编辑笔记'"
-      :visible.sync="isAdding || isEditing"
+      v-model="dialogVisible"
       width="600px"
       destroy-on-close
     >

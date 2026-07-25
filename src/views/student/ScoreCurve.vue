@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getMyScoreTrend } from '@/api/scoreCurve'
 import type { ScoreCurve as SC } from '@/types/scoreCurve'
@@ -13,6 +13,7 @@ const load = async () => {
   try {
     const res = await getMyScoreTrend()
     data.value = res.data ?? []
+    await nextTick()
     renderChart()
   } finally { loading.value = false }
 }

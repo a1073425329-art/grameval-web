@@ -528,7 +528,7 @@ onMounted(() => {
                       :key="idx" 
                       class="question-preview-item"
                     >
-                      <div class="question-index">{{ idx + 1 }}</div>
+                      <div class="question-index">{{ Number(idx) + 1 }}</div>
                       <div class="question-content">
                         <div class="question-stem">{{ q.stem }}</div>
                         <div class="question-meta">

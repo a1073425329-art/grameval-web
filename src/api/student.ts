@@ -111,9 +111,13 @@ export const listPractices = (params: PracticeListQuery) =>
  *  4. 考试流程（三段式）
  * ============================================================ */
 
-/** 获取可参加的考试 */
+/** 获取可参加(且未参加过)的考试 */
 export const getAvailableExams = () =>
   request.get<ApiResponse<AvailableExam[]>>('/exams/available')
+
+/** 获取我已参加过的考试(历史) */
+export const getAttendedExams = () =>
+  request.get<ApiResponse<AvailableExam[]>>('/exams/attended')
 
 /** 开始考试（幂等，重复调用返回同一 examRecord） */
 export const startExam = (sessionId: number) =>
@@ -502,27 +506,27 @@ export interface ChatSession {
 
 /** 创建聊天会话 */
 export const createChatSession = (title?: string) =>
-  request.post<ApiResponse<ChatSession>>('/assistant/sessions', { title })
+  request.post<ApiResponse<ChatSession>>('/student/assistant/sessions', { title })
 
 /** 获取聊天会话列表 */
 export const listChatSessions = () =>
-  request.get<ApiResponse<ChatSession[]>>('/assistant/sessions')
+  request.get<ApiResponse<ChatSession[]>>('/student/assistant/sessions')
 
 /** 获取会话详情 */
 export const getChatSession = (sessionId: number) =>
-  request.get<ApiResponse<ChatSession>>(`/assistant/sessions/${sessionId}`)
+  request.get<ApiResponse<ChatSession>>(`/student/assistant/sessions/${sessionId}`)
 
 /** 删除会话 */
 export const deleteChatSession = (sessionId: number) =>
-  request.delete<ApiResponse<void>>(`/assistant/sessions/${sessionId}`)
+  request.delete<ApiResponse<void>>(`/student/assistant/sessions/${sessionId}`)
 
 /** 获取会话消息列表 */
 export const listChatMessages = (sessionId: number) =>
-  request.get<ApiResponse<ChatMessage[]>>(`/assistant/sessions/${sessionId}/messages`)
+  request.get<ApiResponse<ChatMessage[]>>(`/student/assistant/sessions/${sessionId}/messages`)
 
 /** 发送消息 */
 export const sendChatMessage = (sessionId: number, content: string) =>
-  request.post<ApiResponse<ChatMessage>>(`/assistant/sessions/${sessionId}/messages`, { content })
+  request.post<ApiResponse<ChatMessage>>(`/student/assistant/sessions/${sessionId}/messages`, { content })
 
 /* ============================================================ *
  *  15. 学习小组

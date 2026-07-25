@@ -80,7 +80,7 @@ const loadTypes = async () => {
   try {
     const res = await getOperationLogTypes()
     const data = res.data
-    types.value = Array.isArray(data) ? data : Object.entries(data).map(([value, label]) => ({ value, label }))
+    types.value = Array.isArray(data) ? data : Object.entries(data).map(([value, label]) => ({ value, label: String(label) }))
   } catch { /* silent */ }
 }
 
@@ -345,7 +345,8 @@ onMounted(async () => {
               <span v-else>-</span>
             </template>
           </el-table-column>
-          <el-table-column prop="requestUri" label="接口" width="220" show-overflow-tooltip />
+          <el-table-column prop="requestUri" label="接口"  show-overflow-tooltip />
+          <el-table-column prop="requestParams" label="请求参数"  show-overflow-tooltip />
           <el-table-column label="耗时" width="100" align="center">
             <template #default="{ row }">
               <span :class="{ 'text-danger': row.durationMs && row.durationMs > 5000 }">
@@ -377,7 +378,7 @@ onMounted(async () => {
           </div>
           <div class="log-body">
             <div class="log-user">
-              <el-avatar :size="32" :src="item.avatar || ''">
+              <el-avatar :size="32">
                 <el-icon><View /></el-icon>
               </el-avatar>
               <span>{{ item.realName || item.username }}</span>

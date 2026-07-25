@@ -66,7 +66,7 @@ const handleClick = (path: string) => router.push(path)
     <el-scrollbar class="sidebar-scroll">
       <el-menu
         :default-active="activeMenu"
-        :default-openeds="['__group__题库管理', '__group__考试管理', '__group__系统管理管理']"
+        :default-openeds="['__group__题库管理', '__group__考试管理', '__group__系统管理','__group__学习中心','__group__考试中心']"
         :collapse="collapsed"
         :collapse-transition="false"
         background-color="transparent"

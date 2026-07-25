@@ -98,21 +98,9 @@ const handleSend = async () => {
  if (res.data) {
  messages.value.push(res.data);
  }
- else {
- // 模拟AI回复
- messages.value.push({
- id: Date.now() + 1,
- userId: 0,
- role: 'ASSISTANT',
- content: '我理解你的问题。基于语法学习的角度，我来为你分析一下...\n\n这是一个很好的问题！在英语语法中，这个知识点涉及到' +
- '时态的正确使用。建议你多做一些相关练习来巩固这个知识点。\n\n如果还有其他问题，随时问我！',
- messageType: 'TEXT',
- createTime: new Date().toISOString(),
- });
- }
  }
  catch {
- ElMessage.error('发送失败');
+ ElMessage.error('发送失败，请稍后重试');
  }
  finally {
  sending.value = false;
@@ -147,7 +135,7 @@ onMounted(() => {
             :class="['session-item', currentSession?.id === session.id ? 'active' : '']"
             @click="selectSession(session)"
           >
-            <div class="session-info">
+            <div class="session-info" style="width:100%">
               <div class="session-title">{{ session.title }}</div>
               <div class="session-preview">
                 {{ session.lastMessage || '暂无消息' }}

@@ -142,7 +142,7 @@ const getWeekLabel = (report: StudyWeeklyReport) => {
       </el-row>
 
       <!-- 分类统计 -->
-      <el-card shadow="never" class="section-card" v-if="currentReport.categoryStats.length">
+      <el-card shadow="never" class="section-card" v-if="currentReport.categoryStats?.length">
         <template #header>
           <div class="card-head">
             <span class="card-title">📚 各分类学习情况</span>

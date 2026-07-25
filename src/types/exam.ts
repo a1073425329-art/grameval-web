@@ -39,8 +39,18 @@ export interface SessionForm {
 /**
  * 学生端"可参加的考试" —— SessionVO
  * （前端沿用 Exam 语义，后端返回结构同 SessionVO）
+ * /api/exams/available 与 /api/exams/attended 都返回该结构。
  */
-export type AvailableExam = ExamSession
+export type AvailableExam = ExamSession & {
+  /** 当前学生是否已经开过该场考试 */
+  attempted?: boolean
+  /** 当前学生的考试记录 id（未开始为 undefined） */
+  examRecordId?: number
+  /** 提交状态 0进行中 1已提交 2超时提交 */
+  submitStatus?: 0 | 1 | 2
+  /** 学生本次得分（百分制），未出分为 undefined */
+  myScore?: number
+}
 
 /**
  * 加载试卷的响应 —— 对齐后端 ExamPaperViewVO
@@ -151,4 +161,10 @@ export interface AnswerDetail {
   difficulty?: Difficulty
   questionScore?: number
   questionOrder?: number
+  /** 答题用时（秒） */
+  spentTimeSeconds?: number
+  /** 是否标记：1已标记，0未标记 */
+  markedFlag?: 0 | 1
+  /** 修改次数 */
+  modifyCount?: number
 }

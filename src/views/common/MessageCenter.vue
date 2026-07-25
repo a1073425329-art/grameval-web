@@ -292,8 +292,8 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
       </div>
 
       <el-pagination
-        v-if="total > query.pageSize"
-        v-model:current-page="query.pageNum" :page-size="query.pageSize"
+        v-if="total > (query.pageSize || 10)"
+        v-model:current-page="query.pageNum" :page-size="query.pageSize || 10"
         :total="total" layout="prev, pager, next" small
         @change="load" class="list-pagination"
       />

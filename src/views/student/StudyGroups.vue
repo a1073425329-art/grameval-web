@@ -230,7 +230,7 @@ const getRoleLabel = (role: string) => {
     </div>
 
     <!-- 创建小组弹窗 -->
-    <el-dialog title="创建学习小组" :visible.sync="showCreateModal" width="400px">
+    <el-dialog title="创建学习小组" v-model="showCreateModal" width="400px">
       <el-form :model="createForm" label-width="80px">
         <el-form-item label="小组名称" required>
           <el-input v-model="createForm.groupName" placeholder="请输入小组名称" />
@@ -251,7 +251,7 @@ const getRoleLabel = (role: string) => {
     <!-- 小组详情弹窗 -->
     <el-dialog
       :title="currentGroup?.groupName"
-      :visible.sync="showDetailModal"
+      v-model="showDetailModal"
       width="600px"
     >
       <div v-if="currentGroup" class="group-detail">

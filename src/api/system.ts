@@ -30,6 +30,62 @@ export interface AiOverview {
   difyGenerateConfigured: boolean
   mockEnabled: boolean
   defaultModel: string
+  qianwenConfigured?: boolean
+  temperature?: number
+  maxTokens?: number
+}
+
+/** AI Provider 状态 */
+export interface AiProviderStatus {
+  id: string
+  name: string
+  configured: boolean
+  model: string
+  baseUrl: string
+  providerType: string
+}
+
+/** AI 模型信息 */
+export interface AiModel {
+  id: string
+  name: string
+  description: string
+  provider: string
+}
+
+/** AI 测试结果 */
+export interface AiTestResult {
+  success: boolean
+  message: string
+  latencyMs: number
+  model?: string
+  provider?: string
+}
+
+/** AI 问答请求 */
+export interface AiChatRequest {
+  provider?: string
+  message: string
+  systemPrompt?: string
+  model?: string
+  temperature?: number
+  maxTokens?: number
+}
+
+/** AI 多轮消息 */
+export interface AiChatMessage {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
+
+/** AI 问答响应 */
+export interface AiChatResponse {
+  content: string
+  model: string
+  provider: string
+  latencyMs: number
+  success: boolean
+  message?: string
 }
 
 /** AI 分析场景 */
@@ -78,6 +134,28 @@ export const resetConfig = (key: string) =>
 /** 刷新配置缓存 */
 export const refreshConfigs = () =>
   request.post<ApiResponse<string>>('/admin/system-config/refresh')
+
+// ==================== AI 测试接口 ====================
+
+/** 获取所有 Provider 状态 */
+export const getAiProvidersStatus = () =>
+  request.get<ApiResponse<AiProviderStatus[]>>('/admin/ai-test/providers/status')
+
+/** 测试指定 Provider 连接 */
+export const testAiProvider = (providerId: string, data?: { apiKey?: string; model?: string; baseUrl?: string }) =>
+  request.post<ApiResponse<AiTestResult>>(`/admin/ai-test/providers/${providerId}/test`, data || {}, { timeout: 60_000 })
+
+/** AI 单轮问答 */
+export const aiChat = (data: AiChatRequest) =>
+  request.post<ApiResponse<AiChatResponse>>('/admin/ai-test/chat', data, { timeout: 120_000 })
+
+/** AI 多轮对话 */
+export const aiMultiChat = (data: { provider?: string; messages: AiChatMessage[]; systemPrompt?: string }) =>
+  request.post<ApiResponse<AiChatResponse>>('/admin/ai-test/chat/multi', data, { timeout: 120_000 })
+
+/** 获取 AI 可用模型列表 */
+export const getAiModels = (provider?: string) =>
+  request.get<ApiResponse<AiModel[]>>('/admin/ai-test/models', { params: provider ? { provider } : {} })
 
 // ==================== AI 相关 ====================
 
@@ -135,3 +213,46 @@ export const generateStudyAdvice = (studentId: number) =>
     null,
     { timeout: 120_000 }
   )
+
+// ==================== 接口一键测试 ====================
+
+/** 接口发现结果 */
+export interface ApiEndpointInfo {
+  method: string
+  path: string
+  summary: string
+  operationId: string
+  tag: string
+}
+
+/** 接口测试结果项 */
+export interface ApiTestResultItem {
+  path: string
+  method: string
+  url: string
+  success: boolean
+  statusCode: number
+  latencyMs: number
+  error: string | null
+  responsePreview: string | null
+}
+
+/** 一键测试汇总 */
+export interface ApiTestSummary {
+  totalEndpoints: number
+  successCount: number
+  failedCount: number
+  totalLatencyMs: number
+  results: ApiTestResultItem[]
+}
+
+/** 发现所有接口 */
+export const discoverEndpoints = () =>
+  request.get<ApiResponse<ApiEndpointInfo[]>>('/admin/api-test/discover')
+
+/** 一键测试所有接口 */
+export const runAllApiTests = (params?: { skipAuth?: boolean; perTimeoutSeconds?: number }) =>
+  request.post<ApiResponse<ApiTestSummary>>('/admin/api-test/run', null, {
+    params,
+    timeout: 300_000,
+  })

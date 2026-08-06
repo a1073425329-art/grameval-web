@@ -39,6 +39,9 @@ export interface ExamResultItem {
   createTime?: string
   submitTime?: string
   durationSeconds?: number
+  correctRate?: number
+  classRank?: number
+  totalCount?: number
 }
 
 /** 成绩明细（GET /results/{resultId}/detail）—— ExamRecordVO */

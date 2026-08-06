@@ -357,9 +357,18 @@ onMounted(async () => {
         <el-table-column label="及格分" width="80" align="center">
           <template #default="{ row }">{{ row.passScore ?? 60 }}</template>
         </el-table-column>
+        <el-table-column label="建议时长" width="100" align="center">
+          <template #default="{ row }">{{ row.suggestedDuration ? row.suggestedDuration + ' 分钟' : '-' }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="归档" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.archiveStatus === 1" type="info" size="small">已归档</el-tag>
+            <span v-else style="color:#c0c4cc">-</span>
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="180" />
@@ -385,6 +394,7 @@ onMounted(async () => {
             <span class="paper-id">#{{ item.id }}</span>
             <el-tag :type="statusType(item.status)" size="small">{{ statusText(item.status) }}</el-tag>
             <el-tag v-if="item.aiGenerated" type="warning" size="small" effect="light">AI 生成</el-tag>
+            <el-tag v-if="item.archiveStatus === 1" type="info" size="small">已归档</el-tag>
           </div>
           <div class="card-title">{{ item.paperName }}</div>
           <div v-if="item.description" class="card-desc">{{ item.description }}</div>
@@ -400,6 +410,10 @@ onMounted(async () => {
             <div class="stat-item">
               <span class="stat-num">{{ item.passScore ?? 60 }}</span>
               <span class="stat-label">及格分</span>
+            </div>
+            <div class="stat-item">
+              <span class="stat-num">{{ item.suggestedDuration ? item.suggestedDuration + '分' : '-' }}</span>
+              <span class="stat-label">建议时长</span>
             </div>
           </div>
           <div class="card-footer">

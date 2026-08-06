@@ -180,6 +180,53 @@ const trainingDaysLabel = (d?: string) => {
   return d.split(',').map(n => map[n.trim()] ?? n).join(' ') || '-'
 }
 
+/* ---------------- CSV 导出 ---------------- */
+const exporting = ref(false)
+const escapeCsv = (val: unknown): string => {
+  if (val == null) return ''
+  const s = String(val)
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+const exportCsv = () => {
+  if (!sortedList.value.length) {
+    ElMessage.warning('当前列表无数据')
+    return
+  }
+  exporting.value = true
+  try {
+    const headers = ['学生ID', '用户名', '姓名', '英文名', '邮箱', '手机号', '性别', '考试次数', '平均分', '最近成绩', '错题数', '状态', '最后登录']
+    const rows = sortedList.value.map((s) => [
+      s.studentId,
+      s.username,
+      s.realName ?? s.displayName ?? '',
+      s.englishName ?? '',
+      s.email ?? '',
+      s.phone ?? '',
+      s.gender === 1 ? '男' : s.gender === 2 ? '女' : '未知',
+      s.examCount ?? 0,
+      s.averageScore != null ? s.averageScore.toFixed(1) : '',
+      s.recentScore != null ? s.recentScore.toFixed(1) : '',
+      s.wrongCount ?? 0,
+      (s.status ?? 1) === 0 ? '禁用' : '正常',
+      s.lastLoginTime ?? '',
+    ].map(escapeCsv).join(','))
+    const csv = '\ufeff' + headers.join(',') + '\n' + rows.join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=UTF-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `我的学生-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${sortedList.value.length} 条数据`)
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -272,6 +319,9 @@ onMounted(load)
           </el-select>
           <el-button :icon="Refresh" @click="load" :loading="loading">刷新</el-button>
           <el-button type="primary" :icon="Plus" @click="openBind">管理绑定</el-button>
+          <el-button :loading="exporting" @click="exportCsv">
+            <el-icon><Download /></el-icon>导出 CSV
+          </el-button>
           <el-button type="primary" size="small" @click="$router.push('/admin/ai-assistant')">
             <el-icon><Cpu /></el-icon>AI学生分析
           </el-button>

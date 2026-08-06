@@ -1,5 +1,6 @@
 import request from '@/utils/request'
 import type { ApiResponse, PageQuery, PageResult } from '@/types/common'
+import type { UserDetail } from '@/types/user'
 import type {
   StudentAnalysis,
   GeneratePaperForm,
@@ -106,3 +107,79 @@ export const validateQuestion = (data: ValidateQuestionForm) =>
   request.post<ApiResponse<ValidateQuestionResult>>('/admin/ai/validate-question', data, {
     timeout: 60_000,
   })
+
+/**
+ * AI 生成阅读理解文章+题目 —— POST /admin/ai/generate-reading
+ * 调用 DeepSeek 生成阅读理解文章和配套选择题
+ */
+export interface ReadingSubQuestion {
+  stem: string
+  options: Array<{ optionLabel: string; optionContent: string; sortNo?: number }>
+  standardAnswer: string
+  analysis: string
+  knowledgePoints: string[]
+  defaultScore?: number
+}
+
+export interface AiReadingResult {
+  title: string
+  content: string
+  summary: string
+  questions: ReadingSubQuestion[]
+}
+
+export const generateReading = (params: {
+  topic?: string
+  passageType?: string
+  difficulty?: number
+  questionCount?: number
+}) =>
+  request.post<ApiResponse<AiReadingResult>>('/admin/ai/generate-reading', null, {
+    params,
+    timeout: 120_000,
+  })
+
+/**
+ * 获取当前教师名下所有学生 —— GET /admin/ai/my-students
+ */
+export const getMyStudents = () =>
+  request.get<ApiResponse<UserDetail[]>>('/admin/ai/my-students')
+
+/**
+ * 一键出卷 —— POST /admin/ai/generate-paper/direct
+ * 直接生成题目并创建试卷+考试，一步到位
+ */
+export interface DirectGenerateParams {
+  targetUserId: number
+  targetUserIds?: number[]
+  categoryIds: number[]
+  easyPct: number
+  mediumPct: number
+  hardPct: number
+  withTrap: boolean
+  focusWeak: boolean
+  questionCount: number
+  singleWeight?: number
+  multipleWeight?: number
+  readingWeight?: number
+  judgeWeight?: number
+  fillWeight?: number
+  analysisText?: string
+  paperName: string
+  sessionName?: string
+  startTime?: string
+  endTime?: string
+  duration?: number
+}
+
+export const directGenerate = (data: DirectGenerateParams) => {
+  const { paperName, sessionName, startTime, endTime, duration, ...generateParams } = data
+  return request.post<ApiResponse<GeneratePaperPreview & { paperId: number; sessionId: number }>>(
+    '/admin/ai/generate-paper/direct',
+    generateParams,
+    {
+      params: { paperName, sessionName, startTime, endTime, duration: duration || 45 },
+      timeout: 180_000,
+    }
+  )
+}

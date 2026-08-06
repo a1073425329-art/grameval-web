@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { List, Grid, Cpu } from '@element-plus/icons-vue'
 import { listAdminResults, exportResults } from '@/api/admin'
@@ -121,11 +121,91 @@ const scoreColor = (row: ExamResultItem) => {
 const durationText = (row: ExamResultItem) =>
   row.durationSeconds ? `${Math.round(row.durationSeconds / 60)} 分钟` : '-'
 
+const rankText = (row: ExamResultItem) =>
+  row.classRank != null && row.totalCount != null ? `${row.classRank} / ${row.totalCount}` : '-'
+
+const correctRateText = (row: ExamResultItem) => {
+  if (row.correctRate != null) return row.correctRate.toFixed(1) + '%'
+  if (row.correctCount != null && row.wrongCount != null) {
+    const total = row.correctCount + row.wrongCount
+    return total > 0 ? ((row.correctCount / total) * 100).toFixed(1) + '%' : '-'
+  }
+  return '-'
+}
+
+/* ---------------- 统计概览 ---------------- */
+const stats = computed(() => {
+  const total = list.value.length
+  const passedCount = list.value.filter(r => r.passed).length
+  const failedCount = total - passedCount
+  const scores = list.value.filter(r => r.totalScore != null)
+  const avgScore = scores.length
+    ? scores.reduce((sum, r) => sum + (r.totalScore ?? 0), 0) / scores.length
+    : 0
+  const maxScore = scores.length ? Math.max(...scores.map(r => r.totalScore ?? 0)) : 0
+  const minScore = scores.length ? Math.min(...scores.map(r => r.totalScore ?? 0)) : 0
+  const passRate = total > 0 ? (passedCount / total) * 100 : 0
+  return { total, passedCount, failedCount, avgScore, maxScore, minScore, passRate }
+})
+
 onMounted(load)
 </script>
 
 <template>
   <div class="page">
+    <!-- 统计概览 -->
+    <div class="stats-bar">
+      <div class="stat-item">
+        <div class="stat-icon" style="background:#ecf5ff;color:#409eff"><el-icon><Document /></el-icon></div>
+        <div class="stat-info">
+          <div class="stat-num">{{ stats.total }}</div>
+          <div class="stat-label">成绩总数</div>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon" style="background:#f0f9eb;color:#67c23a"><el-icon><CircleCheck /></el-icon></div>
+        <div class="stat-info">
+          <div class="stat-num">{{ stats.passedCount }}</div>
+          <div class="stat-label">及格人数</div>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon" style="background:#fef0f0;color:#f56c6c"><el-icon><CircleClose /></el-icon></div>
+        <div class="stat-info">
+          <div class="stat-num">{{ stats.failedCount }}</div>
+          <div class="stat-label">不及格人数</div>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon" style="background:#fdf6ec;color:#e6a23c"><el-icon><Trophy /></el-icon></div>
+        <div class="stat-info">
+          <div class="stat-num">{{ stats.avgScore.toFixed(1) }}</div>
+          <div class="stat-label">平均分</div>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon" style="background:#f4f4f5;color:#909399"><el-icon><TrendCharts /></el-icon></div>
+        <div class="stat-info">
+          <div class="stat-num">{{ stats.passRate.toFixed(1) }}%</div>
+          <div class="stat-label">及格率</div>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon" style="background:#f0f9eb;color:#67c23a"><el-icon><Top /></el-icon></div>
+        <div class="stat-info">
+          <div class="stat-num">{{ stats.maxScore.toFixed(1) }}</div>
+          <div class="stat-label">最高分</div>
+        </div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-icon" style="background:#fef0f0;color:#f56c6c"><el-icon><Bottom /></el-icon></div>
+        <div class="stat-info">
+          <div class="stat-num">{{ stats.minScore.toFixed(1) }}</div>
+          <div class="stat-label">最低分</div>
+        </div>
+      </div>
+    </div>
+
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
         <el-row :gutter="8">
@@ -215,7 +295,23 @@ onMounted(load)
         <el-table-column label="用时" width="100" align="center">
           <template #default="{ row }">{{ durationText(row) }}</template>
         </el-table-column>
-        <el-table-column prop="createTime" label="提交时间" width="180" />
+        <el-table-column label="正确率" width="100" align="center">
+          <template #default="{ row }">
+            <span :style="{ color: (row.correctRate ?? (row.correctCount && row.wrongCount ? row.correctCount / (row.correctCount + row.wrongCount) * 100 : 0)) >= 80 ? '#67c23a' : (row.correctRate ?? 0) >= 60 ? '#e6a23c' : '#f56c6c' }">
+              {{ correctRateText(row) }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="排名" width="100" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.classRank != null" :type="row.classRank <= 3 ? 'warning' : 'info'" size="small">
+              {{ rankText(row) }}
+            </el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="submitTime" label="提交时间" width="180" />
+        <el-table-column prop="createTime" label="生成时间" width="180" />
         <el-table-column label="操作" width="120" align="center">
           <template #default="{ row }">
             <el-button type="primary" size="small" @click="openDetail(row)">详情</el-button>
@@ -234,6 +330,9 @@ onMounted(load)
         >
           <div class="card-header">
             <span class="result-id">#{{ item.id }}</span>
+            <el-tag v-if="item.classRank != null && item.classRank <= 3" type="warning" size="small" effect="dark">
+              第{{ item.classRank }}名
+            </el-tag>
             <el-tag :type="item.passed ? 'success' : 'danger'" size="small">{{ item.passed ? '及格' : '不及格' }}</el-tag>
           </div>
           <div class="card-title">{{ item.sessionName }}</div>
@@ -256,8 +355,16 @@ onMounted(load)
               <span class="meta-value">{{ durationText(item) }}</span>
             </span>
             <span class="meta-item">
-              <span class="meta-label">时间</span>
-              <span class="meta-value">{{ item.createTime || '-' }}</span>
+              <span class="meta-label">正确率</span>
+              <span class="meta-value" :style="{ color: (item.correctRate ?? 0) >= 80 ? '#67c23a' : (item.correctRate ?? 0) >= 60 ? '#e6a23c' : '#f56c6c' }">{{ correctRateText(item) }}</span>
+            </span>
+            <span class="meta-item">
+              <span class="meta-label">排名</span>
+              <span class="meta-value">{{ rankText(item) }}</span>
+            </span>
+            <span class="meta-item">
+              <span class="meta-label">提交时间</span>
+              <span class="meta-value">{{ item.submitTime || item.createTime || '-' }}</span>
             </span>
           </div>
           <div class="card-score">
@@ -302,6 +409,15 @@ onMounted(load)
               {{ detail.durationSeconds ? Math.round(detail.durationSeconds / 60) + ' 分钟' : '-' }}
             </el-descriptions-item>
             <el-descriptions-item label="提交时间">{{ detail.submitTime || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="答对/答错">
+              <span style="color:#67c23a">{{ detail.correctCount }} 题</span> / <span style="color:#f56c6c">{{ detail.wrongCount }} 题</span>
+            </el-descriptions-item>
+            <el-descriptions-item label="正确率">
+              <span v-if="detail.correctCount != null && detail.wrongCount != null">
+                {{ ((detail.correctCount / (detail.correctCount + detail.wrongCount)) * 100).toFixed(1) }}%
+              </span>
+              <span v-else>-</span>
+            </el-descriptions-item>
           </el-descriptions>
 
           <h4 style="margin: 16px 0 8px">逐题明细</h4>
@@ -337,6 +453,47 @@ onMounted(load)
 .filter-card :deep(.el-card__body) { padding-bottom: 0; }
 .toolbar { margin-bottom: 12px; display: flex; justify-content: flex-end; }
 .pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
+
+/* 统计概览 */
+.stats-bar {
+  display: flex;
+  gap: 16px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+  flex-wrap: wrap;
+}
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 100px;
+}
+.stat-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+.stat-info {
+  display: flex;
+  flex-direction: column;
+}
+.stat-num {
+  font-size: 20px;
+  font-weight: 700;
+  color: #303133;
+  line-height: 1.2;
+}
+.stat-label {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 2px;
+}
 
 .result-grid {
   display: grid;

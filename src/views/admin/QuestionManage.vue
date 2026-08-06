@@ -15,6 +15,9 @@ import {
   Lightning,
   CircleCheck,
   Warning,
+  Download,
+  Upload,
+  Document,
 } from '@element-plus/icons-vue'
 import {
   listAdminQuestions,
@@ -27,8 +30,11 @@ import {
   listReadingPassages,
   createReadingPassage,
   addPassageQuestion,
+  downloadImportTemplate,
+  importQuestions,
 } from '@/api/admin'
-import { validateQuestion } from '@/api/ai'
+import type { UploadInstance } from 'element-plus'
+import { validateQuestion, generateReading } from '@/api/ai'
 import type { Question, QuestionOption, QuestionForm } from '@/types/question'
 import type { Difficulty, QuestionType } from '@/types/common'
 import type { Category } from '@/types/category'
@@ -398,56 +404,34 @@ const aiGenerateReading = async () => {
   }
   aiGenerating.value = true
   try {
-    await new Promise((r) => setTimeout(r, 2000))
-    const mock = generateMockReading(
-      readingForm.topic || 'Technology',
-      readingForm.passageType,
-      readingForm.difficulty
-    )
-    readingForm.passageTitle = mock.title
-    readingForm.passageContent = mock.content
-    readingForm.summary = mock.summary
-    readingForm.subQuestions = mock.questions
+    const res = await generateReading({
+      topic: readingForm.topic || undefined,
+      passageType: readingForm.passageType || undefined,
+      difficulty: readingForm.difficulty || 2,
+      questionCount: 5,
+    })
+    const data = res.data.data || res.data
+    readingForm.passageTitle = data.title
+    readingForm.passageContent = data.content
+    readingForm.summary = data.summary || ''
+    readingForm.subQuestions = data.questions.map((q: any, idx: number) => ({
+      stem: q.stem,
+      standardAnswer: q.standardAnswer,
+      analysis: q.analysis || '',
+      knowledgePoints: q.knowledgePoints || ['阅读理解'],
+      options: (q.options || []).map((o: any, i: number) => ({
+        optionLabel: o.optionLabel || String.fromCharCode(65 + i),
+        optionContent: o.optionContent,
+        sortNo: i + 1,
+      })),
+      defaultScore: 2,
+    }))
     readingForm.source = 'AI'
     ElMessage.success('AI 生成成功')
   } catch {
-    ElMessage.error('AI 生成失败')
+    /* handled by global interceptor */
   } finally {
     aiGenerating.value = false
-  }
-}
-
-function generateMockReading(topic: string, type?: string, difficulty: Difficulty = 2) {
-  const qCount = 5
-  const questions: ReadingSubQ[] = []
-  for (let i = 0; i < qCount; i++) {
-    questions.push({
-      stem: `Question ${i + 1}: According to the passage, which of the following statements is ${['true', 'false', 'correct', 'best supported', 'the main idea'][i % 5]}?`,
-      standardAnswer: ['A', 'B', 'C', 'D'][i % 4],
-      analysis: `Based on paragraph ${i + 1} of the passage, we can infer that the correct answer is ${['A', 'B', 'C', 'D'][i % 4]}.`,
-      knowledgePoints: ['阅读理解', '细节理解'],
-      options: [
-        { optionLabel: 'A', optionContent: `Option A for question ${i + 1}`, sortNo: 1 },
-        { optionLabel: 'B', optionContent: `Option B for question ${i + 1}`, sortNo: 2 },
-        { optionLabel: 'C', optionContent: `Option C for question ${i + 1}`, sortNo: 3 },
-        { optionLabel: 'D', optionContent: `Option D for question ${i + 1}`, sortNo: 4 },
-      ],
-      defaultScore: 2,
-    })
-  }
-  return {
-    title: `The Impact of ${topic} on Modern Society`,
-    content: `In recent years, ${topic.toLowerCase()} has emerged as a transformative force shaping various aspects of our daily lives. The rapid advancement of technology and globalization has accelerated this trend significantly.
-
-Scholars and researchers from diverse fields have been studying the implications of ${topic.toLowerCase()} from multiple perspectives. Their findings suggest that while there are numerous benefits, there are also challenges that need careful consideration.
-
-According to recent statistics, more than 70 percent of the population has experienced direct effects of ${topic.toLowerCase()} in their professional or personal lives. This number is expected to grow exponentially in the coming decade.
-
-Experts argue that understanding the nuances of ${topic.toLowerCase()} is crucial for making informed decisions in both policy and practice. The key lies in balancing innovation with responsibility, ensuring that progress benefits all segments of society.
-
-Looking ahead, the future of ${topic.toLowerCase()} appears both promising and uncertain. Continued research, open dialogue, and adaptive strategies will be essential for navigating the complexities that lie ahead.`,
-    summary: `本文探讨了${topic}对现代社会的影响，分析了其带来的机遇与挑战。`,
-    questions,
   }
 }
 
@@ -836,6 +820,112 @@ const batchToggle = async (status: 0 | 1) => {
   load()
 }
 
+/* CSV 导出（前端从当前 list 生成） */
+const exporting = ref(false)
+const escapeCsv = (val: unknown): string => {
+  if (val == null) return ''
+  const s = String(val)
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+const exportCsv = () => {
+  if (!list.value.length) {
+    ElMessage.warning('当前列表无数据')
+    return
+  }
+  exporting.value = true
+  try {
+    const headers = ['ID', '题干', '分类', '题型', '难度', '默认分值', '状态', '引用次数', '陷阱', 'AI生成', '标准答案', '知识点']
+    const rows = list.value.map((q) => [
+      q.id,
+      q.stem,
+      q.categoryName ?? '',
+      q.questionType,
+      q.difficulty,
+      q.defaultScore ?? '',
+      q.status === 1 ? '启用' : '停用',
+      q.usageCount ?? 0,
+      q.hasTrap ? '是' : '否',
+      q.aiGenerated ? '是' : '否',
+      q.standardAnswer ?? '',
+      (q.knowledgePoints ?? []).join(';'),
+    ].map(escapeCsv).join(','))
+    const csv = '\ufeff' + headers.join(',') + '\n' + rows.join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=UTF-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `题目数据-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${list.value.length} 条数据`)
+  } finally {
+    exporting.value = false
+  }
+}
+
+/* CSV 模板下载 */
+const downloadTemplate = async () => {
+  try {
+    const res = (await downloadImportTemplate()) as unknown as { data: Blob; headers: Record<string, string> }
+    const blob = new Blob([res.data], { type: 'text/csv;charset=UTF-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '题目导入模板.csv'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    ElMessage.success('模板已下载')
+  } catch {
+    ElMessage.error('模板下载失败')
+  }
+}
+
+/* CSV 导入 */
+const importDialogVisible = ref(false)
+const importFile = ref<File | null>(null)
+const importing = ref(false)
+const importResult = ref<{ successCount: number; failedCount: number; errors?: string[] } | null>(null)
+const uploadRef = ref<UploadInstance>()
+
+const openImportDialog = () => {
+  importFile.value = null
+  importResult.value = null
+  importDialogVisible.value = true
+}
+
+const handleFileChange = (file: { raw: File } | File) => {
+  importFile.value = ('raw' in file ? file.raw : file) as File
+}
+
+const handleImport = async () => {
+  if (!importFile.value) {
+    ElMessage.warning('请先选择 CSV 文件')
+    return
+  }
+  importing.value = true
+  importResult.value = null
+  try {
+    const res = await importQuestions(importFile.value)
+    importResult.value = res.data
+    if (res.data.failedCount === 0) {
+      ElMessage.success(`成功导入 ${res.data.successCount} 条`)
+      importDialogVisible.value = false
+      load()
+    } else {
+      ElMessage.warning(`成功 ${res.data.successCount} 条，失败 ${res.data.failedCount} 条`)
+    }
+  } catch {
+    ElMessage.error('导入失败')
+  } finally {
+    importing.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     const c = await listCategoryTree()
@@ -1008,6 +1098,15 @@ onMounted(async () => {
         >
           批量删除
         </el-button>
+        <el-button :loading="exporting" @click="exportCsv">
+          <el-icon><Download /></el-icon>导出 CSV
+        </el-button>
+        <el-button @click="downloadTemplate">
+          <el-icon><Document /></el-icon>下载模板
+        </el-button>
+        <el-button type="primary" plain @click="openImportDialog">
+          <el-icon><Upload /></el-icon>导入 CSV
+        </el-button>
       </div>
 
       <!-- 表格布局 -->
@@ -1055,6 +1154,18 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="引用" width="80" align="center">
           <template #default="{ row }">{{ row.usageCount ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column label="陷阱" width="80" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.hasTrap" type="danger" size="small" effect="light">是</el-tag>
+            <span v-else style="color: #c0c4cc">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="AI" width="70" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.aiGenerated" type="primary" size="small" effect="light">AI</el-tag>
+            <span v-else style="color: #c0c4cc">-</span>
+          </template>
         </el-table-column>
         <el-table-column label="操作" width="150" align="center" fixed="right">
           <template #default="{ row }">
@@ -1665,7 +1776,7 @@ onMounted(async () => {
                   <el-radio-group v-model="readingForm.source">
                     <el-radio value="TEMP">仅临时出题（不入库）</el-radio>
                     <el-radio value="MANUAL">存入文章库</el-radio>
-                    <el-radio value="AI" disabled>AI 生成</el-radio>
+                    <el-radio value="AI">AI 生成</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <div class="ai-btn-row">
@@ -1743,6 +1854,49 @@ onMounted(async () => {
         <el-button type="primary" @click="submit" :loading="submittingReading">
           保存
         </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- CSV 导入弹窗 -->
+    <el-dialog v-model="importDialogVisible" title="批量导入题目" width="560px">
+      <div style="margin-bottom: 12px;">
+        <el-button text type="primary" @click="downloadTemplate">
+          <el-icon><Document /></el-icon>点击下载 CSV 模板
+        </el-button>
+      </div>
+      <el-upload
+        ref="uploadRef"
+        :auto-upload="false"
+        :limit="1"
+        accept=".csv,text/csv"
+        :on-change="handleFileChange"
+        :on-exceed="() => ElMessage.warning('一次只能上传 1 个文件')"
+        drag
+      >
+        <el-icon class="el-icon--upload"><Upload /></el-icon>
+        <div class="el-upload__text">将 CSV 文件拖到此处，或<em>点击选择</em></div>
+        <template #tip>
+          <div class="el-upload__tip" style="color:#909399">
+            仅支持 UTF-8 编码的 CSV 文件，按模板字段填写。
+          </div>
+        </template>
+      </el-upload>
+
+      <div v-if="importResult" style="margin-top: 12px;">
+        <el-alert
+          :title="`成功 ${importResult.successCount} 条 / 失败 ${importResult.failedCount} 条`"
+          :type="importResult.failedCount === 0 ? 'success' : 'warning'"
+          :closable="false"
+          show-icon
+        />
+        <div v-if="importResult.errors?.length" style="margin-top: 8px; max-height: 200px; overflow-y: auto;">
+          <pre style="background:#fef0f0; padding: 8px; border-radius: 4px; font-size: 12px; color: #f56c6c;">{{ importResult.errors.join('\n') }}</pre>
+        </div>
+      </div>
+
+      <template #footer>
+        <el-button @click="importDialogVisible = false">关闭</el-button>
+        <el-button type="primary" :loading="importing" @click="handleImport">开始导入</el-button>
       </template>
     </el-dialog>
   </div>

@@ -200,6 +200,55 @@ const methodLabel = (method?: string) => {
   return method
 }
 
+/* ---------------- CSV 导出 ---------------- */
+const exporting = ref(false)
+const escapeCsv = (val: unknown): string => {
+  if (val == null) return ''
+  const s = String(val)
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+const exportCsv = () => {
+  if (!list.value.length) {
+    ElMessage.warning('当前列表无数据')
+    return
+  }
+  exporting.value = true
+  try {
+    const headers = ['日志ID', '时间', '用户', '用户ID', '角色', 'HTTP方法', '操作类型', '结果码', '目标类型', '目标ID', '请求URI', '请求参数', '客户端IP', '耗时(ms)', '详情']
+    const rows = list.value.map((l) => [
+      l.id,
+      l.createTime ?? '',
+      l.realName ?? l.username ?? '',
+      l.userId ?? '',
+      l.userRole ?? '',
+      l.httpMethod ?? '',
+      typeLabel(l.operationType),
+      l.resultCode ?? '',
+      l.targetType ?? '',
+      l.targetId ?? '',
+      l.requestUri ?? '',
+      l.requestParams ?? '',
+      l.clientIp ?? '',
+      l.durationMs ?? '',
+      l.detail ?? '',
+    ].map(escapeCsv).join(','))
+    const csv = '\ufeff' + headers.join(',') + '\n' + rows.join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=UTF-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `操作日志-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${list.value.length} 条数据`)
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(async () => {
   await loadTypes()
   await load()
@@ -270,6 +319,9 @@ onMounted(async () => {
           <el-form-item>
             <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
             <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
+            <el-button :loading="exporting" @click="exportCsv">
+              <el-icon><Download /></el-icon>导出 CSV
+            </el-button>
             <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
               <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
               {{ viewMode === 'card' ? '表格' : '卡片' }}

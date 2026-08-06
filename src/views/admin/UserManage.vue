@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { List, Grid } from '@element-plus/icons-vue'
+import { Search, Refresh, Plus, User, Download } from '@element-plus/icons-vue'
 import {
   listUsers,
   createUser,
@@ -184,6 +185,50 @@ const onStatusChange = async (row: UserDetail, val: number) => {
 
 const genderText = (g?: number) => (g === 1 ? '男' : g === 2 ? '女' : '-')
 
+/* ---------------- CSV 导出 ---------------- */
+const exporting = ref(false)
+const escapeCsv = (val: unknown): string => {
+  if (val == null) return ''
+  const s = String(val)
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+const exportCsv = () => {
+  if (!list.value.length) {
+    ElMessage.warning('当前列表无数据')
+    return
+  }
+  exporting.value = true
+  try {
+    const headers = ['ID', '用户名', '姓名', '英文名', '邮箱', '手机号', '性别', '角色', '状态', '最后登录']
+    const rows = list.value.map((u) => [
+      u.id,
+      u.username,
+      u.realName ?? '',
+      u.englishName ?? '',
+      u.email ?? '',
+      u.phone ?? '',
+      u.gender === 1 ? '男' : u.gender === 2 ? '女' : '未知',
+      u.role,
+      u.status === 1 ? '启用' : '禁用',
+      u.lastLoginTime ?? '',
+    ].map(escapeCsv).join(','))
+    const csv = '\ufeff' + headers.join(',') + '\n' + rows.join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=UTF-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `用户数据-${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${list.value.length} 条数据`)
+  } finally {
+    exporting.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
@@ -241,6 +286,9 @@ onMounted(load)
       <div class="toolbar">
         <el-button type="primary" @click="openCreate">
           <el-icon><Plus /></el-icon>新增用户
+        </el-button>
+        <el-button :loading="exporting" @click="exportCsv">
+          <el-icon><Download /></el-icon>导出 CSV
         </el-button>
       </div>
 

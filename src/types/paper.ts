@@ -31,6 +31,10 @@ export interface Paper {
   createTime?: string
   updateTime?: string
   questions?: PaperQuestionVO[]
+  /** 建议考试时长（分钟） */
+  suggestedDuration?: number
+  /** 归档状态：0未归档，1已归档 */
+  archiveStatus?: number
 }
 
 /** 试卷创建/更新请求 —— 对齐后端 PaperRequest */

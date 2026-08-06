@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { listUsers, listCategoryTree } from '@/api/admin'
-import { analyzeStudent, analyzeStudents, generatePreview, confirmPaper } from '@/api/ai'
+import { analyzeStudent, analyzeStudents, generatePreview, confirmPaper, getMyStudents, directGenerate } from '@/api/ai'
 import type { UserDetail } from '@/types/user'
 import type { Category } from '@/types/category'
 import type { Question } from '@/types/question'
@@ -20,11 +20,73 @@ import type { BatchStudentAnalysis } from '@/api/ai'
  * ============================================================ */
 
 const students = ref<UserDetail[]>([])
-// 支持多选学生
+const myStudents = ref<UserDetail[]>([])
+const loadingMyStudents = ref(false)
+const activeFilter = ref<'all' | 'mine'>('all')
+
+const filteredStudents = computed(() => {
+  if (activeFilter.value === 'mine' && myStudents.value.length > 0) {
+    return myStudents.value
+  }
+  return students.value
+})
+
 const selectedStudentIds = ref<number[]>([])
 const selectedStudents = computed(() =>
   students.value.filter((s) => selectedStudentIds.value.includes(s.id))
 )
+
+const allSelectedIds = computed(() => filteredStudents.value.map(s => s.id))
+const isAllSelected = computed(() =>
+  filteredStudents.value.length > 0 &&
+  filteredStudents.value.every(s => selectedStudentIds.value.includes(s.id))
+)
+const isIndeterminate = computed(() =>
+  selectedStudentIds.value.length > 0 && !isAllSelected.value
+)
+
+const toggleSelectAll = () => {
+  if (isAllSelected.value) {
+    selectedStudentIds.value = []
+  } else {
+    selectedStudentIds.value = [...new Set([...selectedStudentIds.value, ...allSelectedIds.value])]
+  }
+}
+
+const selectMyStudents = async () => {
+  if (myStudents.value.length > 0) {
+    activeFilter.value = 'mine'
+    selectedStudentIds.value = myStudents.value.map(s => s.id)
+    ElMessage.success(`已选择 ${myStudents.value.length} 名我的学生`)
+    return
+  }
+  loadingMyStudents.value = true
+  try {
+    const res = await getMyStudents()
+    myStudents.value = res.data ?? []
+    activeFilter.value = 'mine'
+    if (myStudents.value.length > 0) {
+      selectedStudentIds.value = myStudents.value.map(s => s.id)
+      ElMessage.success(`已加载并选择 ${myStudents.value.length} 名我的学生`)
+    } else {
+      ElMessage.info('暂无班级学生，请先在班级管理中分配学生')
+    }
+  } catch {
+    ElMessage.warning('加载我的学生失败，显示全部学生')
+    activeFilter.value = 'all'
+  } finally {
+    loadingMyStudents.value = false
+  }
+}
+
+const selectAllStudents = () => {
+  selectedStudentIds.value = [...allSelectedIds.value]
+  ElMessage.success(`已全选 ${filteredStudents.value.length} 名学生`)
+}
+
+const clearSelection = () => {
+  selectedStudentIds.value = []
+}
 
 const loadStudents = async () => {
   try {
@@ -218,7 +280,68 @@ const doCompose = async () => {
 }
 
 /* ============================================================ *
- *  4. 确认入库
+ *  4. 一键出卷/考试
+ * ============================================================ */
+
+const directGenerating = ref(false)
+const directResult = ref<{ paperId: number; sessionId: number } | null>(null)
+
+const doDirectGenerate = async () => {
+  if (selectedStudentIds.value.length === 0) return ElMessage.warning('请先选择学生')
+  if (!formRef.value) return
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+    if (!difficultyValid.value) { ElMessage.warning('难度三档百分比之和必须为 100%'); return }
+    if (!typeValid.value) { ElMessage.warning('题型占比之和必须为 100%'); return }
+
+    const names = selectedStudents.value.map(s => s.realName || s.username).join('、')
+    const stamp = new Date().toISOString().slice(0, 10)
+    const paperName = `AI · ${names || '学生'} · ${stamp}`
+    const sessionName = `${names || '学生'} 专项训练 (${stamp})`
+    const now = new Date()
+    const later = new Date(now.getTime() + 24 * 3600 * 1000)
+    const fmt = (d: Date) => {
+      const pad = (n: number) => String(n).padStart(2, '0')
+      return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+    }
+
+    directGenerating.value = true
+    directResult.value = null
+
+    try {
+      const res = await directGenerate({
+        targetUserId: selectedStudentIds.value[0],
+        targetUserIds: selectedStudentIds.value,
+        analysisText: analysisDraft.value,
+        categoryIds: [...form.categoryIds],
+        easyPct: form.easyPct,
+        mediumPct: form.mediumPct,
+        hardPct: form.hardPct,
+        withTrap: form.withTrap,
+        focusWeak: form.focusWeak,
+        questionCount: form.questionCount,
+        singleWeight: form.singleWeight,
+        multipleWeight: form.multipleWeight,
+        readingWeight: form.readingWeight,
+        judgeWeight: form.judgeWeight,
+        fillWeight: form.fillWeight,
+        paperName,
+        sessionName,
+        startTime: fmt(now),
+        endTime: fmt(later),
+        duration: Math.min(180, Math.max(20, form.questionCount * 1)),
+      })
+      directResult.value = {
+        paperId: res.data.paperId,
+        sessionId: res.data.sessionId,
+      }
+      ElMessage.success(`已为 ${names} 创建试卷和考试！试卷ID:${res.data.paperId}`)
+    } catch { /* handled */ } finally { directGenerating.value = false }
+  })
+}
+
+/* ============================================================ *
+ *  5. 确认入库
  * ============================================================ */
 
 const confirmVisible = ref(false)
@@ -322,6 +445,24 @@ onMounted(async () => {
         </template>
 
         <el-form-item label="选择学生（支持多选）">
+          <div class="student-filter-bar">
+            <el-radio-group v-model="activeFilter" size="small">
+              <el-radio-button label="all">全部学生</el-radio-button>
+              <el-radio-button label="mine" @click="selectMyStudents" :loading="loadingMyStudents">
+                我的学生
+              </el-radio-button>
+            </el-radio-group>
+            <div class="student-actions">
+              <el-button size="small" @click="toggleSelectAll" :disabled="filteredStudents.length === 0">
+                <el-icon><Select /></el-icon>
+                {{ isAllSelected ? '取消全选' : '全选' }}
+              </el-button>
+              <el-button size="small" @click="clearSelection" :disabled="selectedStudentIds.length === 0">
+                <el-icon><Delete /></el-icon>
+                清空
+              </el-button>
+            </div>
+          </div>
           <el-select
             v-model="selectedStudentIds"
             multiple
@@ -330,7 +471,7 @@ onMounted(async () => {
             style="width: 100%"
           >
             <el-option
-              v-for="s in students"
+              v-for="s in filteredStudents"
               :key="s.id"
               :label="`${s.realName || s.username}（${s.username}）`"
               :value="s.id"
@@ -340,6 +481,10 @@ onMounted(async () => {
             <span class="selected-count">已选择 {{ selectedStudentIds.length }} 名学生</span>
             <span v-if="selectedStudentIds.length <= 5" class="selected-names">{{ selectedStudents.map(s => s.realName || s.username).join('、') }}</span>
             <span v-else class="selected-names">已选择 {{ selectedStudentIds.length }} 名学生，点击查看详情</span>
+          </div>
+          <div v-if="activeFilter === 'mine' && myStudents.length === 0 && !loadingMyStudents" class="no-mine-hint">
+            <el-empty description="暂无班级学生" :image-size="40" />
+            <p class="tip">请先在班级管理中为您的班级分配学生</p>
           </div>
         </el-form-item>
 
@@ -546,8 +691,30 @@ onMounted(async () => {
               @click="doCompose"
             >
               <el-icon><MagicStick /></el-icon>
-              {{ composing ? 'AI 生成中，请稍候 (约 30-90 秒)…' : '开始 AI 出题' }}
+              {{ composing ? 'AI 生成中，请稍候 (约 30-90 秒)…' : '开始 AI 出题（预览）' }}
             </el-button>
+            <el-button
+              type="success"
+              size="large"
+              :loading="directGenerating"
+              :disabled="selectedStudentIds.length === 0 || !difficultyValid || !typeValid"
+              @click="doDirectGenerate"
+            >
+              <el-icon><Promotion /></el-icon>
+              {{ directGenerating ? '正在生成试卷并创建考试…' : '🚀 一键出卷+考试' }}
+            </el-button>
+          </div>
+
+          <div v-if="directResult" class="direct-result">
+            <el-alert type="success" :closable="false" show-icon>
+              <template #title>
+                ✅ 已成功创建试卷和考试场次！
+              </template>
+              <div class="direct-result-links">
+                <span>试卷 ID: <b>{{ directResult.paperId }}</b></span>
+                <span>考试 ID: <b>{{ directResult.sessionId }}</b></span>
+              </div>
+            </el-alert>
           </div>
         </el-form>
       </el-card>
@@ -786,7 +953,43 @@ onMounted(async () => {
   }
 }
 
-/* 批量分析样式 */
+.student-filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.student-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.no-mine-hint {
+  margin-top: 12px;
+  text-align: center;
+}
+
+.direct-result {
+  margin-top: 12px;
+}
+
+.direct-result-links {
+  display: flex;
+  gap: 16px;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.compose-actions {
+  margin-top: 8px;
+  text-align: center;
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
 .batch-overview {
   margin-bottom: 12px;
 }

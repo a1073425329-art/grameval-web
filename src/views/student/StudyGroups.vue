@@ -1,7 +1,7 @@
 <script setup lang="ts">import { ref, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus, Search, User, Star, Setting, ArrowRight, ArrowLeft } from '@element-plus/icons-vue';
-import { listMyGroups, createStudyGroup, joinGroup, leaveGroup, searchGroups, getStudyGroup, listGroupMembers, deleteStudyGroup } from '@/api/student';
+import { Plus, User, ArrowRight, ArrowLeft } from '@element-plus/icons-vue';
+import { listMyGroups, createStudyGroup, joinGroup, leaveGroup, searchGroups, listGroupMembers } from '@/api/student';
 import type { StudyGroup, GroupMember } from '@/api/student';
 const loading = ref(false);
 const myGroups = ref<StudyGroup[]>([]);
@@ -89,17 +89,6 @@ const handleLeave = async (groupId: number) => {
  showDetailModal.value = false;
  currentGroup.value = null;
  }
- }
- catch {
- // 用户取消
- }
-};
-const handleDelete = async (groupId: number) => {
- try {
- await ElMessageBox.confirm('确定删除该小组？', '确认删除', { type: 'warning' });
- await deleteStudyGroup(groupId);
- ElMessage.success('删除成功');
- loadMyGroups();
  }
  catch {
  // 用户取消

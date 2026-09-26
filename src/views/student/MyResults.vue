@@ -115,7 +115,8 @@ const renderTrendChart = () => {
     tooltip: {
       trigger: 'axis',
       formatter: (p: any) => {
-        const item = data[p[0].dataIndex]
+const item = data[p[0].dataIndex]
+        if (!item) return ''
         return `${item.date}<br/>${item.name}<br/>得分率：${p[0].value.toFixed(1)}%`
       },
     },
@@ -215,9 +216,9 @@ const renderDistChart = (key: number, answers: AnswerDetail[] = []) => {
     xAxis: { type: 'category', data: labels, axisLabel: { fontSize: 11 } },
     yAxis: { type: 'value', minInterval: 1, axisLabel: { fontSize: 11 } },
     series: [
-      { name: '正确', type: 'bar', stack: 't', data: labels.map(l => groups[l].correct), itemStyle: { color: '#67c23a' }, barMaxWidth: 36 },
-      { name: '错误', type: 'bar', stack: 't', data: labels.map(l => groups[l].wrong), itemStyle: { color: '#f56c6c' }, barMaxWidth: 36 },
-      { name: '未答', type: 'bar', stack: 't', data: labels.map(l => groups[l].unanswered), itemStyle: { color: '#c0c4cc' }, barMaxWidth: 36 },
+      { name: '正确', type: 'bar', stack: 't', data: labels.map(l => groups[l]?.correct ?? 0), itemStyle: { color: '#67c23a' }, barMaxWidth: 36 },
+      { name: '错误', type: 'bar', stack: 't', data: labels.map(l => groups[l]?.wrong ?? 0), itemStyle: { color: '#f56c6c' }, barMaxWidth: 36 },
+      { name: '未答', type: 'bar', stack: 't', data: labels.map(l => groups[l]?.unanswered ?? 0), itemStyle: { color: '#c0c4cc' }, barMaxWidth: 36 },
     ],
   })
 }
@@ -225,7 +226,7 @@ const renderDistChart = (key: number, answers: AnswerDetail[] = []) => {
 /* ============================================================ *
  *  新增：错题解析入口 + 单条成绩导出
  * ============================================================ */
-const goWrongAnalysis = (row: ExamResultItem) => {
+const goWrongAnalysis = (_row: ExamResultItem) => {
   // 跳转错题本页面（按考试来源筛选）
   router.push({ path: '/student/wrong-book', query: { source: 'EXAM' } })
 }
@@ -388,7 +389,7 @@ onBeforeUnmount(() => {
                   <div class="ed-title">
                     <el-icon><Document /></el-icon> 逐题明细
                   </div>
-                  <el-table :data="expandedDetails[row.examId ?? row.id].answers" size="small" border stripe>
+                  <el-table :data="expandedDetails[row.examId ?? row.id]?.answers ?? []" size="small" border stripe>
                     <el-table-column type="index" label="#" width="44" />
                     <el-table-column label="题型" width="80">
                       <template #default="{ row: a }">{{ typeLabel(a.questionType) }}</template>
@@ -517,7 +518,7 @@ onBeforeUnmount(() => {
                 <div class="ed-title" style="margin-top:10px"><el-icon><Document /></el-icon> 逐题概览</div>
                 <div class="qa-list">
                   <div
-                    v-for="(a, i) in expandedDetails[item.examId ?? item.id].answers"
+                    v-for="(a, i) in expandedDetails[item.examId ?? item.id]?.answers ?? []"
                     :key="a.questionId"
                     class="qa-item"
                     :class="{ ok: a.isCorrect === 1, ng: a.isCorrect === 0 }"

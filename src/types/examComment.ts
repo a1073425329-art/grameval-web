@@ -22,6 +22,6 @@ export interface ExamCommentForm {
   examId: number
   commentType: string
   content: string
-  ratingLevel?: number
-  parentCommentId?: number
+  ratingLevel?: number | undefined
+  parentCommentId?: number | undefined
 }

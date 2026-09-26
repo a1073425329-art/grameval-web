@@ -208,10 +208,11 @@
                     <div>类型: <el-tag size="small" :type="provider.providerType === 'WORKFLOW' ? 'warning' : ''">{{ provider.providerType }}</el-tag></div>
                   </div>
                   <div class="test-result" v-if="testResults[provider.id]">
+                    <!-- v-if 已保证该项存在；noUncheckedIndexedAccess 下索引访问为可选，故用可选链 + 兜底值满足类型检查 -->
                     <el-alert
-                      :type="testResults[provider.id].success ? 'success' : 'error'"
-                      :title="testResults[provider.id].message"
-                      :description="`耗时 ${testResults[provider.id].latencyMs}ms`"
+                      :type="testResults[provider.id]?.success ? 'success' : 'error'"
+                      :title="testResults[provider.id]?.message ?? ''"
+                      :description="`耗时 ${testResults[provider.id]?.latencyMs ?? 0}ms`"
                       show-icon
                       :closable="false"
                     />

@@ -39,6 +39,10 @@ const load = async () => {
   } finally { loading.value = false }
 }
 
+// [2026-09-26 修复] 页面挂载时加载掌握度数据 —— 原代码定义了 load() 却从未调用，
+// 导致「知识点掌握度」页面进入后永远不加载数据（严格模式下 TS6133 暴露该缺陷）。
+onMounted(load)
+
 // ---- 旧 renderChart 函数（保留注释） ----
 // const renderChart = () => {
 //   const container = document.getElementById('mastery-radar-chart')

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Plus, Edit, Delete, ChatLineRound, List, Grid, View, Message, Check } from '@element-plus/icons-vue'
+import { Search, Refresh, Plus, Edit, Delete, List, Grid, View, Check } from '@element-plus/icons-vue'
 import {
   pageExamComments,
   getExamCommentStats,
@@ -106,11 +106,6 @@ const examLabel = (id?: number) => {
   const who = r.realName || r.username || ''
   const paper = r.paperName || ''
   return `#${id} ${who}${paper ? ' · ' + paper : ''}`
-}
-const teacherLabel = (id?: number) => {
-  if (!id) return ''
-  const t = teachers.value.find(u => u.id === id)
-  return t ? `${t.realName || t.username} (#${id})` : `#${id}`
 }
 
 /* ---------------- 考试记录选择器搜索 ---------------- */

@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { VueFlow, useVueFlow, applyNodeChanges, applyEdgeChanges } from '@vue-flow/core';
 import { Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
-import type { Node, Edge, Connection as FlowConnection } from '@vue-flow/core'
+import type { Connection as FlowConnection } from '@vue-flow/core'
 import { getWorkflowNodes, getWorkflowConnections, executeWorkflow, executeBatchWorkflow, getExecutionHistory, getExecutionDetail, executeNode } from '@/api/workflow'
 import { listUsers } from '@/api/admin'
 import type { WorkflowNode, WorkflowConnection, WorkflowExecution } from '@/types/workflow'
@@ -13,7 +13,7 @@ import {
   Connection as IconConnection, DocumentAdd, Download, QuestionFilled, Search, FullScreen, ZoomOut, ZoomIn,
   RefreshRight, ArrowLeft, ArrowRight, Grid, Magnet, MapLocation, VideoPlay, User,
   EditPen, DataAnalysis, Cpu, Tickets, WarningFilled, Setting, CopyDocument, Delete,
-  Document, Clock, Refresh, Upload,
+  Document, Clock, Refresh,
 } from '@element-plus/icons-vue'
 
 // ============================================================
@@ -137,7 +137,7 @@ const buildGraph = (wfNodes: WorkflowNode[]) => {
   const flt = filteredNodeIds.value
   nodes.value = wfNodes.map(node => {
     const pos = (node.x != null && node.y != null) ? { x: node.x, y: node.y } : (fb[node.nodeId] || { x: 100, y: 100 })
-    const c = nodeTypeColor[node.nodeType] || nodeTypeColor.CODE
+    const c = nodeTypeColor[node.nodeType] ?? nodeTypeColor.CODE ?? { bg: '#f4f4f5', text: '#909399', border: '#d3d4d6' }
     const v = !flt || flt.includes(node.nodeId)
     return { id: node.nodeId, type: 'custom', data: { label: node.nodeName, nodeType: node.nodeType, description: node.description, model: node.model, inputs: node.inputs, outputs: node.outputs, icon: nodeIconMap[node.nodeType] || '📦' }, position: pos, hidden: !v, style: { background: c.bg, color: c.text, borderColor: c.border, opacity: v ? 1 : 0.2 } }
   })
@@ -174,8 +174,8 @@ const onPaneClick = () => { closeCtx() }
 
 // 执行工作流
 const doExecute = async () => {
-  if (workflowMode.value === 'single' && selectedStudentIds.value.length !== 1) return ElMessage.warning('请选择一个学生')
-  if (workflowMode.value === 'batch' && selectedStudentIds.value.length < 2) return ElMessage.warning('批量模式需要至少2名学生')
+  if (workflowMode.value === 'single' && selectedStudentIds.value.length !== 1) { ElMessage.warning('请选择一个学生'); return }
+  if (workflowMode.value === 'batch' && selectedStudentIds.value.length < 2) { ElMessage.warning('批量模式需要至少2名学生'); return }
   executing.value = true; nodeStatus.value = {}; executionLogs.value = []; showLogs.value = true; executionResult.value = null
   const order = workflowMode.value === 'single'
     ? ['student_profile', 'wrong_stats', 'weak_analysis', 'strategy_gen', 'question_gen', 'quality_check', 'knowledge_tag', 'format_output']
@@ -187,7 +187,10 @@ const doExecute = async () => {
     executionLogs.value.push({ time: new Date().toLocaleTimeString(), level: 'success', message: `✓ ${name} 完成`, nodeId: nid }); nodeStatus.value[nid] = 'success'
   }
   try {
-    const res = workflowMode.value === 'single' ? await executeWorkflow(selectedStudentIds.value[0], questionCount.value) : await executeBatchWorkflow(selectedStudentIds.value, questionCount.value)
+    const singleId = selectedStudentIds.value[0]
+    const res = workflowMode.value === 'single' && singleId !== undefined
+      ? await executeWorkflow(singleId, questionCount.value)
+      : await executeBatchWorkflow(selectedStudentIds.value, questionCount.value)
     executionResult.value = res.data; res.data.nodeResults?.forEach((r: any) => { nodeStatus.value[r.nodeId] = r.status === 'SUCCESS' ? 'success' : 'failed' })
     executionLogs.value.push({ time: new Date().toLocaleTimeString(), level: 'success', message: '🎉 完成！' }); ElMessage.success('工作流执行完成！'); loadHistory()
   } catch { executionLogs.value.push({ time: new Date().toLocaleTimeString(), level: 'error', message: '❌ 执行失败' }); ElMessage.error('执行失败') }

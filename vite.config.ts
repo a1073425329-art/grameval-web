@@ -76,6 +76,8 @@ export default defineConfig({
             }
             return 'vendor'
           }
+          // 非 node_modules 的模块不参与手动分包 (返回 undefined = 交给 rollup 默认行为)
+          return undefined
         },
         chunkFileNames: 'assets/js/[name]-[hash].js',
         entryFileNames: 'assets/js/[name]-[hash].js',

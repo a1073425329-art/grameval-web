@@ -2,11 +2,12 @@ import request from '@/utils/request'
 import type { ApiResponse, PageQuery, PageResult } from '@/types/common'
 import type { ExamComment, ExamCommentForm } from '@/types/examComment'
 
+/* 请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明 */
 export interface ExamCommentQuery extends PageQuery {
-  commentType?: string
-  isRead?: boolean
-  teacherId?: number
-  examId?: number
+  commentType?: string | undefined
+  isRead?: boolean | undefined
+  teacherId?: number | undefined
+  examId?: number | undefined
 }
 
 export const pageExamComments = (params: ExamCommentQuery) =>

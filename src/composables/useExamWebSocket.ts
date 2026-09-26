@@ -16,7 +16,7 @@
  * 说明：传输层保活 ping 由 WebSocketManager 内部每 30s 发送，与本 composable
  *      的业务 heartbeat 互不干扰——前者是连接探活，后者携带剩余时长上报。
  */
-import { onBeforeUnmount, ref, type Ref } from 'vue'
+import { onBeforeUnmount, ref } from 'vue'
 import { WebSocketManager } from '@/utils/websocket'
 
 /** 交卷结果（对应后端 submit-result 消息） */

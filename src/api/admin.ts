@@ -30,11 +30,16 @@ import type {
  *  1. 用户管理 /users
  * ============================================================ */
 
+/* 说明（exactOptionalPropertyTypes）:
+ * 以下「请求 DTO」的可选字段统一写成 `?: T | undefined`。
+ * 原因: HTTP/JSON 传输层不存在 undefined, 显式传 undefined 与省略该键语义等价,
+ * 调用方按表单值拼参数时天然会得到 `string | undefined`, 逐个调用点剔除键既啰嗦又易漏。
+ * 注意: 该放宽只用于「入参」; 响应实体/业务模型的精确性保持不变。 */
 export interface UserListQuery extends PageQuery {
-  username?: string
-  realName?: string
-  role?: string
-  status?: number
+  username?: string | undefined
+  realName?: string | undefined
+  role?: string | undefined
+  status?: number | undefined
 }
 
 export const listUsers = (params: UserListQuery) =>
@@ -43,7 +48,9 @@ export const listUsers = (params: UserListQuery) =>
 export const createUser = (data: UserCreateForm) =>
   request.post<ApiResponse<UserDetail>>('/users', data)
 
-export const updateUser = (id: number, data: Partial<UserDetail>) =>
+// [2026-09-26] exactOptionalPropertyTypes 下 Partial<T> 只把属性变可选，并不允许把 undefined
+// 赋给「原本必填」的属性（如 realName）；更新类接口需要「可选且允许 undefined」的映射类型。
+export const updateUser = (id: number, data: { [K in keyof UserDetail]?: UserDetail[K] | undefined }) =>
   request.put<ApiResponse<UserDetail>>(`/users/${id}`, data)
 
 export const deleteUser = (id: number) =>
@@ -74,11 +81,15 @@ export const deleteCategory = (id: number) =>
  * ============================================================ */
 
 export interface AdminQuestionQuery extends PageQuery {
-  categoryId?: number
-  questionType?: QuestionType
-  difficulty?: Difficulty
-  keyword?: string
-  status?: number
+  categoryId?: number | undefined
+  questionType?: QuestionType | undefined
+  difficulty?: Difficulty | undefined
+  keyword?: string | undefined
+  status?: number | undefined
+  minUsageCount?: number | undefined
+  maxUsageCount?: number | undefined
+  hasTrap?: boolean | undefined
+  total?: number | undefined
 }
 
 export const listAdminQuestions = (params: AdminQuestionQuery) =>
@@ -121,9 +132,14 @@ export const importQuestions = (file: File) => {
  * ============================================================ */
 
 export interface PaperListQuery extends PageQuery {
-  paperName?: string
-  status?: number
-  createBy?: number
+  paperName?: string | undefined
+  status?: number | undefined
+  createBy?: number | undefined
+  aiGenerated?: boolean | undefined
+  minQuestionCount?: number | undefined
+  maxQuestionCount?: number | undefined
+  minTotalScore?: number | undefined
+  maxTotalScore?: number | undefined
 }
 
 export const listPapers = (params: PaperListQuery) =>
@@ -152,11 +168,11 @@ export const updatePaperStatus = (id: number, status: 0 | 1 | 2) =>
  * ============================================================ */
 
 export interface SessionListQuery extends PageQuery {
-  sessionName?: string
-  paperId?: number
-  status?: number
-  startTimeFrom?: string
-  endTimeTo?: string
+  sessionName?: string | undefined
+  paperId?: number | undefined
+  status?: number | undefined
+  startTimeFrom?: string | undefined
+  endTimeTo?: string | undefined
 }
 
 export const listSessions = (params: SessionListQuery) =>
@@ -236,11 +252,15 @@ export const getQuestionAnalytics = (categoryId?: number) =>
 
 /** 多条件成绩查询 */
 export interface AdminResultQuery extends PageQuery {
-  userId?: number
-  sessionId?: number
-  paperId?: number
-  minScore?: number
-  maxScore?: number
+  userId?: number | undefined
+  sessionId?: number | undefined
+  paperId?: number | undefined
+  minScore?: number | undefined
+  maxScore?: number | undefined
+  userName?: string | undefined
+  paperName?: string | undefined
+  minCorrectRate?: number | undefined
+  maxCorrectRate?: number | undefined
 }
 
 export const listAdminResults = (params: AdminResultQuery) =>
@@ -255,15 +275,16 @@ export const exportResults = (params: AdminResultQuery) =>
 
 /** 操作日志 */
 export interface OperationLogQuery extends PageQuery {
-  operationType?: string
-  userId?: number
-  username?: string
-  clientIp?: string
-  resultCode?: string
-  targetType?: string
-  startTime?: string
-  endTime?: string
-  requestUri?: string
+  operationType?: string | undefined
+  userId?: number | undefined
+  username?: string | undefined
+  clientIp?: string | undefined
+  resultCode?: string | undefined
+  targetType?: string | undefined
+  startTime?: string | undefined
+  endTime?: string | undefined
+  requestUri?: string | undefined
+  httpMethod?: string | undefined
 }
 
 export const listOperationLogs = (params: OperationLogQuery) =>
@@ -317,14 +338,14 @@ export const listStudentAdmins = (studentId: number) =>
  * ============================================================ */
 
 export interface ReadingPassageQuery extends PageQuery {
-  keyword?: string
-  categoryId?: number
-  difficulty?: Difficulty
-  passageType?: string
-  topic?: string
-  source?: string
-  status?: number
-  includeTemp?: boolean
+  keyword?: string | undefined
+  categoryId?: number | undefined
+  difficulty?: Difficulty | undefined
+  passageType?: string | undefined
+  topic?: string | undefined
+  source?: string | undefined
+  status?: number | undefined
+  includeTemp?: boolean | undefined
 }
 
 export const listReadingPassages = (params: ReadingPassageQuery) =>
@@ -358,6 +379,8 @@ export const batchDeleteReadingPassages = (ids: number[]) =>
 
 // ==================== [2026-09-26 新增] 重新阅卷 ====================
 // 依据：论文 L920 / L980 / L986（管理员修正题目后重新触发阅卷，记录修正原因和处理时间）
-// 对应后端：POST /api/admin/results/{examId}/regrade（03 §七 批次 B7）
+// 对应后端：POST /api/admin/results/{examId}/regrade（AdminController @RequestMapping("/api/admin")）
+// [2026-09-26 修复] 原路径漏了 /admin 前缀，baseURL='/api' 下实际请求 /api/results/{id}/regrade → 404，
+// 页面「重新阅卷」按钮点了无响应（前后端路由对齐核查发现）。
 export const regradeResult = (examId: number, reason?: string) =>
-  request.post<ApiResponse<unknown>>(`/results/${examId}/regrade`, { reason })
+  request.post<ApiResponse<unknown>>(`/admin/results/${examId}/regrade`, { reason })

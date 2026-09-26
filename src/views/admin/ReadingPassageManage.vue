@@ -13,7 +13,7 @@ import {
   listCategoryTree,
 } from '@/api/admin'
 import { generateReading } from '@/api/ai'
-import type { ReadingPassage, ReadingPassageForm, ReadingQuestionItem } from '@/types/reading'
+import type { ReadingPassage, ReadingPassageForm } from '@/types/reading'
 import type { QuestionOption } from '@/types/question'
 import type { Category } from '@/types/category'
 import type { Difficulty } from '@/types/common'

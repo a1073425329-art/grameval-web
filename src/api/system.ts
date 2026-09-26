@@ -62,14 +62,14 @@ export interface AiTestResult {
   provider?: string
 }
 
-/** AI 问答请求 */
+/** AI 问答请求（请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明） */
 export interface AiChatRequest {
-  provider?: string
+  provider?: string | undefined
   message: string
-  systemPrompt?: string
-  model?: string
-  temperature?: number
-  maxTokens?: number
+  systemPrompt?: string | undefined
+  model?: string | undefined
+  temperature?: number | undefined
+  maxTokens?: number | undefined
 }
 
 /** AI 多轮消息 */

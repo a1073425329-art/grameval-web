@@ -13,7 +13,7 @@ const permissionStore = usePermissionStore()
 interface MenuItem {
   path: string
   title: string
-  icon?: string
+  icon?: string | undefined
 }
 
 interface MenuGroup {

@@ -1,6 +1,6 @@
 <script setup lang="ts">import { ref, onMounted, nextTick } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Message, Plus, More, Refresh, ArrowRight } from '@element-plus/icons-vue';
+import { Message, Plus, Refresh, ArrowRight } from '@element-plus/icons-vue';
 import { createChatSession, listChatSessions, listChatMessages, sendChatMessage, deleteChatSession } from '@/api/student';
 import type { ChatSession, ChatMessage } from '@/api/student';
 const loading = ref(false);
@@ -17,8 +17,8 @@ const loadSessions = async () => {
  if (res.data) {
  sessions.value = res.data;
  if (sessions.value.length && !currentSession.value) {
- currentSession.value = sessions.value[0];
- await loadMessages(sessions.value[0].id);
+ const first = sessions.value[0];
+ if (first) { currentSession.value = first; await loadMessages(first.id) }
  }
  }
  }
@@ -64,7 +64,7 @@ const deleteSession = async (sessionId: number) => {
  await deleteChatSession(sessionId);
  sessions.value = sessions.value.filter(s => s.id !== sessionId);
  if (currentSession.value?.id === sessionId) {
- currentSession.value = sessions.value.length > 0 ? sessions.value[0] : null;
+ currentSession.value = sessions.value.length > 0 ? (sessions.value[0] ?? null) : null;
  messages.value = [];
  if (currentSession.value) {
  await loadMessages(currentSession.value.id);

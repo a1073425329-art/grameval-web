@@ -90,9 +90,9 @@ export const getGenerationLog = (logId: number) =>
 export interface ValidateQuestionForm {
   questionType: string
   stem: string
-  options?: Array<{ optionLabel: string; optionContent: string }>
+  options?: Array<{ optionLabel: string; optionContent: string }> | undefined
   standardAnswer: string
-  analysis?: string
+  analysis?: string | undefined
 }
 
 export interface ValidateQuestionResult {
@@ -129,10 +129,10 @@ export interface AiReadingResult {
 }
 
 export const generateReading = (params: {
-  topic?: string
-  passageType?: string
-  difficulty?: number
-  questionCount?: number
+  topic?: string | undefined
+  passageType?: string | undefined
+  difficulty?: number | undefined
+  questionCount?: number | undefined
 }) =>
   request.post<ApiResponse<AiReadingResult>>('/admin/ai/generate-reading', null, {
     params,

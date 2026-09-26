@@ -43,7 +43,7 @@ interface NormalizedOptions {
   heartbeatInterval: number
   pongTimeout: number
   heartbeatMessage: object
-  protocols?: string | string[]
+  protocols: string | string[] | undefined
 }
 
 /** 生命周期 / 业务事件类型 */

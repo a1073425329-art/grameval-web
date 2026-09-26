@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Calendar, Check, Aim, Trophy, Document, Cpu } from '@element-plus/icons-vue'
+import { Calendar, Check, Cpu } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { getMySummary, getAvailableExams, getStudentStatistics, getMyResults, listPractices, getMyLearningProgress, getWeakCategories, checkIn, updateMyProfile, getMyProfile } from '@/api/student'
+import { getMySummary, getAvailableExams, getStudentStatistics, getMyResults, listPractices, getMyLearningProgress, getWeakCategories, checkIn, getMyProfile } from '@/api/student'
 import type { ResultSummary, ExamResultItem } from '@/types/result'
 import type { AvailableExam } from '@/types/exam'
 import type { StudentStatistics } from '@/types/stats'
@@ -34,7 +34,6 @@ const weakProgress = ref<LearningProgress[]>([])
 const streakDays = ref(0)
 const totalStudyDays = ref(0)
 const dailyTargetCount = ref(10)
-const todayCompleted = ref(0)
 const totalQuestionsDone = ref(0)
 const totalCorrectCount = ref(0)
 const isCheckedIn = ref(false)
@@ -63,15 +62,16 @@ const load = async () => {
       getWeakCategories(5),
       getMyProfile(),
     ]
+    // tasks 是数组而非元组，noUncheckedIndexedAccess 下解构出的每一项都可能是 undefined，需逐项守卫
     const [s, e, st, r, p, lp, wp, prof] = await Promise.allSettled(tasks)
-    if (s.status === 'fulfilled' && s.value) summary.value = (s.value as any).data
-    if (e.status === 'fulfilled' && e.value) availableExams.value = (e.value as any).data ?? []
-    if (st.status === 'fulfilled' && st.value) stats.value = (st.value as any).data
-    if (r.status === 'fulfilled' && r.value) recentResults.value = (r.value as any).data?.records ?? []
-    if (p.status === 'fulfilled' && p.value) recentPractices.value = (p.value as any).data?.records ?? []
-    if (lp.status === 'fulfilled' && lp.value) learningProgress.value = (lp.value as any).data ?? []
-    if (wp.status === 'fulfilled' && wp.value) weakProgress.value = (wp.value as any).data ?? []
-    if (prof.status === 'fulfilled' && prof.value) {
+    if (s?.status === 'fulfilled' && s.value) summary.value = (s.value as any).data
+    if (e?.status === 'fulfilled' && e.value) availableExams.value = (e.value as any).data ?? []
+    if (st?.status === 'fulfilled' && st.value) stats.value = (st.value as any).data
+    if (r?.status === 'fulfilled' && r.value) recentResults.value = (r.value as any).data?.records ?? []
+    if (p?.status === 'fulfilled' && p.value) recentPractices.value = (p.value as any).data?.records ?? []
+    if (lp?.status === 'fulfilled' && lp.value) learningProgress.value = (lp.value as any).data ?? []
+    if (wp?.status === 'fulfilled' && wp.value) weakProgress.value = (wp.value as any).data ?? []
+    if (prof?.status === 'fulfilled' && prof.value) {
       const profile = (prof.value as any).data
       streakDays.value = profile.streakDays || 0
       totalStudyDays.value = profile.totalStudyDays || 0
@@ -153,19 +153,12 @@ const doCheckIn = async () => {
   }
 }
 
-const isOngoing = (e: AvailableExam) => {
-  const now = Date.now()
-  return now >= Date.parse(e.startTime) && now <= Date.parse(e.endTime)
-}
-
 const examStatus = (e: AvailableExam) => {
   const now = Date.now()
   if (now < Date.parse(e.startTime)) return { text: '未开始', type: 'info' as const }
   if (now > Date.parse(e.endTime)) return { text: '已结束', type: 'danger' as const }
   return { text: '进行中', type: 'success' as const }
 }
-
-const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d === 3 ? '困难' : '-')
 </script>
 
 <template>

@@ -7,7 +7,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // exactOptionalPropertyTypes 下不能用 `number | undefined` 赋给 `string | number`,
+  // 用条件展开在 workers 缺省时干脆不写这个键.
+  ...(process.env.CI ? { workers: 1 } : {}),
   reporter: [['html', { open: 'never' }], ['list']],
   use: {
     baseURL: 'http://localhost:9000',

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, Plus, Edit, Delete, List, Grid, View, Document, Files, Star, Setting, MagicStick, Check, DocumentCopy } from '@element-plus/icons-vue'
+import { Search, Refresh, Plus, Edit, Delete, List, Grid, Document, Files, Star, Setting, MagicStick, Check, DocumentCopy } from '@element-plus/icons-vue'
 import { pageAnswerCards, getAnswerCardStats, createAnswerCard, updateAnswerCard, deleteAnswerCard } from '@/api/answerCard'
 import type { AnswerCard, AnswerCardForm } from '@/types/answerCard'
 import { listPapers } from '@/api/admin'

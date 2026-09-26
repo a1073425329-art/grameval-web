@@ -4,10 +4,11 @@
  *
  * 顺序:
  *   1. lint:vue      —— 静态扫描 (捕获 .sync/.native/未定义变量/dialog 未 v-model 等)
- *   2. typecheck     —— vue-tsc --noEmit
- *   3. unit          —— vitest (组件冒烟, 校验按钮真的能触发状态变化)
- *   4. build         —— vite build (确保生产构建不出错)
- *   5. e2e (可选)    —— playwright, 需要后端 9001 已启动. 传 --skip-e2e 跳过
+ *   2. eslint        —— 含 vue3-recommended + typescript 类型感知规则, 0 warning 容忍
+ *   3. typecheck     —— vue-tsc -b (app / node / tests 三个工程, 全部最严格模式)
+ *   4. unit          —— vitest (组件冒烟, 校验按钮真的能触发状态变化)
+ *   5. build         —— vite build (确保生产构建不出错)
+ *   6. e2e (可选)    —— playwright, 需要后端 9001 已启动. 传 --skip-e2e 跳过
  *
  * 用法:
  *   node scripts/verify.mjs             # 全套
@@ -58,7 +59,7 @@ async function main() {
   try {
     await run('1) 静态扫描 Vue 模板', 'node', ['scripts/lint-vue.mjs'])
     await run('2) ESLint (含 vue3-recommended + typescript)', 'npx', ['eslint', 'src/**/*.{ts,vue}', '--max-warnings=0'])
-    await run('3) TypeScript 类型检查', 'npx', ['vue-tsc', '--noEmit', '-p', 'tsconfig.app.json'])
+    await run('3) TypeScript 类型检查 (app + node + tests)', 'npx', ['vue-tsc', '-b'])
     await run('4) 组件单元测试', 'npx', ['vitest', 'run'])
     if (!skipBuild) {
       await run('5) 生产构建', 'npx', ['vite', 'build'])

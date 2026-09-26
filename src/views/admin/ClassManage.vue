@@ -117,7 +117,7 @@ const handleDelete = async (id: number) => {
 const studentDialogVisible = ref(false)
 const currentClass = ref<ClassGroup | null>(null)
 const classStudents = ref<ClassStudent[]>([])
-const allStudents = ref<{ id: number; username: string; realName?: string; avatar?: string }[]>([])
+const allStudents = ref<{ id: number; username: string; realName?: string | undefined; avatar?: string | undefined }[]>([])
 const selectedStudentIds = ref<number[]>([])
 const studentLoading = ref(false)
 
@@ -154,7 +154,6 @@ const removeStudent = async (classId: number, studentId: number) => {
   loadStats()
 }
 
-const studentAvatar = (id: number) => allStudents.value.find(s => s.id === id)?.avatar
 
 /* ---------------- 表格排序 ---------------- */
 const sortByStatus = (a: ClassGroup, b: ClassGroup) =>

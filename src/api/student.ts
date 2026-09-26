@@ -46,12 +46,16 @@ export const getCategoryTree = () =>
  *  2. 题库
  * ============================================================ */
 
+/* 说明（exactOptionalPropertyTypes）: 请求 DTO 的可选字段统一写成 `?: T | undefined`。
+ * HTTP/JSON 传输层不存在 undefined, 显式传 undefined 与省略该键语义等价;
+ * 调用方按表单值拼参数时天然得到 `T | undefined`, 逐个调用点剔除键既啰嗦又易漏。
+ * 该放宽只用于「入参」, 响应实体/业务模型保持精确。 */
 export interface QuestionListQuery extends PageQuery {
-  keyword?: string
-  categoryId?: number
-  questionType?: QuestionType
-  difficulty?: Difficulty
-  status?: number
+  keyword?: string | undefined
+  categoryId?: number | undefined
+  questionType?: QuestionType | undefined
+  difficulty?: Difficulty | undefined
+  status?: number | undefined
 }
 
 /** 题库分页 */
@@ -101,7 +105,7 @@ export const getPracticeDetail = (id: number) =>
 
 /** 分页查询练习记录 */
 export interface PracticeListQuery extends PageQuery {
-  categoryId?: number
+  categoryId?: number | undefined
   status?: number
 }
 export const listPractices = (params: PracticeListQuery) =>
@@ -163,7 +167,10 @@ export const getMySummary = () =>
 
 /** 我的成绩列表 */
 export interface MyResultQuery extends PageQuery {
-  keyword?: string
+  keyword?: string | undefined
+  isPass?: boolean | undefined
+  minScore?: number | undefined
+  maxScore?: number | undefined
 }
 export const getMyResults = (params: MyResultQuery) =>
   request.get<ApiResponse<PageResult<ExamResultItem>>>('/results/my-list', { params })
@@ -177,7 +184,7 @@ export const getWrongBook = (params?: WrongBookQuery) =>
   request.get<ApiResponse<PageResult<WrongBookItem>>>('/results/wrong-book', { params })
 
 /** 错题重做题目列表（不含答案） */
-export const getRedoQuestions = (params?: { categoryId?: number; count?: number }) =>
+export const getRedoQuestions = (params?: { categoryId?: number | undefined; count?: number | undefined }) =>
   request.get<ApiResponse<Question[]>>('/results/wrong-book/redo', { params })
 
 /* ============================================================ *
@@ -361,8 +368,8 @@ export const getMyRank = () =>
 export interface StudyNote {
   id: number
   userId: number
-  questionId?: number
-  categoryId?: number
+  questionId?: number | undefined
+  categoryId?: number | undefined
   title: string
   content: string
   noteType: 'QUESTION' | 'KNOWLEDGE' | 'REVIEW' | 'OTHER'
@@ -370,14 +377,14 @@ export interface StudyNote {
   isPublic: boolean
   viewsCount: number
   createTime: string
-  updateTime?: string
+  updateTime?: string | undefined
 }
 
 export interface StudyNoteQuery extends PageQuery {
-  noteType?: string
-  categoryId?: number
-  questionId?: number
-  keyword?: string
+  noteType?: string | undefined
+  categoryId?: number | undefined
+  questionId?: number | undefined
+  keyword?: string | undefined
 }
 
 /** 创建学习笔记 */

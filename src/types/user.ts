@@ -1,22 +1,22 @@
 import type { Role } from './common'
 
-/** 登录请求 */
+/** 登录请求（请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明） */
 export interface LoginForm {
   username: string
   password: string
   /** 可选：登录入口指定的角色，传值时后端会校验账号角色是否匹配 */
-  role?: Role
+  role?: Role | undefined | undefined
 }
 
 /** 注册请求 */
 export interface RegisterForm {
   username: string
   password: string
-  realName?: string
-  englishName?: string
-  email?: string
-  phone?: string
-  role?: Role
+  realName?: string | undefined
+  englishName?: string | undefined
+  email?: string | undefined
+  phone?: string | undefined
+  role?: Role | undefined
 }
 
 /** 登录响应里的用户信息（LoginResponse.user）—— 精简 */
@@ -24,10 +24,10 @@ export interface UserInfo {
   id: number
   username: string
   displayName: string
-  englishName?: string
+  englishName?: string | undefined
   role: Role
   /** base64 或 URL；过长时不宜存 localStorage，见 authStore.login() */
-  avatar?: string
+  avatar?: string | undefined
 }
 
 /**
@@ -39,33 +39,33 @@ export interface UserDetail {
   id: number
   username: string
   realName: string
-  englishName?: string
+  englishName?: string | undefined
   /** 兼容别名：后端同时输出 realName 和 displayName */
-  displayName?: string
-  gender?: 0 | 1 | 2
-  email?: string
-  phone?: string
-  idCard?: string
-  avatar?: string
+  displayName?: string | undefined
+  gender?: 0 | 1 | 2 | undefined
+  email?: string | undefined
+  phone?: string | undefined
+  idCard?: string | undefined
+  avatar?: string | undefined
   role: Role
   status: 0 | 1
-  lastLoginTime?: string
-  lastLoginIp?: string
+  lastLoginTime?: string | undefined
+  lastLoginIp?: string | undefined
   createTime: string
-  updateTime?: string
+  updateTime?: string | undefined
 
   // ===== 学生训练信息（仅 STUDENT 角色返回） =====
   /** 训练计划开始日期，如 "2026-01-01" */
-  trainingStartDate?: string
+  trainingStartDate?: string | undefined
   /** 实际训练开始日期（可手动修改） */
-  actualStartDate?: string
+  actualStartDate?: string | undefined
   /** 训练计划结束日期 */
-  trainingEndDate?: string
+  trainingEndDate?: string | undefined
   /** 可训练星期（逗号分隔 1-7） */
-  trainingDays?: string
+  trainingDays?: string | undefined
 
   // ===== 所属老师信息（仅 STUDENT 角色返回） =====
-  teacher?: TeacherInfo
+  teacher?: TeacherInfo | undefined
 }
 
 /** 老师基本信息（后端 UserVO.TeacherInfo） */
@@ -73,12 +73,12 @@ export interface TeacherInfo {
   id: number
   username: string
   realName: string
-  englishName?: string
-  displayName?: string
-  phone?: string
-  email?: string
-  avatar?: string
-  gender?: 0 | 1 | 2
+  englishName?: string | undefined
+  displayName?: string | undefined
+  phone?: string | undefined
+  email?: string | undefined
+  avatar?: string | undefined
+  gender?: 0 | 1 | 2 | undefined
 }
 
 /** 登录响应 —— 与后端 LoginResponse 对齐 */
@@ -91,13 +91,13 @@ export interface LoginResult {
 
 /** 用户资料修改 */
 export interface UserUpdateForm {
-  realName?: string
-  englishName?: string
-  gender?: number
-  email?: string
-  phone?: string
-  idCard?: string
-  avatar?: string
+  realName?: string | undefined
+  englishName?: string | undefined
+  gender?: number | undefined
+  email?: string | undefined
+  phone?: string | undefined
+  idCard?: string | undefined
+  avatar?: string | undefined
 }
 
 /** 修改密码 */
@@ -110,10 +110,10 @@ export interface PasswordChangeForm {
 export interface UserCreateForm {
   username: string
   password: string
-  realName?: string
-  englishName?: string
-  gender?: number
-  email?: string
-  phone?: string
-  role?: Role
+  realName?: string | undefined | undefined
+  englishName?: string | undefined | undefined
+  gender?: number | undefined | undefined
+  email?: string | undefined | undefined
+  phone?: string | undefined | undefined
+  role?: Role | undefined | undefined
 }

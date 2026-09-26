@@ -47,26 +47,27 @@ export interface Question {
   options?: QuestionOption[]
 }
 
-/** 试题新增/编辑请求 —— 对齐后端 QuestionRequest */
+/** 试题新增/编辑请求 —— 对齐后端 QuestionRequest
+ * （请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明） */
 export interface QuestionForm {
   categoryId: number
   questionType: QuestionType
   stem: string
   standardAnswer: string
-  analysis?: string
+  analysis?: string | undefined
   /** 知识点标签列表 */
-  knowledgePoints?: string[]
+  knowledgePoints?: string[] | undefined
   difficulty: Difficulty
-  defaultScore?: number
-  status?: 0 | 1
-  passageId?: number
-  hasTrap?: boolean
-  trapNote?: string
+  defaultScore?: number | undefined
+  status?: 0 | 1 | undefined
+  passageId?: number | undefined
+  hasTrap?: boolean | undefined
+  trapNote?: string | undefined
   options?: Array<{
     optionLabel: string
     optionContent: string
     sortNo: number
-  }>
+  }> | undefined
 }
 
 /** 无状态快速判题 —— POST /practice/submit（UC03 别名） */

@@ -128,7 +128,9 @@ const selectRedoOption = (optionLabel: string) => {
 }
 
 const isOptionSelected = (optionLabel: string) => {
-  const answer = redoAnswers.value[currentRedoQuestion.value?.id] || ''
+  const qid = currentRedoQuestion.value?.id
+  if (qid === undefined) return false
+  const answer = redoAnswers.value[qid] || ''
   return answer.includes(optionLabel)
 }
 
@@ -142,7 +144,7 @@ const submitRedo = async () => {
   try {
     await submitPractice({
       questionId: q.id,
-      userAnswer: redoAnswers.value[q.id],
+      userAnswer: redoAnswers.value[q.id] ?? '',
     })
     if (redoCurrentIndex.value < redoQuestions.value.length - 1) {
       redoCurrentIndex.value++

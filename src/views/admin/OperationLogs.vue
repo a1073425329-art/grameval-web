@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, computed } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import {
   List, Grid, Search, Refresh, Delete, View, Warning,
   Clock, Connection, Document, Monitor, Cpu, WarningFilled
@@ -134,12 +134,6 @@ const showDetail = async (log: OperationLog) => {
   }
 }
 
-/** 关闭详情 */
-const closeDetail = () => {
-  detailVisible.value = false
-  detailLog.value = null
-}
-
 /** 删除单条 */
 const handleDelete = async (log: OperationLog) => {
   await ElMessageBox.confirm('确定要删除这条日志吗？', '提示', {
@@ -162,17 +156,6 @@ const handleClearAll = async () => {
   await clearAllOperationLogs()
   ElMessage.success('所有日志已清空')
   load()
-}
-
-/** 判断JSON是否格式化显示 */
-const isJson = (str?: string) => {
-  if (!str) return false
-  try {
-    JSON.parse(str)
-    return true
-  } catch {
-    return false
-  }
 }
 
 /** 格式化JSON */

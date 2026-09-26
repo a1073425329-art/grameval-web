@@ -1,19 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getMyNotifications, getUnreadCountByCategory, calculateMessages,
-  markNotificationRead, markNotificationUnread, markAllRead, toggleStar, togglePin,
-  deleteNotification, batchMarkRead, batchDeleteNotifications, archiveNotification, unarchiveNotification,
+  markNotificationRead, markAllRead, toggleStar, togglePin,
+  deleteNotification, batchMarkRead, batchDeleteNotifications, archiveNotification,
   getNotificationPreferences, updateNotificationPreferences,
 } from '@/api/student'
 import type { MessageNotification, MessageQuery, NotificationPreference } from '@/types/notification'
-import { ALL_MESSAGE_TYPES, CATEGORY_OPTIONS } from '@/types/notification'
+import { CATEGORY_OPTIONS } from '@/types/notification'
 
 const router = useRouter()
-const authStore = useAuthStore()
 
 // === State ===
 const messages = ref<MessageNotification[]>([])
@@ -46,11 +44,6 @@ const categoryFolders = computed(() =>
     count: categoryCounts[c.value] ?? 0,
   }))
 )
-
-const filteredTypes = computed(() => {
-  const role = authStore.role
-  return ALL_MESSAGE_TYPES.filter(t => t.role === (role === 'ADMIN' ? 'ADMIN' : 'STUDENT'))
-})
 
 // === Load ===
 const load = async () => {
@@ -163,11 +156,15 @@ const handleKeydown = (e: KeyboardEvent) => {
   if (e.key === 'Escape') { selectedMsg.value = null; selectionMode.value = false; selectedIds.value = new Set() }
   if (e.key === 'j' && !e.ctrlKey && !e.metaKey && messages.value.length > 0) {
     const idx = messages.value.findIndex(m => m.id === selectedMsg.value?.id)
-    if (idx < messages.value.length - 1) selectMsg(messages.value[idx + 1])
+    // noUncheckedIndexedAccess 下取出的元素可能为 undefined，取到再跳转
+    const next = messages.value[idx + 1]
+    if (idx < messages.value.length - 1 && next) selectMsg(next)
   }
   if (e.key === 'k' && !e.ctrlKey && !e.metaKey && messages.value.length > 0) {
     const idx = messages.value.findIndex(m => m.id === selectedMsg.value?.id)
-    if (idx > 0) selectMsg(messages.value[idx - 1])
+    // 同上：先取出并判空，避免索引访问产生的 undefined
+    const prev = messages.value[idx - 1]
+    if (idx > 0 && prev) selectMsg(prev)
   }
 }
 

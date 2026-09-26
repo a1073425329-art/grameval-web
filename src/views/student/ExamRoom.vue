@@ -31,7 +31,6 @@ const {
   status: wsStatus,
   serverTime: wsServerTime,
   remainingSeconds,
-  lastResult: wsLastResult,
   connect: wsConnect,
   disconnect: wsDisconnect,
   sendAnswer: wsSendAnswer,
@@ -127,7 +126,7 @@ const doResume = async () => {
 }
 
 /* ---------------- 格式化答案 ---------------- */
-const formatAnswer = (t: QuestionType, v: string | string[] | undefined): string => {
+const formatAnswer = (_t: QuestionType, v: string | string[] | undefined): string => {
   if (v === undefined || v === null) return ''
   if (Array.isArray(v)) return [...v].sort().join(',')
   return String(v).trim()

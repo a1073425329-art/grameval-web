@@ -51,7 +51,6 @@ const handleLogout = async () => {
 const unreadCount = ref(0)
 const unreadUrgent = ref(0)
 const recentMessages = ref<MessageNotification[]>([])
-const bellLoading = ref(false)
 const bellVisible = ref(false)
 
 const loadBellData = async () => {
@@ -64,11 +63,6 @@ const loadBellData = async () => {
     unreadUrgent.value = countRes.data?.urgent ?? 0
     recentMessages.value = msgRes.data?.records ?? []
   } catch { /* ignore */ }
-}
-
-const handleBellClick = () => {
-  bellVisible.value = !bellVisible.value
-  if (bellVisible.value) loadBellData()
 }
 
 const handleMsgClick = async (msg: MessageNotification) => {

@@ -1,6 +1,6 @@
-<script setup lang="ts">import { ref, onMounted, computed } from 'vue';
+<script setup lang="ts">import { ref, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
-import { Calendar, ArrowUp, ArrowDown, Aim, Document, CircleClose, Refresh } from '@element-plus/icons-vue';
+import { Calendar, ArrowUp, Aim, CircleClose, Refresh } from '@element-plus/icons-vue';
 import { getWeeklyReport, listWeeklyReports } from '@/api/student';
 import type { StudyWeeklyReport } from '@/api/student';
 const loading = ref(false);

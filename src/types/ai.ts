@@ -78,10 +78,10 @@ export interface ConfirmPaperForm {
   /** 考试时长（分钟）*/
   duration: number
   /** 场次名称，可选 */
-  sessionName?: string
+  sessionName?: string | undefined
   /** 起止时间 */
-  startTime?: string
-  endTime?: string
+  startTime?: string | undefined
+  endTime?: string | undefined
 }
 
 /** 确认入库响应 */

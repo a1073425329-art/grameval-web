@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { getStudentStatistics, getMyResults, listPractices, getDimensionAnalysis } from '@/api/student'
+import { getStudentStatistics, getMyResults, listPractices } from '@/api/student'
 import { getMyScoreTrend } from '@/api/scoreCurve'
 import { getStudentMastery } from '@/api/knowledgeMastery'
 import type { StudentStatistics, CategoryStat, DifficultyStat, TagStat } from '@/types/stats'
@@ -149,6 +149,7 @@ const scoreTrendOption = computed(() => {
       formatter: (params: any) => {
         const idx = params[0]?.dataIndex ?? 0
         const item = data[idx]
+        if (!item) return ''
         let html = `<b>${item.name}</b><br/>`
         html += `日期：${item.date}<br/>`
         html += `${params[0]?.marker ?? ''}得分：${item.score.toFixed(1)}%<br/>`
@@ -198,6 +199,7 @@ const categoryChartOption = computed(() => {
   return {
     tooltip: { trigger: 'axis' as const, formatter: (p: any) => {
       const item = sorted[p[0].dataIndex]
+      if (!item) return ''
       return `${item.categoryName}<br/>正确率：${item.accuracy.toFixed(1)}%（${item.correct}/${item.total}）`
     }},
     grid: { left: 110, right: 30, top: 10, bottom: 20 },
@@ -235,6 +237,7 @@ const tagChartOption = computed(() => {
   return {
     tooltip: { trigger: 'axis' as const, formatter: (p: any) => {
       const item = top[p[0].dataIndex]
+      if (!item) return ''
       return `${item.tagName}<br/>错误率：${item.errorRate.toFixed(1)}%（${item.wrong}/${item.total}）`
     }},
     grid: { left: 140, right: 30, top: 10, bottom: 20 },
@@ -344,6 +347,7 @@ const classComparisonOption = computed(() => {
       formatter: (params: any) => {
         const idx = params[0]?.dataIndex ?? 0
         const item = data[idx]
+        if (!item) return ''
         let html = `<b>${item.examName || item.sessionName || '-'}</b><br/>`
         html += `日期：${item.examDate}<br/>`
         params.forEach((p: any) => {
@@ -410,7 +414,6 @@ const scoreDistributionOption = computed(() => {
     else if (s >= 60) pass++
     else fail++
   })
-  const total = results.length
   return {
     tooltip: {
       trigger: 'item' as const,

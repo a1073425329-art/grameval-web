@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch, computed } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import {
@@ -8,7 +8,6 @@ import {
   Plus,
   Search,
   MagicStick,
-  Notebook,
   Reading,
   Refresh,
   Delete,
@@ -165,7 +164,7 @@ type NormalForm = {
   analysis: string
   knowledgePoints: string[]
   fillHint: string
-  passageId?: number
+  passageId?: number | undefined
 }
 
 const normalForm = reactive<NormalForm>({
@@ -370,6 +369,7 @@ const removeSubQuestion = (idx: number) => {
 }
 const addSubOpt = (qIdx: number) => {
   const q = readingForm.subQuestions[qIdx]
+  if (!q) return
   if (q.options.length >= 8) {
     ElMessage.warning('最多 8 个选项')
     return
@@ -387,6 +387,7 @@ const addSubOpt = (qIdx: number) => {
 }
 const removeSubOpt = (qIdx: number, oIdx: number) => {
   const q = readingForm.subQuestions[qIdx]
+  if (!q) return
   if (q.options.length <= 2) {
     ElMessage.warning('至少 2 个选项')
     return
@@ -414,7 +415,7 @@ const aiGenerateReading = async () => {
     readingForm.passageTitle = data.title
     readingForm.passageContent = data.content
     readingForm.summary = data.summary || ''
-    readingForm.subQuestions = data.questions.map((q: any, idx: number) => ({
+    readingForm.subQuestions = data.questions.map((q: any) => ({
       stem: q.stem,
       standardAnswer: q.standardAnswer,
       analysis: q.analysis || '',
@@ -705,6 +706,7 @@ const submitReadingBatch = async () => {
   // 校验每道题
   for (let i = 0; i < readingForm.subQuestions.length; i++) {
     const q = readingForm.subQuestions[i]
+    if (!q) continue
     if (!q.stem.trim()) {
       ElMessage.warning(`第 ${i + 1} 题题干不能为空`)
       return
@@ -893,6 +895,7 @@ const importResult = ref<{ successCount: number; failedCount: number; errors?: s
 const uploadRef = ref<UploadInstance>()
 
 const openImportDialog = () => {
+  uploadRef.value?.clearFiles()
   importFile.value = null
   importResult.value = null
   importDialogVisible.value = true

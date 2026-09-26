@@ -90,12 +90,12 @@ export interface WrongBookItem {
   }>
 }
 
-/** 错题本查询参数 */
+/** 错题本查询参数（请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明） */
 export interface WrongBookQuery {
-  source?: 'ALL' | 'EXAM' | 'PRACTICE'
-  categoryId?: number
-  questionType?: QuestionType
-  difficulty?: Difficulty
-  pageNum?: number
-  pageSize?: number
+  source?: 'ALL' | 'EXAM' | 'PRACTICE' | undefined
+  categoryId?: number | undefined
+  questionType?: QuestionType | undefined
+  difficulty?: Difficulty | undefined
+  pageNum?: number | undefined
+  pageSize?: number | undefined
 }

@@ -7,7 +7,8 @@
  *
  * 每个测试都从登录页真实登录 user01/123456 起跳, 使用真实后端 (http://localhost:9001)
  */
-import { test, expect, Page } from '@playwright/test'
+import { test, expect } from '@playwright/test'
+import type { Page } from '@playwright/test'
 
 async function loginAsStudent(page: Page) {
   await page.goto('/login/student')

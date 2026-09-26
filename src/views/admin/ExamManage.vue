@@ -14,7 +14,7 @@ import type { UserDetail } from '@/types/user'
 import { useViewMode } from '@/composables/useViewMode'
 
 const router = useRouter()
-const { viewMode, toggleViewMode, isTable, isCard } = useViewMode('examManage')
+const { viewMode, isTable, isCard } = useViewMode('examManage')
 
 const query = reactive({
   sessionName: '',
@@ -47,7 +47,6 @@ const search = () => { query.pageNum = 1; load() }
 const reset = () => { query.sessionName = ''; query.paperId = undefined; query.status = undefined; query.pageNum = 1; load() }
 
 /* ---------------- 展开行：加载考生状态 ---------------- */
-const expandedRows = ref<Set<number>>(new Set())
 const examineesMap = ref<Record<number, any[]>>({})
 const expandLoading = ref<Record<number, boolean>>({})
 
@@ -144,7 +143,9 @@ const submit = async () => {
   await formRef.value.validate(async (valid) => {
     if (!valid) return
     submitting.value = true
-    const payload: SessionForm = { sessionName: form.sessionName, paperId: form.paperId!, duration: form.duration, startTime: form.timeRange[0], endTime: form.timeRange[1], maxAttempts: form.maxAttempts, showScoreImmediately: form.showScoreImmediately, status: form.status }
+    const [startTime, endTime] = form.timeRange
+    if (!startTime || !endTime) { ElMessage.warning('请选择考试时间'); return }
+    const payload: SessionForm = { sessionName: form.sessionName, paperId: form.paperId!, duration: form.duration, startTime, endTime, maxAttempts: form.maxAttempts, showScoreImmediately: form.showScoreImmediately, status: form.status }
     try {
       let sessionId: number
       if (editMode.value === 'create') { const r = await createSession(payload); sessionId = r.data.id; ElMessage.success('考试已发布') }
@@ -166,7 +167,6 @@ const confirmForceSubmit = async (row: ExamSession) => {
 const scoreColor = (v?: number) => { if (v == null) return '#909399'; if (v >= 80) return '#67c23a'; if (v >= 60) return '#e6a23c'; return '#f56c6c' }
 
 const formatTime = (t?: string) => t?.replace('T', ' ')?.substring(0, 16) || '-'
-const formatDuration = (s?: number) => s ? Math.round(s / 60) + '分钟' : '-'
 
 /* 判断考试是否正在进行 */
 const isOngoing = (row: ExamSession) => {
@@ -414,7 +414,7 @@ onMounted(() => { load(); loadPickers() })
 
               <!-- 考生预览 -->
               <div v-if="cardExamineesMap[row.id]?.length" class="examinee-preview">
-                <div v-for="examinee in cardExamineesMap[row.id].slice(0, 5)" :key="examinee.userId" class="examinee-chip">
+                <div v-for="examinee in (cardExamineesMap[row.id] ?? []).slice(0, 5)" :key="examinee.userId" class="examinee-chip">
                   <el-avatar :size="24" :src="examinee.avatar || ''">
                     {{ (examinee.realName || examinee.username || '?').charAt(0) }}
                   </el-avatar>
@@ -423,8 +423,8 @@ onMounted(() => { load(); loadPickers() })
                     {{ submitStatusTag(examinee.submitStatus).text }}
                   </el-tag>
                 </div>
-                <span v-if="cardExamineesMap[row.id].length > 5" class="more-count">
-                  +{{ cardExamineesMap[row.id].length - 5 }}人
+                <span v-if="(cardExamineesMap[row.id]?.length ?? 0) > 5" class="more-count">
+                  +{{ (cardExamineesMap[row.id]?.length ?? 0) - 5 }}人
                 </span>
               </div>
               <el-button v-else link type="primary" size="small" @click="loadCardExaminees(row)" :loading="cardLoadingMap[row.id]">

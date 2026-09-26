@@ -37,13 +37,14 @@ export interface Paper {
   archiveStatus?: number
 }
 
-/** 试卷创建/更新请求 —— 对齐后端 PaperRequest */
+/** 试卷创建/更新请求 —— 对齐后端 PaperRequest
+ * （请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明） */
 export interface PaperForm {
   paperName: string
-  description?: string
-  passScore?: number
-  shuffleQuestions?: boolean
-  status?: 0 | 1 | 2
+  description?: string | undefined
+  passScore?: number | undefined
+  shuffleQuestions?: boolean | undefined
+  status?: 0 | 1 | 2 | undefined
   questions: Array<{
     questionId: number
     questionScore: number

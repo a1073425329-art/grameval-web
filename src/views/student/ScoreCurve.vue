@@ -87,6 +87,7 @@ const scoreTrendOption = computed(() => {
       formatter: (params: any) => {
         const idx = params[0]?.dataIndex ?? 0
         const item = data.value[idx]
+        if (!item) return ''
         let html = `<b>${item.examName || item.sessionName || '-'}</b><br/>`
         html += `日期：${item.examDate}<br/>`
         params.forEach((p: any) => {

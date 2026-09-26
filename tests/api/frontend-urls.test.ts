@@ -7,7 +7,8 @@
  *
  * 前置: 后端 9001 已启动, admin/user01 密码均为 123456.
  */
-import { test, expect, APIRequestContext } from '@playwright/test'
+import { test, expect } from '@playwright/test'
+import type { APIRequestContext } from '@playwright/test'
 
 let adminToken = ''
 let studentToken = ''

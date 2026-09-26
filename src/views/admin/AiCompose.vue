@@ -41,9 +41,6 @@ const isAllSelected = computed(() =>
   filteredStudents.value.length > 0 &&
   filteredStudents.value.every(s => selectedStudentIds.value.includes(s.id))
 )
-const isIndeterminate = computed(() =>
-  selectedStudentIds.value.length > 0 && !isAllSelected.value
-)
 
 const toggleSelectAll = () => {
   if (isAllSelected.value) {
@@ -79,10 +76,6 @@ const selectMyStudents = async () => {
   }
 }
 
-const selectAllStudents = () => {
-  selectedStudentIds.value = [...allSelectedIds.value]
-  ElMessage.success(`已全选 ${filteredStudents.value.length} 名学生`)
-}
 
 const clearSelection = () => {
   selectedStudentIds.value = []
@@ -113,7 +106,9 @@ const fetchAnalysis = async () => {
   try {
     if (selectedStudentIds.value.length === 1) {
       // 单选学生：使用单个分析接口
-      const res = await analyzeStudent(selectedStudentIds.value[0])
+      const singleId = selectedStudentIds.value[0]
+        if (singleId === undefined) return
+        const res = await analyzeStudent(singleId)
       analysis.value = res.data
       batchAnalysis.value = null
       analysisDraft.value = res.data.analysis || ''
@@ -216,7 +211,7 @@ const pickWeakCategories = () => {
       .map((c) => c.categoryId)
   }
   
-  if (!weaks.length) return ElMessage.info('暂无薄弱专题数据')
+  if (!weaks.length) { ElMessage.info('暂无薄弱专题数据'); return }
   const merged = new Set([...form.categoryIds, ...weaks])
   form.categoryIds = Array.from(merged)
   ElMessage.success(`已加入 ${weaks.length} 个薄弱专题`)
@@ -239,7 +234,7 @@ const composing = ref(false)
 const preview = ref<GeneratePaperPreview | null>(null)
 
 const doCompose = async () => {
-  if (selectedStudentIds.value.length === 0) return ElMessage.warning('请先选择学生')
+  if (selectedStudentIds.value.length === 0) { ElMessage.warning('请先选择学生'); return }
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
     if (!valid) return
@@ -250,8 +245,10 @@ const doCompose = async () => {
     preview.value = null
 
     // 构建出题参数
-        const payload: GeneratePaperForm = {
-          targetUserId: selectedStudentIds.value[0],
+        const sid = selectedStudentIds.value[0]
+          if (sid === undefined) { ElMessage.warning('请先选择学生'); return }
+          const payload: GeneratePaperForm = {
+          targetUserId: sid,
           targetUserIds: selectedStudentIds.value,  // 传递所有选中的学生 ID
           analysisText: analysisDraft.value,
           categoryIds: [...form.categoryIds],
@@ -287,7 +284,7 @@ const directGenerating = ref(false)
 const directResult = ref<{ paperId: number; sessionId: number } | null>(null)
 
 const doDirectGenerate = async () => {
-  if (selectedStudentIds.value.length === 0) return ElMessage.warning('请先选择学生')
+  if (selectedStudentIds.value.length === 0) { ElMessage.warning('请先选择学生'); return }
   if (!formRef.value) return
   await formRef.value.validate(async (valid) => {
     if (!valid) return
@@ -309,8 +306,10 @@ const doDirectGenerate = async () => {
     directResult.value = null
 
     try {
+      const sid = selectedStudentIds.value[0]
+      if (sid === undefined) { ElMessage.warning('请先选择学生'); return }
       const res = await directGenerate({
-        targetUserId: selectedStudentIds.value[0],
+        targetUserId: sid,
         targetUserIds: selectedStudentIds.value,
         analysisText: analysisDraft.value,
         categoryIds: [...form.categoryIds],
@@ -359,7 +358,7 @@ const fmt = (d: Date) => {
 }
 
 const openConfirm = () => {
-  if (!preview.value) return ElMessage.warning('请先生成题目')
+  if (!preview.value) { ElMessage.warning('请先生成题目'); return }
   const names = selectedStudents.value.map(s => s.realName || s.username).join('、')
   const name = names || '学生'
   const stamp = new Date().toISOString().slice(0, 10)
@@ -374,9 +373,9 @@ const openConfirm = () => {
 
 const doConfirm = async () => {
   if (!preview.value?.logId) return
-  if (!confirmForm.paperName.trim()) return ElMessage.warning('请输入试卷名称')
-  if (!confirmForm.timeRange?.length) return ElMessage.warning('请选择考试时间段')
-  if (!confirmForm.duration) return ElMessage.warning('请填写时长')
+  if (!confirmForm.paperName.trim()) { ElMessage.warning('请输入试卷名称'); return }
+  if (!confirmForm.timeRange?.length) { ElMessage.warning('请选择考试时间段'); return }
+  if (!confirmForm.duration) { ElMessage.warning('请填写时长'); return }
 
   confirming.value = true
   try {

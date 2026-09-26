@@ -136,6 +136,7 @@ const dimTagChartOption = computed(() => {
       trigger: 'axis' as const,
       formatter: (p: any) => {
         const d = p[0]; const item = sorted[d.dataIndex]
+        if (!item) return ''
         return `${item.tagName}<br/>正确率：${item.accuracy.toFixed(1)}%（${item.correct}/${item.total}）`
       },
     },
@@ -159,6 +160,7 @@ const dimCategoryChartOption = computed(() => {
       trigger: 'axis' as const,
       formatter: (p: any) => {
         const d = p[0]; const item = sorted[d.dataIndex]
+        if (!item) return ''
         return `${item.categoryName}<br/>正确率：${item.accuracy.toFixed(1)}%（${item.correct}/${item.total}）`
       },
     },
@@ -182,6 +184,7 @@ const dimDifficultyChartOption = computed(() => {
       trigger: 'axis' as const,
       formatter: (p: any) => {
         const d = p[0]; const item = sorted[d.dataIndex]
+        if (!item) return ''
         return `${item.difficultyLabel}<br/>正确率：${item.accuracy.toFixed(1)}%（${item.correct}/${item.total}）`
       },
     },

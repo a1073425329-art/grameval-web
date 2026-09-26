@@ -1,0 +1,18 @@
+{
+  /* Playwright 测试专属类型检查工程 (2026-09-26 新增).
+     此前 tests/api 与 tests/e2e 不在任何 tsconfig 的 include 里,
+     等于完全没做类型检查. 本工程把它们纳入最严格模式.
+     tests/unit 由 tsconfig.app.json 覆盖 (它需要 DOM + vue-tsc). */
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.tests.tsbuildinfo",
+    "types": ["node", "vite/client"],
+    "noEmit": true
+  },
+  "include": [
+    "tests/api/**/*.ts",
+    "tests/e2e/**/*.ts",
+    "tests/admin.test.ts",
+    "tests/student.test.ts"
+  ]
+}

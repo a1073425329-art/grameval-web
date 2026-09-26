@@ -155,9 +155,13 @@ function computeStreakDays(records: PracticeRecord[]): number {
   const sorted = Array.from(days).sort().reverse()
   if (!sorted.length) return 0
   let streak = 1
-  let prev = new Date(sorted[0])
+  const firstDay = sorted[0]
+  if (!firstDay) return 0
+  let prev = new Date(firstDay)
   for (let i = 1; i < sorted.length; i++) {
-    const cur = new Date(sorted[i])
+    const day = sorted[i]
+    if (!day) break
+    const cur = new Date(day)
     const diff = Math.round((prev.getTime() - cur.getTime()) / 86400000)
     if (diff === 1) { streak++; prev = cur } else break
   }
@@ -215,7 +219,7 @@ const startPractice = async (catId: number) => {
 const submitting = ref(false)
 
 /** 把当前输入格式化为后端接受的 string（多选 join，其他直接转字符串） */
-const formatAnswer = (t: QuestionType, v: unknown): string => {
+const formatAnswer = (_t: QuestionType, v: unknown): string => {
   if (Array.isArray(v)) return v.filter(Boolean).join(',')
   if (v === null || v === undefined) return ''
   return String(v).trim()

@@ -26,18 +26,18 @@ export interface ReadingPassage {
 }
 
 export interface ReadingPassageForm {
-  categoryId?: number
-  title?: string
+  categoryId?: number | undefined
+  title?: string | undefined
   content: string
   difficulty: Difficulty
-  passageType?: string
-  topic?: string
-  source?: string
-  summary?: string
-  status?: 0 | 1
-  isTemp?: boolean
-  aiPrompt?: string
-  questions?: ReadingQuestionItem[]
+  passageType?: string | undefined
+  topic?: string | undefined
+  source?: string | undefined
+  summary?: string | undefined
+  status?: 0 | 1 | undefined
+  isTemp?: boolean | undefined
+  aiPrompt?: string | undefined
+  questions?: ReadingQuestionItem[] | undefined
 }
 
 export interface ReadingQuestionItem {

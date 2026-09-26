@@ -2,12 +2,13 @@ import request from '@/utils/request'
 import type { ApiResponse, PageQuery, PageResult } from '@/types/common'
 import type { ClassGroup, ClassGroupForm, ClassStudent } from '@/types/classGroup'
 
+/* 请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明 */
 export interface ClassGroupQuery extends PageQuery {
-  className?: string
-  schoolName?: string
-  grade?: string
-  status?: number
-  teacherId?: number
+  className?: string | undefined
+  schoolName?: string | undefined
+  grade?: string | undefined
+  status?: number | undefined
+  teacherId?: number | undefined
 }
 
 export const listClassGroups = (params: ClassGroupQuery) =>

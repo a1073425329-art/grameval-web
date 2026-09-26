@@ -2,10 +2,11 @@ import request from '@/utils/request'
 import type { ApiResponse, PageQuery, PageResult } from '@/types/common'
 import type { AnswerCard, AnswerCardForm } from '@/types/answerCard'
 
+/* 请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明 */
 export interface AnswerCardPageQuery extends PageQuery {
-  paperId?: number
-  cardName?: string
-  isDefault?: boolean
+  paperId?: number | undefined
+  cardName?: string | undefined
+  isDefault?: boolean | undefined
 }
 
 export const listAnswerCards = (paperId?: number) =>

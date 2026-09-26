@@ -9,16 +9,16 @@ export interface ApiResponse<T = unknown> {
  * 分页查询 —— 使用后端字段名 pageNum / pageSize
  */
 export interface PageQuery {
-  pageNum?: number
-  pageSize?: number
+  pageNum?: number | undefined
+  pageSize?: number | undefined
   [key: string]: unknown
 }
 
 export interface PageResult<T> {
   records: T[]
   total: number
-  pageNum?: number
-  pageSize?: number
+  pageNum?: number | undefined
+  pageSize?: number | undefined
   totalPages?: number
 }
 

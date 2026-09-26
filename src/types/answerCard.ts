@@ -13,9 +13,9 @@ export interface AnswerCard {
 }
 
 export interface AnswerCardForm {
-  paperId?: number
-  cardName?: string
-  questionOrderConfig?: string
-  styleConfig?: string
-  isDefault?: boolean
+  paperId?: number | undefined
+  cardName?: string | undefined
+  questionOrderConfig?: string | undefined
+  styleConfig?: string | undefined
+  isDefault?: boolean | undefined
 }

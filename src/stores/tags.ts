@@ -32,7 +32,8 @@ export const useTagsStore = defineStore('tags', () => {
   const removeTag = (path: string) => {
     const idx = tags.value.findIndex((t) => t.path === path)
     if (idx === -1) return
-    if (tags.value[idx].affix) return
+    const target = tags.value[idx]
+    if (!target || target.affix) return
     tags.value.splice(idx, 1)
   }
 

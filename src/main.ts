@@ -27,7 +27,10 @@ setupIcons(app)
 const pinia = createPinia()
 
 app.use(pinia)
-app.use(ElementPlus, { locale: zhCn })
+// Element Plus 2.14 的 locale prop 类型未被 ExtractPropTypes 正确展开:
+// 其自带的 zhCn 无法赋值给它自己声明的 Language prop, 属于上游类型缺陷。
+// 这里做一次受控断言, 运行时行为完全不变; 升级 element-plus 后可移除。
+app.use(ElementPlus, { locale: zhCn } as never)
 app.use(router)
 
 // 启动后异步拉字典（失败不阻塞）

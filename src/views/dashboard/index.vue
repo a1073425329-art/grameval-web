@@ -154,7 +154,9 @@ const scoreDistributionOption = computed(() => {
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' },
       formatter: (params: Array<{ name: string; value: number; data: { percentage: number } }>) => {
+        // noUncheckedIndexedAccess 下 params[0] 为可能 undefined，空数组时直接返回空串
         const p = params[0]
+        if (!p) return ''
         return `${p.name}分<br/>人数: ${p.value}人 (${p.data.percentage}%)`
       },
     },
@@ -207,7 +209,9 @@ const categoryBarOption = computed(() => {
   return {
     tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' },
       formatter: (params: Array<{ name: string; value: number; data: { accuracy: number } }>) => {
+        // noUncheckedIndexedAccess 下 params[0] 为可能 undefined，空数组时直接返回空串
         const p = params[0]
+        if (!p) return ''
         return `${p.name}<br/>题目数: ${p.value}<br/>正确率: ${p.data.accuracy}%`
       },
     },
@@ -240,7 +244,9 @@ const wrongCategoryOption = computed(() => {
     tooltip: {
       trigger: 'axis', axisPointer: { type: 'shadow' },
       formatter: (params: Array<{ name: string; value: number; data: { errorRate: number } }>) => {
+        // noUncheckedIndexedAccess 下 params[0] 为可能 undefined，空数组时直接返回空串
         const p = params[0]
+        if (!p) return ''
         return `${p.name}<br/>错题数: ${p.value}<br/>错误率: ${p.data.errorRate}%`
       },
     },

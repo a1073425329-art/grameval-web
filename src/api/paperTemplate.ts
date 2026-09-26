@@ -2,10 +2,11 @@ import request from '@/utils/request'
 import type { ApiResponse, PageQuery, PageResult } from '@/types/common'
 import type { PaperTemplate, PaperTemplateForm } from '@/types/paperTemplate'
 
+/* 请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明 */
 export interface PaperTemplateQuery extends PageQuery {
-  templateName?: string
-  status?: number
-  gradeLevel?: string
+  templateName?: string | undefined
+  status?: number | undefined
+  gradeLevel?: string | undefined
 }
 
 export const listTemplates = (params: PaperTemplateQuery) =>
@@ -23,8 +24,12 @@ export const updateTemplate = (id: number, data: PaperTemplateForm) =>
 export const deleteTemplate = (id: number) =>
   request.delete<ApiResponse<void>>(`/paper-templates/${id}`)
 
-export const useTemplate = (id: number) =>
-  request.post<ApiResponse<void>>(`/paper-templates/${id}/use`)
+// [2026-09-26 前后端路由对齐核查] 后端 PaperTemplateController 只有
+//   POST /api/paper-templates/{id}/generate
+// 没有 /use 路由，调用必 404；且页面实际用的是下方 generatePaperFromTemplate。
+// 故此函数停用（代码保留备查，不删除），避免误引入造成死链。
+// export const useTemplate = (id: number) =>
+//   request.post<ApiResponse<void>>(`/paper-templates/${id}/use`)
 
 /** 根据模板自动生成试卷 */
 export const generatePaperFromTemplate = (id: number, paperName?: string) =>

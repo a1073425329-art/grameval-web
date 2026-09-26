@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, UserFilled, Plus, Close, DataAnalysis, Clock, Warning, InfoFilled, List, Grid, Cpu } from '@element-plus/icons-vue'
+import { Search, Refresh, UserFilled, Plus, DataAnalysis, Clock, Warning, InfoFilled, List, Grid, Cpu } from '@element-plus/icons-vue'
 import { listMyStudents, listUnassignedStudents, bindMyStudents } from '@/api/admin'
 import type { AdminStudent } from '@/types/admin'
 import type { UserDetail } from '@/types/user'

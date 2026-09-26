@@ -7,7 +7,7 @@ import type { ExamMonitorEvent, ExamMonitorReportForm, BehaviorLog, BehaviorLogR
 export const reportMonitorEvent = (data: ExamMonitorReportForm) =>
   request.post<ApiResponse<void>>('/monitor/report', data)
 
-export const listMonitorEvents = (params: { examId?: number; severity?: number; handled?: boolean } & PageQuery) =>
+export const listMonitorEvents = (params: { examId?: number | undefined; severity?: number | undefined; handled?: boolean | undefined } & PageQuery) =>
   request.get<ApiResponse<PageResult<ExamMonitorEvent>>>('/monitor/events', { params })
 
 export const getExamMonitorEvents = (examId: number) =>

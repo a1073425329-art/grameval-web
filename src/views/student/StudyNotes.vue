@@ -1,6 +1,6 @@
 <script setup lang="ts">import { ref, computed, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { Plus, Edit, Delete, Document, Star, CollectionTag, View, Search, Filter } from '@element-plus/icons-vue';
+import { Document, CollectionTag, View } from '@element-plus/icons-vue';
 import { listMyNotes, createStudyNote, updateStudyNote, deleteStudyNote, listCategories } from '@/api/student';
 import type { StudyNote, StudyNoteQuery } from '@/api/student';
 import type { Category } from '@/types/category';

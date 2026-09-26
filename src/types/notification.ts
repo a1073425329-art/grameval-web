@@ -21,10 +21,10 @@ export interface MessageNotification {
 }
 
 export interface MessageQuery {
-  pageNum?: number; pageSize?: number
-  type?: string; category?: string; minPriority?: number
-  unreadOnly?: boolean; starredOnly?: boolean; archivedOnly?: boolean
-  keyword?: string; relatedType?: string; relatedId?: number
+  pageNum?: number | undefined; pageSize?: number | undefined
+  type?: string | undefined; category?: string | undefined; minPriority?: number | undefined
+  unreadOnly?: boolean | undefined; starredOnly?: boolean | undefined; archivedOnly?: boolean | undefined
+  keyword?: string | undefined; relatedType?: string | undefined; relatedId?: number | undefined
 }
 
 export interface NotificationPreference {

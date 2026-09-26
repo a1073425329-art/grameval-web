@@ -89,18 +89,33 @@ const nodeIconMap: Record<string, string> = {
   LOOP: '🔄', PARALLEL: '⏸', DELAY: '⏰', TEMPLATE: '📝',
 }
 
-// 模拟数据
-const mockApiStats = ref({ totalCalls: 1247, avgLatency: 342, successRate: 98.7, todayCalls: 89 })
-const mockModels = [
-  { value: 'deepseek-chat', label: 'DeepSeek-Chat (推荐)', latency: '~1.2s' },
-  { value: 'deepseek-v3', label: 'DeepSeek-V3', latency: '~0.8s' },
-  { value: 'gpt-4o', label: 'GPT-4o', latency: '~2.1s' },
-  { value: 'claude-3.5-sonnet', label: 'Claude 3.5 Sonnet', latency: '~1.5s' },
-]
-const mockDifficultyOptions = [
-  { value: 1, label: '基础巩固', color: '#67c23a', ratio: '30%' },
-  { value: 2, label: '能力提升', color: '#e6a23c', ratio: '50%' },
-  { value: 3, label: '拔尖冲刺', color: '#f56c6c', ratio: '20%' },
+// 真实数据统计（基于执行历史 /admin/workflow/executions 与节点定义计算，无数据时显示空态）
+const execStats = computed(() => {
+  const list = executionHistory.value
+  const today = new Date().toISOString().slice(0, 10)
+  const todayCalls = list.filter(e => (e.startTime || '').slice(0, 10) === today).length
+  const finished = list.filter(e => e.endTime && e.startTime)
+  const avgLatency = finished.length
+    ? Math.round(finished.reduce((s, e) => {
+        const d = new Date(e.endTime as string).getTime() - new Date(e.startTime).getTime()
+        return s + (isNaN(d) ? 0 : d)
+      }, 0) / finished.length / 1000)
+    : null
+  const successRate = list.length
+    ? Math.round((list.filter(e => e.status === 'SUCCEEDED').length / list.length) * 1000) / 10
+    : null
+  return { totalCalls: list.length, avgLatency, successRate, todayCalls }
+})
+/** LLM 模型下拉选项：取后端节点定义里 LLM 节点声明的真实模型（去重） */
+const modelOptions = computed(() => {
+  const set = new Set<string>()
+  workflowNodes.value.forEach(n => { if (n.nodeType === 'LLM' && n.model) set.add(n.model) })
+  return Array.from(set).map(m => ({ value: m, label: m }))
+})
+const difficultyOptions = [
+  { value: 1, label: '基础巩固', color: '#67c23a' },
+  { value: 2, label: '能力提升', color: '#e6a23c' },
+  { value: 3, label: '拔尖冲刺', color: '#f56c6c' },
 ]
 
 // ============================================================
@@ -266,9 +281,12 @@ const execSuccessRate = computed(() => {
         <el-tooltip content="小地图"><el-button circle :type="showMinimap ? 'primary' : 'default'" @click="showMinimap = !showMinimap"><el-icon><MapLocation /></el-icon></el-button></el-tooltip>
       </div>
       <div class="wf-tb-r">
-        <span class="api-s">⏱ {{ mockApiStats.avgLatency }}ms</span>
-        <span class="api-s" style="color:#67c23a">✓ {{ mockApiStats.successRate }}%</span>
-        <span class="api-s">今日 {{ mockApiStats.todayCalls }}</span>
+        <template v-if="executionHistory.length">
+          <span class="api-s" v-if="execStats.avgLatency != null">⏱ {{ execStats.avgLatency }}s</span>
+          <span class="api-s" style="color:#67c23a" v-if="execStats.successRate != null">✓ {{ execStats.successRate }}%</span>
+          <span class="api-s">今日 {{ execStats.todayCalls }}</span>
+        </template>
+        <span v-else class="api-s" style="color:#909399">暂无执行记录</span>
       </div>
     </div>
 
@@ -336,7 +354,7 @@ const execSuccessRate = computed(() => {
                   <div class="fg">
                     <label><el-icon><DataAnalysis /></el-icon> 难度分布</label>
                     <div class="diff-bars">
-                      <div v-for="d in mockDifficultyOptions" :key="d.value" class="db-i"><span class="db-l">{{ d.label }}</span><div class="db-t"><div class="db-f" :style="{ width: d.ratio, background: d.color }"></div></div><span class="db-p">{{ d.ratio }}</span></div>
+                      <div v-for="d in difficultyOptions" :key="d.value" class="db-i"><span class="db-l">{{ d.label }}</span><div class="db-t"><div class="db-f" :style="{ background: d.color }"></div></div></div>
                     </div>
                   </div>
                 </div>
@@ -345,9 +363,10 @@ const execSuccessRate = computed(() => {
               <div class="ctl-side">
                 <div class="fg">
                   <label><el-icon><Cpu /></el-icon> LLM 模型</label>
-                  <el-select v-model="selectedModel" style="width:100%">
-                    <el-option v-for="m in mockModels" :key="m.value" :label="m.label" :value="m.value"><span>{{ m.label }}</span><span style="float:right;color:#909399;font-size:11px">{{ m.latency }}</span></el-option>
+                  <el-select v-model="selectedModel" style="width:100%" placeholder="后端 LLM 节点模型">
+                    <el-option v-for="m in modelOptions" :key="m.value" :label="m.label" :value="m.value" />
                   </el-select>
+                  <div v-if="!modelOptions.length" class="model-empty">暂无可用模型</div>
                 </div>
                 <div class="fg-row-3">
                   <div class="fg"><label>Temperature</label><el-input-number v-model="llmTemperature" :min="0" :max="2" :step="0.1" :precision="1" size="small" controls-position="right" style="width:100%" /></div>
@@ -568,7 +587,8 @@ $bg: #f0f2f5; $card: #fff; $brd: #e4e7ed; $txt: #303133; $sub: #909399; $pri: #4
 .fg-row-3 { display:flex; gap:8px; & > .fg { flex:1; } }
 .sel-hint { margin-top:4px; padding:6px 8px; background:$bg; border-radius:4px; font-size:11px; display:flex; gap:6px; align-items:center; .sh-n { font-weight:600; color:$pri; flex-shrink:0; } .sh-v { color:$sub; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } }
 .diff-bars { display:flex; flex-direction:column; gap:4px; background:$bg; padding:8px; border-radius:4px; }
-.db-i { display:flex; align-items:center; gap:6px; font-size:11px; .db-l { width:55px; flex-shrink:0; color:$txt; } .db-t { flex:1; height:8px; background:#e4e7ed; border-radius:4px; overflow:hidden; } .db-f { height:100%; border-radius:4px; transition:width .4s; } .db-p { width:32px; text-align:right; color:$sub; flex-shrink:0; } }
+.db-i { display:flex; align-items:center; gap:6px; font-size:11px; .db-l { width:55px; flex-shrink:0; color:$txt; } .db-t { flex:1; height:8px; background:#e4e7ed; border-radius:4px; overflow:hidden; } .db-f { height:100%; border-radius:4px; width:33%; opacity:.65; } }
+.model-empty { font-size:11px; color:$sub; }
 .exe-row { display:flex; justify-content:center; gap:10px; margin-top:12px; padding-top:10px; border-top:1px solid $brd; }
 .log-badge { margin-left:4px; }
 

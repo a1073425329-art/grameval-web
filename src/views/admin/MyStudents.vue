@@ -322,7 +322,7 @@ onMounted(load)
           <el-button :loading="exporting" @click="exportCsv">
             <el-icon><Download /></el-icon>导出 CSV
           </el-button>
-          <el-button type="primary" size="small" @click="$router.push('/admin/ai-assistant')">
+          <el-button type="primary" size="small" @click="$router.push('/admin/ai-compose')">
             <el-icon><Cpu /></el-icon>AI学生分析
           </el-button>
           <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">

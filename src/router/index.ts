@@ -2,6 +2,7 @@ import { createRouter, createWebHashHistory } from 'vue-router'
 import type { RouteRecordRaw } from 'vue-router'
 import { useAuthStore, HOME_BY_ROLE } from '@/stores/auth'
 import { usePermissionStore } from '@/stores/permission'
+import { DISABLED_PATHS } from '@/router/asyncRoutes'
 import type { Role } from '@/types/common'
 
 /** 白名单：无需登录 */
@@ -118,6 +119,13 @@ router.beforeEach(async (to) => {
     // 不要 return { ...to, replace: true }——to 里带着 name: 'NotFound'、
     // matched 等字段，spread 出来会让新导航继续按 NotFound 走，仍然 404。
     return to.fullPath
+  }
+
+  // ==================== 已禁用模块拦截 ====================
+  // 这些模块的路由被 meta.disabled 过滤掉、不会注册（访问时命中 catch-all 即 404）。
+  // 此处再拦一道，防止将来误把路由加回后仍能通过 URL 直达。
+  if (DISABLED_PATHS.includes(to.path)) {
+    return { path: '/404', replace: true }
   }
 
   // ==================== 放行 ====================

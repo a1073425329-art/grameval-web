@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { getCategoryTree, getPracticeQuestions, submitPractice, listPractices } from '@/api/student'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { getCategoryTree, getPracticeQuestions, submitPractice, listPractices, startPractice as openPracticeSession, answerInPractice, finishPractice } from '@/api/student'
 import type { Category } from '@/types/category'
 import type { Question, QuickPracticeResult, PracticeRecord } from '@/types/question'
 import type { QuestionType, Difficulty } from '@/types/common'
@@ -23,6 +23,36 @@ const feedbacks = ref<Record<number, QuickPracticeResult>>({})
 
 const current = computed<Question | undefined>(() => questions.value[currentIndex.value])
 const currentFeedback = computed(() => current.value ? feedbacks.value[current.value.id] : undefined)
+
+/* ============================================================ *
+ *  练习会话（落库）：startPractice / answerInPractice / finishPractice
+ * ============================================================ */
+const activePracticeId = ref<number | null>(null)
+/** 记录本次会话中已通过 /practices/{id}/answers 落库的题目，避免重复入库 */
+const persistedAnswerIds = ref<Set<number>>(new Set())
+/** 本次会话落库结束后的汇总（结束练习按钮提示用） */
+const finishedSummary = ref<{ correct: number; total: number } | null>(null)
+
+/** 结束当前练习会话（落库收尾 + 刷新侧栏） */
+const finishCurrentPractice = async () => {
+  const pid = activePracticeId.value
+  if (pid == null) return
+  activePracticeId.value = null
+  try {
+    const res = await finishPractice(pid)
+    const rec = res.data
+    if (rec && rec.questionCount > 0) {
+      finishedSummary.value = { correct: rec.correctCount, total: rec.questionCount }
+    }
+    loadPracticeRecords()
+  } catch { /* 失败不阻塞页面，record 由后端事务保证 */ }
+}
+
+const onBeforeUnload = () => {
+  // 浏览器刷新/关闭时尽力收尾（同步场景下 sendBeacon 更可靠，此处保持简单）
+  if (activePracticeId.value != null) finishCurrentPractice()
+}
+
 
 /* ============================================================ *
  *  新增：收藏题目功能（localStorage 持久化）
@@ -157,14 +187,25 @@ const flatCategories = computed<Category[]>(() => {
 const startPractice = async (catId: number) => {
   activeCategoryId.value = catId
   loading.value = true
+  // 切换专题前先把上一个练习会话收尾落库
+  await finishCurrentPractice()
   try {
     const res = await getPracticeQuestions(catId, 10)
     questions.value = Array.isArray(res.data) ? res.data : []
     currentIndex.value = 0
     userAnswers.value = {}
     feedbacks.value = {}
+    persistedAnswerIds.value = new Set()
+    finishedSummary.value = null
     if (!questions.value.length) {
+      activePracticeId.value = null
       ElMessage.info('该专题下暂无可练习的题目')
+    } else {
+      // 开启落库会话；失败则降级为无状态练习（仍可答题，只是不生成记录）
+      try {
+        const practiceRes = await openPracticeSession(catId)
+        activePracticeId.value = practiceRes.data?.id ?? null
+      } catch { activePracticeId.value = null }
     }
   } finally {
     loading.value = false
@@ -188,10 +229,33 @@ const submit = async () => {
   try {
     const res = await submitPractice({ questionId: current.value.id, userAnswer: ans })
     feedbacks.value = { ...feedbacks.value, [current.value.id]: res.data }
-    // 新增：提交后刷新练习记录侧栏与看板
+    // 落库：练习会话中把本题答案写入 practice_answer 表（失败不影响答题体验）
+    const pid = activePracticeId.value
+    if (pid != null && !persistedAnswerIds.value.has(current.value.id)) {
+      try {
+        await answerInPractice(pid, { questionId: current.value.id, userAnswer: ans })
+        persistedAnswerIds.value.add(current.value.id)
+      } catch { /* 静默降级：判题反馈仍正常展示 */ }
+    }
+    // 提交后刷新练习记录侧栏与看板
     loadPracticeRecords()
   } finally {
     submitting.value = false
+  }
+}
+
+/** 手动结束练习：收尾落库并给出本次汇总 */
+const finishPracticeSession = async () => {
+  if (activePracticeId.value == null) {
+    ElMessage.info('当前没有进行中的练习')
+    return
+  }
+  await finishCurrentPractice()
+  const s = finishedSummary.value
+  if (s) {
+    ElMessage.success(`练习已完成：共 ${s.total} 题，答对 ${s.correct} 题`)
+  } else {
+    ElMessage.info('练习已完成')
   }
 }
 
@@ -207,6 +271,15 @@ onMounted(() => {
   loadCategories()
   loadPracticeRecords()
 })
+
+onBeforeUnmount(() => {
+  // 离开页面时把进行中的练习收尾落库
+  if (activePracticeId.value != null) finishCurrentPractice()
+  window.removeEventListener('beforeunload', onBeforeUnload)
+})
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', onBeforeUnload)
+}
 </script>
 
 <template>
@@ -429,12 +502,23 @@ onMounted(() => {
 
           <div class="footer">
             <el-button :disabled="currentIndex === 0" @click="prev"><el-icon><ArrowLeft /></el-icon>上一题</el-button>
-            <el-button v-if="!currentFeedback" type="primary" :loading="submitting" @click="submit">确认回答</el-button>
-            <el-button
-              type="primary"
-              :disabled="currentIndex === questions.length - 1"
-              @click="next"
-            >下一题<el-icon><ArrowRight /></el-icon></el-button>
+            <div class="footer-mid">
+              <el-button
+                v-if="activePracticeId != null"
+                type="warning"
+                plain
+                :disabled="!Object.keys(feedbacks).length"
+                @click="finishPracticeSession"
+              >结束练习</el-button>
+            </div>
+            <div class="footer-right">
+              <el-button v-if="!currentFeedback" type="primary" :loading="submitting" @click="submit">确认回答</el-button>
+              <el-button
+                type="primary"
+                :disabled="currentIndex === questions.length - 1"
+                @click="next"
+              >下一题<el-icon><ArrowRight /></el-icon></el-button>
+            </div>
           </div>
         </template>
       </div>
@@ -672,8 +756,11 @@ onMounted(() => {
   border-top: 1px solid #f0f0f0;
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
 }
+.footer-mid { display: flex; gap: 12px; }
+.footer-right { display: flex; gap: 12px; }
 
 /* 新增：练习记录侧栏 */
 .records-panel {

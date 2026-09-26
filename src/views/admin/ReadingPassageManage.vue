@@ -12,7 +12,7 @@ import {
   batchDeleteReadingPassages,
   listCategoryTree,
 } from '@/api/admin'
-import { generatePreview } from '@/api/ai'
+import { generateReading } from '@/api/ai'
 import type { ReadingPassage, ReadingPassageForm, ReadingQuestionItem } from '@/types/reading'
 import type { QuestionOption } from '@/types/question'
 import type { Category } from '@/types/category'
@@ -214,7 +214,7 @@ const removeSubQuestion = (idx: number) => {
   form.questions.splice(idx, 1)
 }
 
-/* AI 生成文章 */
+/* AI 生成文章 —— 调用后端 POST /admin/ai/generate-reading（DeepSeek） */
 const aiGenerating = ref(false)
 const aiGeneratePassage = async () => {
   if (!form.topic && !form.passageType) {
@@ -223,47 +223,42 @@ const aiGeneratePassage = async () => {
   }
   aiGenerating.value = true
   try {
-    const prompt = `生成一篇${typeLabel(form.passageType) || '英语阅读'}文章，主题：${
-      form.topic || '综合'
-    }，难度：${diffLabel(form.difficulty)}，字数约 200-300 词。返回 JSON: { title, content, summary }`
-
-    const mockContent = generateMockPassage(form.topic, form.passageType, form.difficulty)
-    await new Promise((r) => setTimeout(r, 1500))
-
-    form.title = mockContent.title
-    form.content = mockContent.content
-    form.summary = mockContent.summary
+    const res = await generateReading({
+      topic: form.topic || undefined,
+      passageType: form.passageType || undefined,
+      difficulty: form.difficulty,
+      questionCount: 5,
+    })
+    const data = res.data
+    if (!data?.content) {
+      ElMessage.warning('AI 未返回有效内容，请稍后重试')
+      return
+    }
+    form.title = data.title ?? ''
+    form.content = data.content
+    form.summary = data.summary ?? ''
     form.source = 'AI'
-    form.aiPrompt = prompt
+    form.aiPrompt = `AI 生成：主题 ${form.topic || '综合'}，类型 ${typeLabel(form.passageType) || '通用'}，难度 ${diffLabel(form.difficulty)}`
+    // 后端生成的配套题目带 options，映射为表单子题结构
+    if (data.questions?.length) {
+      form.questions = data.questions.map((q) => ({
+        stem: q.stem,
+        standardAnswer: q.standardAnswer ?? 'A',
+        analysis: q.analysis ?? '',
+        knowledgePoints: q.knowledgePoints ?? [],
+        options: (q.options ?? []).map((o, i) => ({
+          optionLabel: o.optionLabel,
+          optionContent: o.optionContent,
+          sortNo: o.sortNo ?? i + 1,
+        })),
+        defaultScore: q.defaultScore ?? 2,
+      }))
+    }
     ElMessage.success('AI 生成成功')
   } catch {
-    ElMessage.error('AI 生成失败')
+    /* request.ts 已统一弹出后端错误信息 */
   } finally {
     aiGenerating.value = false
-  }
-}
-
-function generateMockPassage(topic?: string, type?: string, difficulty: Difficulty = 2) {
-  const topics = [
-    'The Future of Technology',
-    'Environmental Protection',
-    'Healthy Lifestyle',
-    'Education Innovation',
-    'Cultural Diversity',
-  ]
-  const t = topic || topics[Math.floor(Math.random() * topics.length)]
-  const wordCount = difficulty === 1 ? 150 : difficulty === 2 ? 250 : 350
-
-  return {
-    title: t,
-    content: `In recent years, ${t.toLowerCase()} has become an increasingly important topic in our society. People from all walks of life are paying more attention to this issue and discussing its implications for the future.
-
-Research shows that the development of technology has greatly influenced how we approach ${t.toLowerCase()}. Many experts believe that we need to find sustainable solutions that balance progress with preservation.
-
-According to a recent study, more than 60% of respondents expressed concern about the long-term effects. However, there are also positive developments emerging from various sectors. Governments, businesses, and individuals are all taking steps to address these challenges.
-
-Looking ahead, it is clear that ${t.toLowerCase()} will continue to shape our world in meaningful ways. The key is to stay informed, remain adaptable, and work together toward common goals. Only through collective effort can we ensure a better future for generations to come.`,
-    summary: `本文探讨了${t}的现状与未来发展，分析了各方面的观点和挑战。`,
   }
 }
 

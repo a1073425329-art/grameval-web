@@ -249,7 +249,7 @@ onMounted(load)
               <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
               {{ viewMode === 'card' ? '表格' : '卡片' }}
             </el-button>
-            <el-button type="primary" size="small" @click="$router.push('/admin/ai-assistant')">
+            <el-button type="primary" size="small" @click="$router.push('/admin/ai-compose')">
               <el-icon><Cpu /></el-icon>AI成绩分析
             </el-button>
           </el-form-item>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { getStudentStatistics, getMyResults, listPractices, getDimensionAnalysis, getLeaderboard, getMyRank } from '@/api/student'
+import { getStudentStatistics, getMyResults, listPractices, getDimensionAnalysis } from '@/api/student'
 import { getMyScoreTrend } from '@/api/scoreCurve'
 import { getStudentMastery } from '@/api/knowledgeMastery'
 import type { StudentStatistics, CategoryStat, DifficultyStat, TagStat } from '@/types/stats'
@@ -9,7 +9,6 @@ import type { ExamResultItem } from '@/types/result'
 import type { PracticeRecord } from '@/types/question'
 import type { ScoreCurve as SC } from '@/types/scoreCurve'
 import type { KnowledgeMastery as KM } from '@/types/knowledgeMastery'
-import type { LeaderboardItem, MyRank } from '@/types/leaderboard'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -30,8 +29,6 @@ const recentPractices = ref<PracticeRecord[]>([])
 // ===== 新增：雷达图/班级对比/分布图所需数据 =====
 const scoreCurveData = ref<SC[]>([])
 const masteryData = ref<KM[]>([])
-const leaderboardList = ref<LeaderboardItem[]>([])
-const myRankInfo = ref<MyRank | null>(null)
 
 // 维度切换
 const currentModule = ref('all')
@@ -67,27 +64,23 @@ const includeMap: Record<string, string | undefined> = {
 //   } finally { loading.value = false }
 // }
 
-// ---- 新 load 函数：增加知识点掌握度、成绩曲线、排行榜数据 ----
+// ---- 新 load 函数：增加知识点掌握度、成绩曲线 ----
 const load = async () => {
   if (!userId.value) return
   loading.value = true
   try {
-    const [s, r, p, sc, km, lb, mr] = await Promise.allSettled([
+    const [s, r, p, sc, km] = await Promise.allSettled([
       getStudentStatistics(userId.value, includeMap[currentModule.value]),
       getMyResults({ pageNum: 1, pageSize: 20 }),
       listPractices({ pageNum: 1, pageSize: 10 }),
       getMyScoreTrend(),
       getStudentMastery(userId.value),
-      getLeaderboard(50),
-      getMyRank(),
     ])
     if (s.status === 'fulfilled') stats.value = s.value.data
     if (r.status === 'fulfilled') recentResults.value = r.value.data?.records ?? ([] as any)
     if (p.status === 'fulfilled') recentPractices.value = p.value.data?.records ?? ([] as any)
     if (sc.status === 'fulfilled') scoreCurveData.value = sc.value.data ?? []
     if (km.status === 'fulfilled') masteryData.value = km.value.data ?? []
-    if (lb.status === 'fulfilled') leaderboardList.value = lb.value.data ?? []
-    if (mr.status === 'fulfilled') myRankInfo.value = mr.value.data ?? null
   } finally { loading.value = false }
 }
 
@@ -276,11 +269,12 @@ const radarCategories = computed<CategoryStat[]>(() => {
   }))
 })
 
-/** 班级平均正确率（从排行榜数据计算） */
+/** 班级平均正确率（取自成绩曲线中各次考试的班级平均分，不依赖已禁用的排行榜） */
 const classAvgAccuracy = computed(() => {
-  if (!leaderboardList.value.length) return 60
-  const sum = leaderboardList.value.reduce((s, i) => s + (i.accuracy || 0), 0)
-  return Math.round(sum / leaderboardList.value.length * 10) / 10
+  const data = scoreCurveData.value
+  if (!data.length) return 0
+  const sum = data.reduce((s, i) => s + (i.classAvgScore || 0), 0)
+  return Math.round(sum / data.length * 10) / 10
 })
 
 const radarChartOption = computed(() => {
@@ -288,6 +282,25 @@ const radarChartOption = computed(() => {
   if (!cats.length) return {}
   const studentValues = cats.map(c => Math.round(c.accuracy * 10) / 10)
   const classAvg = classAvgAccuracy.value
+
+  // 班级平均线仅在拿到成绩曲线数据时绘制，避免出现 0 值假线
+  const seriesData: any[] = [
+    {
+      value: studentValues, name: '我的掌握度',
+      areaStyle: { color: 'rgba(64,158,255,0.25)' },
+      lineStyle: { color: '#409eff', width: 2 },
+      itemStyle: { color: '#409eff' },
+    },
+  ]
+  if (classAvg > 0) {
+    seriesData.push({
+      value: cats.map(() => classAvg), name: '班级平均',
+      areaStyle: { color: 'rgba(230,162,60,0.1)' },
+      lineStyle: { color: '#e6a23c', width: 2, type: 'dashed' },
+      itemStyle: { color: '#e6a23c' },
+    })
+  }
+
   return {
     tooltip: {
       trigger: 'item' as const,
@@ -301,7 +314,7 @@ const radarChartOption = computed(() => {
         return html
       },
     },
-    legend: { data: ['我的掌握度', '班级平均'], bottom: 0, textStyle: { fontSize: 12 } },
+    legend: { data: classAvg > 0 ? ['我的掌握度', '班级平均'] : ['我的掌握度'], bottom: 0, textStyle: { fontSize: 12 } },
     radar: {
       indicator: cats.map(c => ({ name: c.categoryName.length > 6 ? c.categoryName.slice(0, 6) + '…' : c.categoryName, max: 100 })),
       shape: 'polygon',
@@ -317,23 +330,7 @@ const radarChartOption = computed(() => {
       },
       axisLine: { lineStyle: { color: '#dcdfe6' } },
     },
-    series: [{
-      type: 'radar',
-      data: [
-        {
-          value: studentValues, name: '我的掌握度',
-          areaStyle: { color: 'rgba(64,158,255,0.25)' },
-          lineStyle: { color: '#409eff', width: 2 },
-          itemStyle: { color: '#409eff' },
-        },
-        {
-          value: cats.map(() => classAvg), name: '班级平均',
-          areaStyle: { color: 'rgba(230,162,60,0.1)' },
-          lineStyle: { color: '#e6a23c', width: 2, type: 'dashed' },
-          itemStyle: { color: '#e6a23c' },
-        },
-      ],
-    }],
+    series: [{ type: 'radar', data: seriesData }],
   }
 })
 
@@ -391,7 +388,6 @@ const classComparisonOption = computed(() => {
 const comparisonTableData = computed(() => {
   const data = scoreCurveData.value
   if (!data.length) return []
-  const totalStudents = leaderboardList.value.length || 1
   return data.map(d => ({
     examName: d.examName || d.sessionName || '-',
     examDate: d.examDate,
@@ -399,7 +395,6 @@ const comparisonTableData = computed(() => {
     classAvg: d.classAvgScore ?? 0,
     gap: Math.round(((d.scorePercentage ?? 0) - (d.classAvgScore ?? 0)) * 10) / 10,
     rank: d.classRank ?? null,
-    percentile: d.classRank ? Math.round((1 - d.classRank / totalStudents) * 1000) / 10 : null,
   })).reverse()
 })
 
@@ -581,7 +576,6 @@ const scoreDistributionSummary = computed(() => {
           <div style="display:flex;align-items:center;gap:8px">
             <el-icon><TrendCharts /></el-icon>
             <span>与班级平均水平对比</span>
-            <el-tag v-if="myRankInfo?.rank" size="small" type="warning">当前排名：第 {{ myRankInfo.rank }} 名</el-tag>
           </div>
         </template>
         <VChart :option="classComparisonOption" autoresize style="height:300px" />
@@ -607,18 +601,6 @@ const scoreDistributionSummary = computed(() => {
           <el-table-column label="班级排名" width="90" align="center">
             <template #default="{ row }">
               <span v-if="row.rank" :style="{ color: row.rank <= 3 ? '#e6a23c' : '#606266', fontWeight: 600 }">第{{ row.rank }}名</span>
-              <span v-else style="color:#c0c4cc">-</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="百分位" width="100" align="center">
-            <template #default="{ row }">
-              <el-progress
-                v-if="row.percentile != null"
-                :percentage="row.percentile"
-                :stroke-width="10"
-                :color="row.percentile >= 75 ? '#67c23a' : row.percentile >= 50 ? '#e6a23c' : '#f56c6c'"
-                :text-inside="true"
-              />
               <span v-else style="color:#c0c4cc">-</span>
             </template>
           </el-table-column>

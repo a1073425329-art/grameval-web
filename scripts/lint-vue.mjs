@@ -174,10 +174,11 @@ function scanTemplate(file, templateBlock, scriptBindings, rawSrc) {
       .replace(/\/\*[\s\S]*?\*\//g, '')
       // 尝试擦掉正则字面量 (为简单起见: /.../ 内出现 <>|\/ 特殊符号才算)
       .replace(/\/[^\/\n]*[<>|\\][^\/\n]*\/[gimsuy]*/g, '//')
-    // 收集箭头函数参数(简单启发): (a,b) => 或 x =>
+    // 收集箭头函数参数(简单启发): (a,b) => 或 x => （() => 无参时 bag 为 undefined，跳过）
     const localParams = new Set()
     for (const am of cleaned.matchAll(/(?:\(([^)]*)\)|\b([a-zA-Z_$][\w$]*))\s*=>/g)) {
       const bag = am[1] || am[2]
+      if (!bag) continue
       for (const p of bag.split(',')) {
         const n = p.trim().split(/[:\s=]/)[0]
         if (n) localParams.add(n)
@@ -186,6 +187,7 @@ function scanTemplate(file, templateBlock, scriptBindings, rawSrc) {
     // 收集 for 循环里的 v 变量 (如果表达式内嵌了 for/some/map)
     for (const fm of cleaned.matchAll(/\.(?:map|filter|find|forEach|some|every|reduce|flatMap|sort)\s*\(\s*(?:\(([^)]*)\)|([a-zA-Z_$][\w$]*))/g)) {
       const bag = fm[1] || fm[2]
+      if (!bag) continue
       for (const p of bag.split(',')) {
         const n = p.trim().split(/[:\s=]/)[0]
         if (n) localParams.add(n)

@@ -3,7 +3,31 @@ import type { RouteRecordRaw } from 'vue-router'
 /**
  * 动态路由 —— 按 meta.roles 过滤后挂到 Layout 下。
  * hidden: true 的路由不会出现在侧边栏。
+ * disabled: true 的路由不注册、不进菜单、直达 URL 也被守卫拦截（见 router/index.ts）。
  */
+
+/**
+ * 已禁用模块（2026-09-26 用户拍板）
+ *
+ * 这些模块的菜单与路由全部下线，直接输入 URL 也进不去；后端接口保留不删（可随时恢复）。
+ * 禁用原因：不属于学生端/管理端主流程，答辩演示不涉及。
+ *   · 学生端主流程：语法题库 → 专项练习 → 在线考试 → 查看考试 → 查看成绩
+ *   · 管理端主流程：出题 → 生成试卷 → 下发班级组织考试 → 系统配置
+ *
+ * 恢复方式：删掉对应路由的 `disabled: true`，并从 DISABLED_PATHS 中移除该路径。
+ */
+export const DISABLED_PATHS = [
+  '/student/leaderboard',
+  '/student/badges',
+  '/student/weekly-report',
+  '/student/study-groups',
+  '/admin/paper-templates',
+  '/admin/answer-cards',
+  '/admin/exam-monitor-log',
+  '/admin/exam-comments',
+  '/admin/workflow',
+]
+
 export const asyncRoutes: RouteRecordRaw[] = [
   /* ============================================================
    *  学生端
@@ -63,10 +87,11 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '成绩趋势', icon: 'TrendCharts', roles: ['STUDENT'], group: '考试中心' },
   },
   {
+    // 【已禁用】学生排行榜 —— 非主流程
     path: 'student/leaderboard',
     name: 'Leaderboard',
     component: () => import('@/views/student/Leaderboard.vue'),
-    meta: { title: '学生排行榜', icon: 'Trophy', roles: ['STUDENT'] },
+    meta: { title: '学生排行榜', icon: 'Trophy', roles: ['STUDENT'], disabled: true },
   },
   {
     path: 'student/study-notes',
@@ -75,16 +100,18 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '学习笔记', icon: 'EditPen', roles: ['STUDENT'], group: '学习中心' },
   },
   {
+    // 【已禁用】徽章系统 —— 非主流程
     path: 'student/badges',
     name: 'Badges',
     component: () => import('@/views/student/Badges.vue'),
-    meta: { title: '徽章系统', icon: 'Trophy', roles: ['STUDENT'] },
+    meta: { title: '徽章系统', icon: 'Trophy', roles: ['STUDENT'], disabled: true },
   },
   {
+    // 【已禁用】学习周报 —— 非主流程
     path: 'student/weekly-report',
     name: 'WeeklyReport',
     component: () => import('@/views/student/WeeklyReport.vue'),
-    meta: { title: '学习周报', icon: 'Calendar', roles: ['STUDENT'] },
+    meta: { title: '学习周报', icon: 'Calendar', roles: ['STUDENT'], disabled: true },
   },
   {
     path: 'student/ai-assistant',
@@ -93,10 +120,11 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: 'AI学习助手', icon: 'ChatDotRound', roles: ['STUDENT'] },
   },
   {
+    // 【已禁用】学习小组 —— 非主流程
     path: 'student/study-groups',
     name: 'StudyGroups',
     component: () => import('@/views/student/StudyGroups.vue'),
-    meta: { title: '学习小组', icon: 'UserFilled', roles: ['STUDENT'] },
+    meta: { title: '学习小组', icon: 'UserFilled', roles: ['STUDENT'], disabled: true },
   },
   // hidden routes
   { path: 'student/exam-room/:examId', name: 'ExamRoom', component: () => import('@/views/student/ExamRoom.vue'), meta: { title: '考试中', roles: ['STUDENT'], hidden: true } },
@@ -148,10 +176,11 @@ export const asyncRoutes: RouteRecordRaw[] = [
   },
   // 考试管理（出题流程第二步：试卷管理→考试管理→成绩管理）
   {
+    // 【已禁用】试卷模板 —— 非主流程
     path: 'admin/paper-templates',
     name: 'AdminPaperTemplates',
     component: () => import('@/views/admin/PaperTemplateManage.vue'),
-    meta: { title: '试卷模板', icon: 'Tickets', roles: ['ADMIN'], group: '考试管理' },
+    meta: { title: '试卷模板', icon: 'Tickets', roles: ['ADMIN'], group: '考试管理', disabled: true },
   },
   {
     path: 'admin/papers',
@@ -160,10 +189,11 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '试卷管理', icon: 'Files', roles: ['ADMIN'], group: '考试管理' },
   },
   {
+    // 【已禁用】答题卡配置 —— 非主流程
     path: 'admin/answer-cards',
     name: 'AdminAnswerCards',
     component: () => import('@/views/admin/AnswerCardConfig.vue'),
-    meta: { title: '答题卡配置', icon: 'Postcard', roles: ['ADMIN'], group: '考试管理' },
+    meta: { title: '答题卡配置', icon: 'Postcard', roles: ['ADMIN'], group: '考试管理', disabled: true },
   },
   {
     path: 'admin/exams',
@@ -178,16 +208,18 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '成绩管理', icon: 'DataAnalysis', roles: ['ADMIN'], group: '考试管理' },
   },
   {
+    // 【已禁用】考试监控日志 —— 非主流程
     path: 'admin/exam-monitor-log',
     name: 'AdminExamMonitorLog',
     component: () => import('@/views/admin/ExamMonitorLog.vue'),
-    meta: { title: '考试监控日志', icon: 'VideoCamera', roles: ['ADMIN'], group: '考试管理' },
+    meta: { title: '考试监控日志', icon: 'VideoCamera', roles: ['ADMIN'], group: '考试管理', disabled: true },
   },
   {
+    // 【已禁用】考试评语 —— 非主流程
     path: 'admin/exam-comments',
     name: 'AdminExamComments',
     component: () => import('@/views/admin/ExamCommentManage.vue'),
-    meta: { title: '考试评语', icon: 'ChatDotRound', roles: ['ADMIN'], group: '考试管理' },
+    meta: { title: '考试评语', icon: 'ChatDotRound', roles: ['ADMIN'], group: '考试管理', disabled: true },
   },
     // 用户权限
   {
@@ -210,10 +242,11 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '班级管理', icon: 'School', roles: ['ADMIN'], group: '系统管理' },
   },
   {
+    // 【已禁用】工作流编排 —— 非主流程
     path: 'admin/workflow',
     name: 'AdminWorkflow',
     component: () => import('@/views/admin/WorkflowPanel.vue'),
-    meta: { title: '工作流编排', icon: 'Connection', roles: ['ADMIN'], group: '题库管理' },
+    meta: { title: '工作流编排', icon: 'Connection', roles: ['ADMIN'], group: '题库管理', disabled: true },
   },
   {
     path: 'admin/operation-logs',

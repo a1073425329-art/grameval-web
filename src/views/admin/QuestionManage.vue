@@ -410,7 +410,7 @@ const aiGenerateReading = async () => {
       difficulty: readingForm.difficulty || 2,
       questionCount: 5,
     })
-    const data = res.data.data || res.data
+    const data = res.data
     readingForm.passageTitle = data.title
     readingForm.passageContent = data.content
     readingForm.summary = data.summary || ''

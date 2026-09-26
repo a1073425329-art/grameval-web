@@ -20,8 +20,8 @@ export default defineConfig({
     setupFiles: ['tests/unit/setup.ts'],
     // element-plus 有的 dialog 底层依赖 transition, happy-dom 不完整, 允许失败但捕获
     testTimeout: 15_000,
-    // 消除 Node 26 ExperimentalWarning: localStorage
-    execArgv: ['--localstorage-file=node_modules/.cache/vitest-localstorage'],
+    // Unit tests do not need Node's persistent SQLite-backed localStorage.
+    execArgv: [],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

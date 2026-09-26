@@ -21,6 +21,9 @@ export interface ExamSession {
   createTime?: string
   updateTime?: string
   attendedCount?: number
+  assignedCount?: number
+  submittedCount?: number
+  averageScore?: number
 }
 
 /** 场次创建/更新请求 —— 对齐后端 SessionRequest */

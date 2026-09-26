@@ -176,7 +176,9 @@ const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d =
         <h2>你好，{{ authStore.userInfo?.displayName || authStore.userInfo?.username || '同学' }} 👋</h2>
         <p class="hero-sub">坚持每天练习，语法能力会越来越强！</p>
       </div>
-      <div class="hero-checkin">
+      <!-- [2026-09-26 下线] 学习打卡入口（06 清单 §8.3 O 档：论文 grep「打卡」0 命中）
+           原代码整体保留备查，仅加 v-if="false" 隐藏；如需恢复，删掉该 v-if 即可。 -->
+      <div class="hero-checkin" v-if="false">
         <div v-if="!isCheckedIn" class="checkin-btn-wrap">
           <el-button type="primary" @click="doCheckIn" :loading="checkInLoading" class="checkin-btn">
             <el-icon><Calendar /></el-icon>今日打卡
@@ -232,7 +234,8 @@ const diffLabel = (d?: number) => (d === 1 ? '简单' : d === 2 ? '中等' : d =
 
     <!-- ====== 学习目标与打卡统计 ====== -->
     <el-row :gutter="16" class="stat-row">
-      <el-col :span="4">
+      <!-- [2026-09-26 下线] 连续学习天数（打卡派生指标，06 §8.3 O 档）；原代码保留备查 -->
+      <el-col :span="4" v-if="false">
         <div class="mini-stat">
           <div class="mini-num" style="color:#e6a23c">{{ streakDays }}</div>
           <div class="mini-label">连续学习天数</div>

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, computed } from 'vue'
-import { ElMessage } from 'element-plus'
-import { List, Grid, Cpu } from '@element-plus/icons-vue'
-import { listAdminResults, exportResults } from '@/api/admin'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { List, Grid, Cpu, Refresh } from '@element-plus/icons-vue'
+import { listAdminResults, exportResults, regradeResult } from '@/api/admin'
 import { getResultDetail } from '@/api/student'
 import type { ExamResultItem, ResultDetail } from '@/types/result'
 import type { QuestionType } from '@/types/common'
@@ -101,6 +101,42 @@ const openDetail = async (row: ExamResultItem) => {
     const res = await getResultDetail(row.examId ?? row.id)
     detail.value = res.data
   } finally { detailLoading.value = false }
+}
+
+/* ---------------- [2026-09-26 新增] 重新阅卷 ---------------- */
+// 依据：论文 L920 / L980 / L986 ——「由具备权限的管理员修正题目后重新触发阅卷，并保留处理说明」
+//       「记录修正原因和处理时间，并确保重新计算后的总分仍等于各题得分之和」
+// 对应后端：POST /api/admin/results/{examId}/regrade（03 §七 批次 B7）
+const regrading = ref(false)
+const doRegrade = async () => {
+  if (!detail.value) return
+  // 后端 /results/{resultId}/detail 返回的 id 即 exam_record.id
+  const examId = detail.value.id
+  if (!examId) return
+  // [2026-09-26 修正] 原写法 let reason = '' 的初始值未被使用（eslint no-useless-assignment），改为声明后赋值
+  let reason: string
+  try {
+    const r = await ElMessageBox.prompt(
+      '请填写重新阅卷的原因（后端会记录处理时间）',
+      '重新阅卷',
+      { confirmButtonText: '确认重阅', cancelButtonText: '取消', inputPlaceholder: '如：题目标准答案修正' },
+    )
+    reason = r.value || ''
+  } catch {
+    return // 用户取消
+  }
+  try {
+    regrading.value = true
+    await regradeResult(Number(examId), reason)
+    ElMessage.success('重新阅卷完成')
+    // 重阅后刷新详情（总分应仍等于逐题得分之和）
+    const res = await getResultDetail(Number(examId))
+    detail.value = res.data
+  } catch {
+    ElMessage.error('重新阅卷失败')
+  } finally {
+    regrading.value = false
+  }
 }
 
 const typeLabel = (t: QuestionType) =>
@@ -395,7 +431,16 @@ onMounted(load)
     </el-card>
 
     <!-- 答题详情 -->
-    <el-dialog v-model="detailVisible" title="答题详情" width="760px" top="6vh">
+    <el-dialog v-model="detailVisible" width="760px" top="6vh">
+      <!-- [2026-09-26 新增] 弹窗头部加「重新阅卷」入口（论文 §4.2.5 / 用例 5.11#3） -->
+      <template #header>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding-right:28px">
+          <span>答题详情</span>
+          <el-button type="warning" size="small" :loading="regrading" @click="doRegrade">
+            <el-icon><Refresh /></el-icon>&nbsp;重新阅卷
+          </el-button>
+        </div>
+      </template>
       <div v-loading="detailLoading" style="min-height:200px">
         <template v-if="detail">
           <el-descriptions :column="2" border>

@@ -21,7 +21,12 @@ export const DISABLED_PATHS = [
   '/student/badges',
   '/student/weekly-report',
   '/student/study-groups',
-  '/admin/paper-templates',
+  // [2026-09-26 恢复] 学习笔记、AI 学习助手 —— 用户拍板保留（原下线行保留备查）：
+  //   '/student/study-notes',
+  //   '/student/ai-assistant',
+  // [2026-09-26 恢复] 试卷模板：论文 L1262 点名「组卷模块可加入随机抽题、专题比例、难度比例和分值约束，
+  //   提高组卷效率」→ 恢复入口（06 清单 §8.3 O 档）。原禁用行保留备查：
+  //   '/admin/paper-templates',
   '/admin/answer-cards',
   '/admin/exam-monitor-log',
   '/admin/exam-comments',
@@ -94,6 +99,8 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '学生排行榜', icon: 'Trophy', roles: ['STUDENT'], disabled: true },
   },
   {
+    // [2026-09-26 恢复] 学习笔记 —— 用户拍板保留（论文虽零命中，作为学生辅助功能保留）
+    //   原下线状态保留备查：meta 中曾含 disabled: true
     path: 'student/study-notes',
     name: 'StudyNotes',
     component: () => import('@/views/student/StudyNotes.vue'),
@@ -114,6 +121,8 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '学习周报', icon: 'Calendar', roles: ['STUDENT'], disabled: true },
   },
   {
+    // [2026-09-26 恢复] AI 学习助手 —— 用户拍板保留（NLP 属任务书技术要求，作为独立辅助功能保留）
+    //   原下线状态保留备查：meta 中曾含 disabled: true
     path: 'student/ai-assistant',
     name: 'AiAssistant',
     component: () => import('@/views/student/AiAssistant.vue'),
@@ -176,11 +185,12 @@ export const asyncRoutes: RouteRecordRaw[] = [
   },
   // 考试管理（出题流程第二步：试卷管理→考试管理→成绩管理）
   {
-    // 【已禁用】试卷模板 —— 非主流程
+    // [2026-09-26 恢复] 试卷模板 —— 论文 L1262 点名「组卷模块可加入随机抽题、专题比例、难度比例和分值约束」
+    //   原状态（保留备查）：meta 中曾含 disabled: true
     path: 'admin/paper-templates',
     name: 'AdminPaperTemplates',
     component: () => import('@/views/admin/PaperTemplateManage.vue'),
-    meta: { title: '试卷模板', icon: 'Tickets', roles: ['ADMIN'], group: '考试管理', disabled: true },
+    meta: { title: '试卷模板', icon: 'Tickets', roles: ['ADMIN'], group: '考试管理' },
   },
   {
     path: 'admin/papers',
@@ -226,7 +236,7 @@ export const asyncRoutes: RouteRecordRaw[] = [
     path: 'admin/users',
     name: 'AdminUsers',
     component: () => import('@/views/admin/UserManage.vue'),
-    meta: { title: '用户管理', icon: 'UserFilled', roles: ['ADMIN'], group: '系统管理' },
+    meta: { title: '用户管理', icon: 'UserFilled', roles: ['ADMIN'], group: '系统管理', superOnly: true },
   },
   {
     path: 'admin/my-students',
@@ -239,7 +249,7 @@ export const asyncRoutes: RouteRecordRaw[] = [
     path: 'admin/classes',
     name: 'AdminClasses',
     component: () => import('@/views/admin/ClassManage.vue'),
-    meta: { title: '班级管理', icon: 'School', roles: ['ADMIN'], group: '系统管理' },
+    meta: { title: '班级管理', icon: 'School', roles: ['ADMIN'], group: '系统管理', superOnly: true },
   },
   {
     // 【已禁用】工作流编排 —— 非主流程
@@ -252,13 +262,13 @@ export const asyncRoutes: RouteRecordRaw[] = [
     path: 'admin/operation-logs',
     name: 'AdminOperationLogs',
     component: () => import('@/views/admin/OperationLogs.vue'),
-    meta: { title: '操作日志', icon: 'Document', roles: ['ADMIN'], group: '系统管理' },
+    meta: { title: '操作日志', icon: 'Document', roles: ['ADMIN'], group: '系统管理', superOnly: true },
   },
   {
     path: 'admin/system-settings',
     name: 'AdminSystemSettings',
     component: () => import('@/views/admin/SystemSettings.vue'),
-    meta: { title: '系统设置', icon: 'Setting', roles: ['ADMIN'], group: '系统管理' },
+    meta: { title: '系统设置', icon: 'Setting', roles: ['ADMIN'], group: '系统管理', superOnly: true },
   },
   // hidden routes
   { path: 'admin/exams/:sessionId/monitor', name: 'AdminExamMonitor', component: () => import('@/views/admin/ExamMonitor.vue'), meta: { title: '考试监控', roles: ['ADMIN'], hidden: true } },

@@ -210,7 +210,8 @@ const onConn = (conn: FlowConnection) => { edges.value = edges.value.concat([{ i
 // 快捷键
 const onKey = (e: KeyboardEvent) => {
   if (e.ctrlKey || e.metaKey) {
-    switch (e.key.toLowerCase()) { case 's': e.preventDefault(); hSave(); break; case 'z': e.preventDefault(); hUndo(); break; case 'y': e.preventDefault(); hRedo(); break; case 'f': e.preventDefault(); const el = document.querySelector<HTMLInputElement>('.srch input'); if (el) el.focus(); break; case '0': e.preventDefault(); hZoomReset(); break; case '=': e.preventDefault(); hZoomIn(); break; case '-': e.preventDefault(); hZoomOut(); break }
+    // [2026-09-26 修正] case 'f' 内声明了 const el，触发 eslint no-case-declarations → 用花括号形成独立块作用域
+    switch (e.key.toLowerCase()) { case 's': e.preventDefault(); hSave(); break; case 'z': e.preventDefault(); hUndo(); break; case 'y': e.preventDefault(); hRedo(); break; case 'f': { e.preventDefault(); const el = document.querySelector<HTMLInputElement>('.srch input'); if (el) el.focus(); break; } case '0': e.preventDefault(); hZoomReset(); break; case '=': e.preventDefault(); hZoomIn(); break; case '-': e.preventDefault(); hZoomOut(); break }
   }
   if (e.key === 'Delete' && selectedNode.value) { ElMessageBox.confirm('确定删除该节点？', '删除', { type: 'warning' }).then(handleDeleteNode).catch(() => {}) }
 }

@@ -4,12 +4,17 @@ import { login as loginApi, register as registerApi, getMe } from '@/api/auth'
 import type { LoginForm, RegisterForm, UserInfo, UserDetail } from '@/types/user'
 import type { Role } from '@/types/common'
 
+// [2026-09-26 修改] 登录态存储 localStorage → sessionStorage（依据 05 决策 D12 第 4 条）
+//   答辩演示需要同时开多个浏览器窗口（如管理员 + 学生各一），localStorage 是多窗口共享的，
+//   后登录的窗口会覆盖前一个，导致演示串号；sessionStorage 按标签页隔离，正好满足需求。
+//   行为差异：① F5 刷新仍保持登录（同标签页内）② 关标签页即登出 ③ 用链接/window.open 打开的
+//   新标签页会复制一份 sessionStorage 初值，演示时请手动新开窗口（Ctrl+N）。
 const TOKEN_KEY = 'token'
 const USER_KEY = 'userInfo'
 const ROLE_KEY = 'role'
 
 function readUser(): UserInfo | null {
-  const raw = localStorage.getItem(USER_KEY)
+  const raw = sessionStorage.getItem(USER_KEY)
   if (!raw) return null
   try {
     return JSON.parse(raw) as UserInfo
@@ -25,14 +30,14 @@ export const HOME_BY_ROLE: Record<Role, string> = {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref<string>(localStorage.getItem(TOKEN_KEY) || '')
+  const token = ref<string>(sessionStorage.getItem(TOKEN_KEY) || '')
   const userInfo = ref<UserInfo | null>(readUser())
   /** 完整用户资料（GET /auth/me 拉回） */
   const userDetail = ref<UserDetail | null>(null)
 
   const role = computed<Role | ''>(() => {
     if (userInfo.value?.role) return userInfo.value.role
-    return (localStorage.getItem(ROLE_KEY) as Role) || ''
+    return (sessionStorage.getItem(ROLE_KEY) as Role) || ''
   })
 
   const isLoggedIn = computed(() => Boolean(token.value))
@@ -45,19 +50,27 @@ export const useAuthStore = defineStore('auth', () => {
 
     token.value = tk
     userInfo.value = user
-    localStorage.setItem(TOKEN_KEY, tk)
+    sessionStorage.setItem(TOKEN_KEY, tk)
     // 头像 base64 可能很长（几十 KB），
-    // localStorage 通常只有 5MB 且存太多 base64 拖慢序列化。
+    // sessionStorage 通常只有 5MB 且存太多 base64 拖慢序列化。
     // 这里只存轻量身份字段，avatar 需要时从 /auth/me 拉。
-    localStorage.setItem(USER_KEY, JSON.stringify({
+    sessionStorage.setItem(USER_KEY, JSON.stringify({
       id: user.id,
       username: user.username,
       displayName: user.displayName,
       role: user.role,
+      // [2026-09-26 新增] 超管标记（仅 admin 账号为 true）→ 用于前端菜单分流（06 §9.1）
+      superAdmin: (user as unknown as { superAdmin?: boolean }).superAdmin === true,
     }))
-    localStorage.setItem(ROLE_KEY, user.role)
+    sessionStorage.setItem(ROLE_KEY, user.role)
     return user
   }
+
+  // [2026-09-26 新增] 是否超管账号：教师/老师/管理员是同一角色，
+  //   仅 admin 账号额外可见「系统配置 / 操作日志 / 用户管理 / 班级管理」4 个菜单（06 §9.1）
+  const isSuperAdmin = computed<boolean>(
+    () => (userInfo.value as unknown as { superAdmin?: boolean } | null)?.superAdmin === true,
+  )
 
   const register = async (form: RegisterForm) => registerApi(form)
 
@@ -71,7 +84,7 @@ export const useAuthStore = defineStore('auth', () => {
         ...userInfo.value,
         displayName: res.data.realName || userInfo.value.displayName,
       }
-      localStorage.setItem(USER_KEY, JSON.stringify(userInfo.value))
+      sessionStorage.setItem(USER_KEY, JSON.stringify(userInfo.value))
     }
     return res.data
   }
@@ -80,9 +93,9 @@ export const useAuthStore = defineStore('auth', () => {
     token.value = ''
     userInfo.value = null
     userDetail.value = null
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
-    localStorage.removeItem(ROLE_KEY)
+    sessionStorage.removeItem(TOKEN_KEY)
+    sessionStorage.removeItem(USER_KEY)
+    sessionStorage.removeItem(ROLE_KEY)
   }
 
   return {
@@ -92,6 +105,7 @@ export const useAuthStore = defineStore('auth', () => {
     role,
     isLoggedIn,
     homePath,
+    isSuperAdmin,
     login,
     register,
     fetchMe,

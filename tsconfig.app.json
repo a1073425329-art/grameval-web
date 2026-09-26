@@ -8,11 +8,22 @@
       "@/*": ["./src/*"]
     },
 
-    /* Linting */
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
+    /* ===== [2026-09-26 开启最严格模式] =====
+       原配置仅继承 @vue/tsconfig 的 strict，并显式关闭了 noUnusedLocals/noUnusedParameters。
+       现按用户要求全面开启最严格检查。若某项产生不可控的历史遗留报错，见下方分组注释逐项评估。 */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "allowUnusedLabels": false,
+    "allowUnreachableCode": false,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+
+    /* --- 更严格的两项（历史代码量最大，若报错过多可单独回退）--- */
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue", "tests/unit/**/*.ts"]
 }

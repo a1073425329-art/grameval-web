@@ -102,7 +102,8 @@ router.beforeEach(async (to) => {
 
   // ==================== 动态路由生成 ====================
   if (!permissionStore.generated) {
-    const accessed = permissionStore.generateRoutes(authStore.role as Role)
+    // [2026-09-26 修改] 传入超管标记：教师/老师/管理员同一角色，仅 admin 账号多 4 个管理菜单（06 §9.1）
+    const accessed = permissionStore.generateRoutes(authStore.role as Role, authStore.isSuperAdmin)
     accessed.forEach((r) => {
       router.addRoute('Root', r)
     })

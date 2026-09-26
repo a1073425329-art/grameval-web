@@ -355,3 +355,9 @@ export const batchStatusReadingPassages = (ids: number[], status: 0 | 1) =>
 
 export const batchDeleteReadingPassages = (ids: number[]) =>
   request.post<ApiResponse<number>>('/reading-passages/batch-delete', { ids })
+
+// ==================== [2026-09-26 新增] 重新阅卷 ====================
+// 依据：论文 L920 / L980 / L986（管理员修正题目后重新触发阅卷，记录修正原因和处理时间）
+// 对应后端：POST /api/admin/results/{examId}/regrade（03 §七 批次 B7）
+export const regradeResult = (examId: number, reason?: string) =>
+  request.post<ApiResponse<unknown>>(`/results/${examId}/regrade`, { reason })

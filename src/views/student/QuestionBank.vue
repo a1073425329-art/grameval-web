@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { getCategoryTree, listQuestions, getQuestionStudyMode } from '@/api/student'
+import { getCategoryTree, listQuestions } from '@/api/student'
+// [2026-09-26 修改] 下线「学习模式」（06 清单 §8.4 X 档）
+//   论文表 2.4（UC02 英语语法题库查询）明确：「查询结果只含题干、题型和难度等公开字段，
+//   绝不返回标准答案」—— 学习模式会返回答案+解析，与该用例冲突，故下线其入口。
+//   原 import 保留备查：
+// import { getQuestionStudyMode } from '@/api/student'
 import type { Category } from '@/types/category'
 import type { Question } from '@/types/question'
 import type { Difficulty, QuestionType } from '@/types/common'
@@ -73,9 +78,12 @@ const showDetail = async (row: Question) => {
   detailVisible.value = true
   detailLoading.value = true
   try {
-    // 学习模式含答案 + 解析
-    const res = await getQuestionStudyMode(row.id)
-    detail.value = res.data
+    // [2026-09-26 修改] 原实现（保留备查）：
+    //   // 学习模式含答案 + 解析
+    //   const res = await getQuestionStudyMode(row.id)
+    //   detail.value = res.data
+    // 改为：仅展示列表行已有的公开字段，不再请求含标准答案的接口 —— 对齐论文表 2.4（UC02）。
+    detail.value = row
   } finally {
     detailLoading.value = false
   }

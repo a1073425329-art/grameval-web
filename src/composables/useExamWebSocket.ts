@@ -18,6 +18,7 @@
  */
 import { onBeforeUnmount, ref } from 'vue'
 import { WebSocketManager } from '@/utils/websocket'
+import { getToken } from '@/utils/authStorage'
 
 /** 交卷结果（对应后端 submit-result 消息） */
 export interface ExamSubmitResult {
@@ -94,7 +95,7 @@ export function useExamWebSocket() {
     // 已存在则先彻底断开（含清理事件），避免重复绑定
     disconnect()
 
-    const token = localStorage.getItem('token')
+    const token = getToken()
     if (!token) {
       lastError.value = '未登录，无法建立考试 WebSocket'
       status.value = 'closed'

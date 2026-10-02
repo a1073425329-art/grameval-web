@@ -2,7 +2,7 @@
  * 通用 WebSocket 管理器
  *
  * 设计目标：
- * - 自动鉴权：连接时自动把 localStorage 中的 JWT 作为 query 拼到 URL（?token=xxx）
+ * - 自动鉴权：连接时自动把 sessionStorage 中的 JWT 作为 query 拼到 URL（?token=xxx）
  * - 多通道复用：一个类实例代表一条连接，exam / notification 各自实例化即可
  * - 自动重连：断线后按指数退避重连（1s, 2s, 4s ... 上限 30s）
  * - 心跳保活：默认每 30s 发送一次 { type: 'ping' }，pong 超时则判定连接死亡并重连
@@ -12,13 +12,15 @@
  * 后端协议见 README；本类只负责传输层，业务语义由各 composable 解释。
  */
 
+import { getToken } from '@/utils/authStorage'
+
 /** 事件回调：payload 取决于事件类型 */
 export type WsEventHandler = (payload: any) => void
 
 export interface WSOptions {
   /** 连接路径，例如 /ws/exam/123 或 /ws/notifications */
   path: string
-  /** JWT token；未传则从 localStorage.token 读取 */
+  /** JWT token；未传则从 sessionStorage.token 读取（authStorage 统一出口） */
   token?: string
   /** 是否启用自动重连，默认 true */
   autoReconnect?: boolean
@@ -84,7 +86,7 @@ export class WebSocketManager {
   private manualClose = false
 
   constructor(options: WSOptions) {
-    const token = options.token ?? localStorage.getItem('token') ?? ''
+    const token = options.token ?? getToken() ?? ''
     this.opts = {
       path: options.path,
       token,
@@ -134,7 +136,7 @@ export class WebSocketManager {
     const base = getWsBaseUrl()
     const rawPath = this.opts.path
     const path = rawPath.startsWith('/') ? rawPath : `/${rawPath}`
-    const token = this.opts.token || localStorage.getItem('token') || ''
+    const token = this.opts.token || getToken() || ''
 
     const query: string[] = []
     if (token) query.push(`token=${encodeURIComponent(token)}`)

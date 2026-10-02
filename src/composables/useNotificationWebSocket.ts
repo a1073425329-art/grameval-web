@@ -12,6 +12,7 @@
 import { ref } from 'vue'
 import { ElNotification } from 'element-plus'
 import { WebSocketManager } from '@/utils/websocket'
+import { getToken } from '@/utils/authStorage'
 import type { MessageNotification } from '@/types/notification'
 
 /* ---------------- 模块级单例状态 ---------------- */
@@ -88,7 +89,7 @@ function handleIncoming(raw: any) {
 
 export function useNotificationWebSocket() {
   const connect = () => {
-    const token = localStorage.getItem('token')
+    const token = getToken()
     if (!token) return
     // 已连接则不重复建链
     if (ws && ws.isConnected) return

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { listCategoryTree, createCategory, updateCategory, deleteCategory } from '@/api/admin'
 import type { Category, CategoryForm } from '@/types/category'
@@ -8,6 +9,64 @@ import { FormLimits } from '@/utils/formLimits'
 
 const tree = ref<Category[]>([])
 const loading = ref(false)
+
+/** 搜索关键字（对一级与二级同时生效） */
+const keyword = ref('')
+
+/* ---------------- 分组卡片墙数据 ---------------- */
+
+/** 一级分组：根分类 + 过滤后的子分类 */
+interface Group {
+  root: Category
+  children: Category[]   // 过滤后展示的子分类（根无子级时为空）
+  total: number          // 本组题目合计（根自身 + 所有子级）
+  color: string          // 分组主色
+}
+
+/** 固定调色板：按一级顺序循环取色，保证同组颜色稳定 */
+const PALETTE = [
+  '#409eff', '#67c23a', '#e6a23c', '#f56c6c', '#9a6ee0',
+  '#13c2c2', '#eb2f96', '#2f54eb', '#52c41a', '#fa8c16', '#722ed1',
+]
+
+const match = (c: Category, kw: string) =>
+  !kw || c.categoryName.toLowerCase().includes(kw) || (c.description ?? '').toLowerCase().includes(kw)
+
+const groups = computed<Group[]>(() => {
+  const kw = keyword.value.trim().toLowerCase()
+  return tree.value
+    .map((root, i) => {
+      const kids = root.children ?? []
+      // 根命中 → 展示全部子级；根不命中 → 只展示命中的子级；都没有则整组过滤掉
+      const rootHit = match(root, kw)
+      const children = rootHit ? kids : kids.filter((c) => match(c, kw))
+      if (kw && !rootHit && !children.length) return null
+      const total = (root.questionCount ?? 0) + kids.reduce((s, c) => s + (c.questionCount ?? 0), 0)
+      return { root, children, total, color: PALETTE[i % PALETTE.length] } as Group
+    })
+    .filter((g): g is Group => g !== null)
+})
+
+/** 统计概览 */
+const stats = computed(() => {
+  const roots = tree.value
+  const kids = roots.flatMap((r) => r.children ?? [])
+  const all = [...roots, ...kids]
+  return {
+    total: all.length,
+    roots: roots.length,
+    seconds: kids.length,
+    totalQuestions: all.reduce((s, c) => s + (c.questionCount ?? 0), 0),
+    disabled: all.filter((c) => c.status === 0).length,
+  }
+})
+
+/** 题目数最多的分类（用于进度条归一化） */
+const maxQuestions = computed(() => {
+  const all = tree.value.flatMap((r) => [r, ...(r.children ?? [])])
+  return Math.max(1, ...all.map((c) => c.questionCount ?? 0))
+})
+const qPercent = (c?: Category) => Math.round((((c?.questionCount ?? 0) / maxQuestions.value) * 100))
 
 const load = async () => {
   loading.value = true
@@ -109,46 +168,125 @@ onMounted(load)
     <el-card shadow="never">
       <div class="toolbar">
         <h3 class="title">语法分类</h3>
-        <el-button type="primary" @click="openCreateRoot">
-          <el-icon><Plus /></el-icon>新增根分类
-        </el-button>
+        <div class="toolbar-right">
+          <el-input
+            v-model="keyword"
+            placeholder="搜索分类名称"
+            clearable
+            size="default"
+            style="width: 200px"
+            :prefix-icon="Search"
+          />
+          <el-button type="primary" @click="openCreateRoot">
+            <el-icon><Plus /></el-icon>新增一级分类
+          </el-button>
+        </div>
       </div>
 
-      <el-tree
-        v-loading="loading"
-        :data="tree"
-        :props="{ label: 'categoryName', children: 'children' }"
-        node-key="id"
-        default-expand-all
-        :expand-on-click-node="false"
-      >
-        <template #default="{ data }">
-          <div class="tree-node">
-            <span class="node-label">
-              <el-icon><Folder /></el-icon>
-              <span>{{ data.categoryName }}</span>
-              <el-tag v-if="data.questionCount" size="small" type="info" class="q-count">
-                {{ data.questionCount }} 题
-              </el-tag>
-              <el-tag v-if="data.status === 0" size="small" type="danger">已停用</el-tag>
-            </span>
-            <span class="node-actions">
-              <el-button link type="primary" size="small" @click.stop="openCreateChild(data)">
-                <el-icon><Plus /></el-icon>子分类
-              </el-button>
-              <el-button link type="warning" size="small" @click.stop="openEdit(data)">编辑</el-button>
-              <el-button link type="danger" size="small" @click.stop="confirmDelete(data)">删除</el-button>
-            </span>
-          </div>
-        </template>
-      </el-tree>
+      <!-- 统计概览 -->
+      <div class="stat-row" v-loading="loading">
+        <div class="stat-card">
+          <div class="stat-value">{{ stats.total }}</div>
+          <div class="stat-label">分类总数</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ stats.roots }}<span class="stat-sub">/{{ stats.seconds }}</span></div>
+          <div class="stat-label">一级 / 二级分类</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ stats.totalQuestions }}</div>
+          <div class="stat-label">题目总量</div>
+        </div>
+        <div class="stat-card" :class="{ warn: stats.disabled > 0 }">
+          <div class="stat-value">{{ stats.disabled }}</div>
+          <div class="stat-label">已停用</div>
+        </div>
+      </div>
 
-      <el-empty v-if="!loading && !tree.length" description="暂无分类，点击右上角新增" />
+      <!-- 分组卡片墙：一级做分组头，二级平铺卡片，全部常驻展开、无折叠 -->
+      <div v-loading="loading" class="group-wall">
+        <section
+          v-for="g in groups"
+          :key="g.root.id"
+          class="group"
+          :class="{ disabled: g.root.status === 0 }"
+          :style="{ '--accent': g.color }"
+        >
+          <header class="group-head">
+            <span class="group-bar"></span>
+            <div class="group-main">
+              <div class="group-title-row">
+                <span class="group-name">
+                  <el-icon><Folder /></el-icon>{{ g.root.categoryName }}
+                </span>
+                <el-tag size="small" effect="plain" class="group-chip" :style="{ color: g.color, borderColor: g.color + '55' }">
+                  {{ (g.root.children ?? []).length }} 个二级
+                </el-tag>
+                <el-tag v-if="g.root.status === 0" size="small" type="danger">已停用</el-tag>
+              </div>
+              <div class="group-desc">{{ g.root.description || '暂无描述' }}</div>
+            </div>
+
+            <div class="group-side">
+              <template v-if="(g.root.children ?? []).length">
+                <div class="group-total">
+                  <b>{{ g.total }}</b><span>题</span>
+                  <em>含本级 {{ g.root.questionCount ?? 0 }} 题</em>
+                </div>
+              </template>
+              <template v-else>
+                <div class="group-total">
+                  <b>{{ g.root.questionCount ?? 0 }}</b><span>题</span>
+                </div>
+                <div class="group-progress">
+                  <el-progress
+                    :percentage="qPercent(g.root)"
+                    :stroke-width="6"
+                    :show-text="false"
+                    :color="g.color"
+                  />
+                </div>
+              </template>
+              <div class="group-actions">
+                <el-button link type="primary" size="small" @click="openCreateChild(g.root)">
+                  <el-icon><Plus /></el-icon>二级分类
+                </el-button>
+                <el-button link type="warning" size="small" @click="openEdit(g.root)">编辑</el-button>
+                <el-button link type="danger" size="small" @click="confirmDelete(g.root)">删除</el-button>
+              </div>
+            </div>
+          </header>
+
+          <!-- 有二级：平铺子分类卡片 -->
+          <div v-if="g.children.length" class="child-grid">
+            <div
+              v-for="c in g.children"
+              :key="c.id"
+              class="child-card"
+              :class="{ disabled: c.status === 0 }"
+            >
+              <div class="child-top">
+                <span class="child-name" :title="c.categoryName">{{ c.categoryName }}</span>
+                <span class="child-count" :style="{ background: g.color + '14', color: g.color }">
+                  {{ c.questionCount ?? 0 }} 题
+                </span>
+              </div>
+              <div class="child-desc" :title="c.description">{{ c.description || '暂无描述' }}</div>
+              <div class="child-actions">
+                <el-button link type="warning" size="small" @click="openEdit(c)">编辑</el-button>
+                <el-button link type="danger" size="small" @click="confirmDelete(c)">删除</el-button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <el-empty v-if="!loading && !groups.length" description="暂无分类，点击右上角新增" />
     </el-card>
 
     <el-dialog
       v-model="dialogVisible"
-      :title="editMode === 'edit' ? '编辑分类' : editMode === 'create-child' ? '新增子分类' : '新增根分类'"
+      :title="editMode === 'edit' ? '编辑分类' : editMode === 'create-child' ? '新增二级分类' : '新增一级分类'"
       width="480px"
     >
       <el-form ref="formRef" :model="form" :rules="rules" label-width="80px">
@@ -182,19 +320,132 @@ onMounted(load)
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: 16px;
 }
+.toolbar-right { display: flex; align-items: center; gap: 12px; }
 .title { margin: 0; font-size: 16px; font-weight: 600; }
 
-.tree-node {
-  flex: 1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-right: 8px;
+/* 统计条 */
+.stat-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
 }
-.node-label { display: inline-flex; align-items: center; gap: 6px; }
-.q-count { margin-left: 4px; }
-.node-actions { display: inline-flex; gap: 4px; opacity: 0; transition: opacity 0.15s; }
-.tree-node:hover .node-actions { opacity: 1; }
+.stat-card {
+  padding: 14px 16px;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #fafcff 0%, #f5f7fa 100%);
+  transition: all 0.2s;
+  &:hover { box-shadow: 0 2px 10px rgba(64, 158, 255, 0.12); transform: translateY(-2px); }
+  &.warn { border-color: #fde2e2; background: linear-gradient(135deg, #fef6f6 0%, #fdf0f0 100%); }
+}
+.stat-value { font-size: 24px; font-weight: 700; color: #303133; line-height: 1.2; }
+.stat-sub { font-size: 14px; font-weight: 500; color: #909399; }
+.stat-card.warn .stat-value { color: #f56c6c; }
+.stat-label { margin-top: 4px; font-size: 12px; color: #909399; }
 
-:deep(.el-tree-node__content) { height: 36px; }
+/* ===== 分组卡片墙 ===== */
+.group-wall { display: flex; flex-direction: column; gap: 16px; }
+
+.group {
+  border: 1px solid #ebeef5;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+  transition: box-shadow 0.2s;
+  &:hover { box-shadow: 0 4px 18px rgba(0, 0, 0, 0.06); }
+  &.disabled { opacity: 0.7; }
+}
+
+/* 分组头：左侧色条 + 信息 + 右侧统计与操作 */
+.group-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 7%, #fff) 0%, #fff 55%);
+}
+.group-bar {
+  width: 4px; height: 40px; flex-shrink: 0;
+  border-radius: 3px; background: var(--accent);
+}
+.group-main { flex: 1; min-width: 0; }
+.group-title-row { display: flex; align-items: center; gap: 8px; }
+.group-name {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 15px; font-weight: 700; color: #303133;
+  .el-icon { color: var(--accent); }
+}
+.group-chip { font-variant-numeric: tabular-nums; }
+.group-desc {
+  margin-top: 4px;
+  font-size: 12px; line-height: 1.6; color: #909399;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.group-side { display: flex; align-items: center; gap: 16px; flex-shrink: 0; }
+.group-total {
+  text-align: right;
+  b { font-size: 22px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+  span { margin-left: 3px; font-size: 12px; color: #909399; }
+  em { display: block; font-style: normal; font-size: 11px; color: #c0c4cc; }
+}
+.group-progress { width: 120px; }
+.group-actions {
+  display: flex; gap: 2px;
+  padding-left: 12px;
+  border-left: 1px solid #ebeef5;
+}
+
+/* 二级卡片网格 */
+.child-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(196px, 1fr));
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+.child-card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  background: #fafcff;
+  transition: all 0.18s ease;
+  &:hover {
+    border-color: color-mix(in srgb, var(--accent) 45%, #fff);
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.07);
+    transform: translateY(-2px);
+    .child-actions { opacity: 1; }
+  }
+  &.disabled { background: #fafafa; opacity: 0.7; }
+}
+.child-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.child-name {
+  flex: 1; min-width: 0;
+  font-size: 13.5px; font-weight: 600; color: #303133;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.child-count {
+  flex-shrink: 0;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11.5px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.child-desc {
+  font-size: 12px; line-height: 1.5; color: #909399;
+  min-height: 18px;
+  display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.child-actions {
+  display: flex; justify-content: flex-end; gap: 2px;
+  opacity: 0; transition: opacity 0.18s;
+}
+
+@media (max-width: 900px) {
+  .group-head { flex-wrap: wrap; }
+  .group-side { width: 100%; justify-content: space-between; }
+  .group-actions { border-left: none; padding-left: 0; }
+}
 </style>

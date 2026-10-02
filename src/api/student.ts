@@ -112,6 +112,37 @@ export const listPractices = (params: PracticeListQuery) =>
   request.get<ApiResponse<PageResult<PracticeRecord>>>('/practices', { params })
 
 /* ============================================================ *
+ *  3.5 AI 补题（学生练习时增量出题 → 入公共题库）
+ * ============================================================ */
+
+/** AI 补题请求（所有字段可选：不选专题=由 AI 自选；题数不传按 5 道） */
+export interface StudentGenerateForm {
+  categoryIds?: number[] | undefined
+  questionCount?: number | undefined
+  insight?: string | undefined
+}
+
+/** AI 补题结果（added 与 requested 可能不等：题干重复的会被跳过） */
+export interface StudentGenerateResult {
+  requested: number
+  added: number
+  duplicates: number
+  questionIds: number[]
+  durationMs: number
+}
+
+/**
+ * AI 补题：生成的新题写入公共题库（target_user_id=null、source=AI_STUDENT），
+ * 全班同学之后都能做到。链路走 Dify，20 题实测约 200s，前端需给足 loading。
+ * timeout 必须显式覆盖 request.ts 的默认 20s（实测 3 题约 45s，不设会 20s 就报
+ * 「请求超时,请检查网络」——后端其实照常跑完入库，只是前端提前放弃）。
+ */
+export const generateStudentQuestions = (data: StudentGenerateForm) =>
+  request.post<ApiResponse<StudentGenerateResult>>('/student/ai/generate-questions', data, {
+    timeout: 300_000,
+  })
+
+/* ============================================================ *
  *  4. 考试流程（三段式）
  * ============================================================ */
 

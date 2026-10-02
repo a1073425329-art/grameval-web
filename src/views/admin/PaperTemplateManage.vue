@@ -99,6 +99,15 @@ const statusMap: Record<number, string> = { 0: '停用', 1: '启用' }
 <template>
   <div class="page-container">
     <el-card>
+      <!-- [2026-09-27 新增] 造卷双入口的主从说明：本页是推荐主入口（C 项） -->
+      <el-alert type="success" :closable="false" show-icon style="margin-bottom:12px">
+        <template #title>
+          <b>推荐入口 · 模板自动组卷</b>
+        </template>
+        按题型配比、难度比例、专题比例与分值约束从题库随机抽题，一键生成可复用的试卷结构；
+        生成后到「试卷管理」发布为考试场次。论文 §4.3.1：模板只管「考什么」，场次管「什么时候考」。
+        需要逐题精确控制时，请用「试卷管理 → 手动组卷」。
+      </el-alert>
       <div class="search-bar">
         <el-input v-model="query.templateName" placeholder="模板名称" clearable style="width:200px" @keyup.enter="load" />
         <el-select v-model="query.status" placeholder="状态" clearable style="width:120px">

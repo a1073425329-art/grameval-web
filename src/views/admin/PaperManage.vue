@@ -14,6 +14,7 @@ import {
   listCategoryTree,
   type AdminQuestionQuery,
 } from '@/api/admin'
+import { getQuestionDetail } from '@/api/student'
 import type { Paper, PaperForm } from '@/types/paper'
 import type { Question } from '@/types/question'
 import type { Category } from '@/types/category'
@@ -252,6 +253,45 @@ const submit = async () => {
   } catch { /* handled */ } finally { submitting.value = false }
 }
 
+/* ---------------- 查看试卷(含答案与解析, 论文 4.2.2 管理员预览) ---------------- */
+const viewVisible = ref(false)
+const viewPaper = ref<Paper | null>(null)
+const viewQuestions = ref<Array<{
+  questionId: number; stem: string; questionType: QuestionType; difficulty: Difficulty; score: number
+}>>([])
+const viewAnswers = ref<Record<number, { standardAnswer?: string; analysis?: string; options?: Array<{ optionLabel: string; optionContent: string }> }>>({})
+const viewLoading = ref(false)
+
+const openView = async (row: Paper) => {
+  viewPaper.value = row
+  viewQuestions.value = []
+  viewAnswers.value = {}
+  viewVisible.value = true
+  viewLoading.value = true
+  try {
+    const res = await getPaperDetail(row.id)
+    viewQuestions.value = (res.data.questions ?? []).map((pq) => ({
+      questionId: pq.questionId,
+      stem: pq.stem,
+      questionType: pq.questionType,
+      difficulty: pq.difficulty,
+      score: Number(pq.questionScore),
+    }))
+  } catch { /* silent */ } finally { viewLoading.value = false }
+}
+
+const loadAnswer = async (questionId: number) => {
+  if (viewAnswers.value[questionId]) return
+  try {
+    const res = await getQuestionDetail(questionId)
+    viewAnswers.value[questionId] = {
+      standardAnswer: res.data.standardAnswer ?? '',
+      analysis: res.data.analysis ?? '',
+      options: (res.data.options ?? []).map((o) => ({ optionLabel: o.optionLabel, optionContent: o.optionContent })),
+    }
+  } catch { ElMessage.error('答案加载失败') }
+}
+
 /* ---------------- 行操作 ---------------- */
 const publish = async (row: Paper) => {
   try {
@@ -289,6 +329,15 @@ onMounted(async () => {
 
 <template>
   <div class="page">
+    <!-- [2026-09-27 新增] 造卷双入口的主从说明：本页是手动/高级入口（C 项） -->
+    <el-alert type="info" :closable="false" show-icon>
+      <template #title>
+        <b>手动组卷 · 人工精挑</b>
+      </template>
+      从题库逐题挑选、排序并定分值，适合需要精确控制题序与分值的卷子；
+      若只需一份常规试卷，去「试卷模板」按配比自动生成更快。
+      论文 §4.2.3：试卷只保存可复用的题目结构，开放时间与场次由「考试管理」单独维护。
+    </el-alert>
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
         <el-row :gutter="8">
@@ -374,6 +423,7 @@ onMounted(async () => {
         <el-table-column prop="createTime" label="创建时间" width="180" />
         <el-table-column label="操作" width="200" align="center">
           <template #default="{ row }">
+            <el-button type="primary" size="small" @click="openView(row)">查看</el-button>
             <el-button v-if="row.status !== 1" type="success" size="small" @click="publish(row)">发布</el-button>
             <el-button v-else type="warning" size="small" @click="unpublish(row)">下架</el-button>
             <el-button type="danger" size="small" @click="confirmDelete(row)">删除</el-button>
@@ -419,6 +469,7 @@ onMounted(async () => {
           <div class="card-footer">
             <span class="create-time">{{ item.createTime || '-' }}</span>
             <div class="actions">
+              <el-button type="primary" size="small" @click.stop="openView(item)">查看</el-button>
               <el-button v-if="item.status !== 1" type="success" size="small" @click.stop="publish(item)">发布</el-button>
               <el-button v-else type="warning" size="small" @click.stop="unpublish(item)">下架</el-button>
               <el-button type="danger" size="small" @click.stop="confirmDelete(item)">删除</el-button>
@@ -612,10 +663,57 @@ onMounted(async () => {
         </div>
       </template>
     </el-dialog>
+
+    <!-- 查看试卷(含题目、答案、解析 —— 论文 4.2.2 管理员预览) -->
+    <el-dialog v-model="viewVisible" :title="'查看试卷：' + (viewPaper?.paperName || '')" width="900px" top="4vh">
+      <el-descriptions :column="4" size="small" border style="margin-bottom:12px">
+        <el-descriptions-item label="题量">{{ viewPaper?.questionCount ?? viewQuestions.length }}</el-descriptions-item>
+        <el-descriptions-item label="总分">{{ viewPaper?.totalScore ?? viewQuestions.length * 2 }}</el-descriptions-item>
+        <el-descriptions-item label="及格分">{{ viewPaper?.passScore ?? '-' }}</el-descriptions-item>
+        <el-descriptions-item label="状态">{{ statusText(viewPaper?.status ?? 0) }}</el-descriptions-item>
+      </el-descriptions>
+      <div v-loading="viewLoading">
+        <el-empty v-if="!viewLoading && viewQuestions.length === 0" description="卷内无题目" />
+        <div v-for="(q, idx) in viewQuestions" :key="q.questionId" class="view-q">
+          <div class="view-q-head">
+            <span class="q-no">{{ idx + 1 }}.</span>
+            <el-tag size="small" style="margin-right:6px">{{ typeLabel(q.questionType) }}</el-tag>
+            <el-tag size="small" :type="diffTagType(q.difficulty)" style="margin-right:6px">{{ diffLabel(q.difficulty) }}</el-tag>
+            <span class="q-score">{{ q.score }} 分</span>
+            <el-button link type="primary" size="small" style="margin-left:auto" @click="loadAnswer(q.questionId)">
+              {{ viewAnswers[q.questionId] ? '隐藏答案' : '查看答案与解析' }}
+            </el-button>
+          </div>
+          <div class="q-stem">{{ q.stem }}</div>
+          <div v-if="viewAnswers[q.questionId]" class="q-answer">
+            <template v-for="o in (viewAnswers[q.questionId]?.options ?? [])" :key="o.optionLabel">
+              <div class="q-opt" :class="{ 'q-opt-right': o.optionLabel === viewAnswers[q.questionId]?.standardAnswer }">
+                <b>{{ o.optionLabel }}.</b> {{ o.optionContent }}
+                <el-tag v-if="o.optionLabel === viewAnswers[q.questionId]?.standardAnswer" type="success" size="small" style="margin-left:6px">正确答案</el-tag>
+              </div>
+            </template>
+            <div class="q-ana"><b>标准答案：{{ viewAnswers[q.questionId]?.standardAnswer }}</b></div>
+            <div class="q-ana">解析：{{ viewAnswers[q.questionId]?.analysis || '(无解析)' }}</div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="viewVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped lang="scss">
+.view-q { border: 1px solid #ebeef5; border-radius: 6px; padding: 10px 12px; margin-bottom: 10px; }
+.view-q-head { display: flex; align-items: center; gap: 4px; }
+.q-no { font-weight: 600; }
+.q-score { color: #909399; font-size: 12px; }
+.q-stem { margin: 8px 0; white-space: pre-wrap; }
+.q-answer { background: #f5f7fa; border-radius: 6px; padding: 8px 12px; margin-top: 6px; }
+.q-opt { padding: 2px 0; }
+.q-opt-right { color: #67c23a; font-weight: 600; }
+.q-ana { margin-top: 6px; color: #606266; font-size: 13px; }
 .page { display: flex; flex-direction: column; gap: 12px; }
 .filter-card :deep(.el-card__body) { padding-bottom: 0; }
 .toolbar { margin-bottom: 12px; }

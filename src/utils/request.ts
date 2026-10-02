@@ -1,6 +1,25 @@
 import axios, { type AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
+import { getToken, clearAuth } from '@/utils/authStorage'
+
+/**
+ * 401 统一收口：清登录态 → 跳登录页。
+ * [2026-09-27 修复] 原来只清 localStorage 的 token/role，
+ * 而登录态实际写在 sessionStorage（决策 D12），导致"清了个寂寞"、
+ * 路由守卫仍认为已登录 → 登录页与首页无限横跳。
+ * 现改为走 authStorage.clearAuth()（sessionStorage 三把 key 一次清干净），
+ * 并动态 import auth store 同步其内存态（避免 request ↔ auth 静态循环依赖）。
+ */
+async function forceLogout(message?: string) {
+  clearAuth()
+  try {
+    const { useAuthStore } = await import('@/stores/auth')
+    useAuthStore().logout()
+  } catch { /* store 不可用时至少存储已清 */ }
+  if (message) ElMessage.error(message)
+  await router.push('/login').catch(() => { /* 同路由重复跳转 */ })
+}
 
 /** 请求体最大字节数(3 MB),超过就本地拦截,不占带宽 */
 const MAX_REQUEST_BYTES = 3 * 1024 * 1024
@@ -55,7 +74,8 @@ function sanitizeParams(params: Record<string, unknown> | undefined): Record<str
 // Request interceptor
 request.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token')
+    // [2026-09-27 修复] 登录态读 sessionStorage（authStorage 统一出口），原为 localStorage 读不到
+    const token = getToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -97,9 +117,7 @@ request.interceptors.response.use(
     if (res && res.code !== undefined && res.code !== 200) {
       ElMessage.error(res.message || 'Request failed')
       if (res.code === 401) {
-        localStorage.removeItem('token')
-        localStorage.removeItem('role')
-        router.push('/login')
+        void forceLogout()
       }
       return Promise.reject(new Error(res.message || 'Request failed'))
     }
@@ -110,10 +128,7 @@ request.interceptors.response.use(
     const backendMsg = error.response?.data?.message
 
     if (status === 401) {
-      localStorage.removeItem('token')
-      localStorage.removeItem('role')
-      router.push('/login')
-      ElMessage.error(backendMsg || '登录已过期,请重新登录')
+      void forceLogout(backendMsg || '登录已过期,请重新登录')
     } else if (status === 403) {
       ElMessage.error(backendMsg || '没有权限访问此资源')
     } else if (status === 404) {

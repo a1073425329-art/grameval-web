@@ -79,6 +79,22 @@ const handleRoleChange = (r: string | number) => {
   activeRole.value = r as Role
 }
 
+/**
+ * [2026-09-27 新增] 目标路径的归属角色与当前登录角色不符？
+ *   /admin/* 与 /dashboard 属 ADMIN，/student/* 属 STUDENT。
+ *
+ * 为什么在登录页做这道静态判断：未登录时地址栏里的目标会被守卫存进 `?redirect=`，
+ * 换个账号登录后原样回放，很可能属于另一个角色 —— 学生回跳 /admin/* 必然 404。
+ * 这里刻意**不用** `router.resolve()`：此刻 `permissionStore.reset()` 刚执行、
+ * 动态路由尚未注册，resolve 对任何业务路径都会返回 NotFound，会把合法回跳也误杀。
+ * superOnly / disabled 这类细粒度权限仍由全局守卫兜底（两道防线）。
+ */
+function isOtherRolePath(path: string, role: Role): boolean {
+  if (path.startsWith('/admin') || path === '/dashboard') return role !== 'ADMIN'
+  if (path.startsWith('/student')) return role !== 'STUDENT'
+  return false
+}
+
 const handleLogin = async () => {
   if (!loginForm.username || !loginForm.password) {
     ElMessage.warning('请输入用户名和密码')
@@ -102,7 +118,12 @@ const handleLogin = async () => {
     ElMessage.success('登录成功')
 
     // 跳转优先级：显式 redirect → 角色首页
-    const redirect = (route.query.redirect as string) || HOME_BY_ROLE[user.role]
+    // [2026-09-27 修复] redirect 归属角色不符时回落角色首页，避免登录成功却落到 404
+    const redirectRaw = route.query.redirect as string | undefined
+    const redirect =
+      redirectRaw && !isOtherRolePath(redirectRaw, user.role)
+        ? redirectRaw
+        : HOME_BY_ROLE[user.role]
     router.push(redirect)
   } catch {
     // 拦截器已经弹过错误

@@ -55,7 +55,9 @@ export const generatePreview = (data: GeneratePaperForm) =>
   request.post<ApiResponse<GeneratePaperPreview>>(
     '/admin/ai/generate-paper/preview',
     data,
-    { timeout: 180_000 }
+    // 300s：实测 20 题 209s（think:false 提速后），原 180s 不够 —— 且必须覆盖
+    // request.ts 默认 20s，否则 20s 就报「请求超时,请检查网络」（后端照常跑完）。
+    { timeout: 300_000 }
   )
 
 /**
@@ -179,7 +181,8 @@ export const directGenerate = (data: DirectGenerateParams) => {
     generateParams,
     {
       params: { paperName, sessionName, startTime, endTime, duration: duration || 45 },
-      timeout: 180_000,
+      // 同 generatePreview：Dify 链路实测 209s，必须 > 300s 才不被默认 20s 截断
+      timeout: 300_000,
     }
   )
 }

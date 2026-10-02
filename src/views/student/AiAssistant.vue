@@ -3,6 +3,7 @@ import { ElMessage } from 'element-plus';
 import { Message, Plus, Refresh, ArrowRight } from '@element-plus/icons-vue';
 import { createChatSession, listChatSessions, listChatMessages, sendChatMessage, deleteChatSession } from '@/api/student';
 import type { ChatSession, ChatMessage } from '@/api/student';
+import { renderMarkdown } from '@/utils/markdown';
 const loading = ref(false);
 const sessions = ref<ChatSession[]>([]);
 const currentSession = ref<ChatSession | null>(null);
@@ -20,6 +21,12 @@ const loadSessions = async () => {
  const first = sessions.value[0];
  if (first) { currentSession.value = first; await loadMessages(first.id) }
  }
+    // 当前会话可能已被删除，回落到第一条，避免停留在空会话上
+    if (currentSession.value && !sessions.value.some(s => s.id === currentSession.value?.id)) {
+  currentSession.value = sessions.value[0] ?? null;
+  messages.value = [];
+  if (currentSession.value) { await loadMessages(currentSession.value.id) }
+    }
  }
  }
  catch {
@@ -97,6 +104,8 @@ const handleSend = async () => {
  const res = await sendChatMessage(currentSession.value.id, content);
  if (res.data) {
  messages.value.push(res.data);
+  // 刷新会话列表，使标题（首条提问）与最后消息预览同步
+  await loadSessions();
  }
  }
  catch {
@@ -194,7 +203,9 @@ onMounted(() => {
                 {{ msg.role === 'USER' ? '👤' : '🤖' }}
               </div>
               <div class="msg-content">
-                <div class="msg-text">{{ msg.content }}</div>
+                <div v-if="msg.role === 'USER'" class="msg-text">{{ msg.content }}</div>
+                <!-- eslint-disable-next-line vue/no-v-html -->
+                <div v-else class="msg-text md-rendered" v-html="renderMarkdown(msg.content)" />
                 <div class="msg-time">{{ msg.createTime?.slice(11, 16) }}</div>
               </div>
             </div>
@@ -366,6 +377,86 @@ onMounted(() => {
   color: #303133;
   border-radius: 0 12px 12px 12px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+
+  &.md-rendered {
+    :deep(.md-p) {
+      margin: 4px 0;
+      line-height: 1.6;
+    }
+
+    :deep(.md-h1),
+    :deep(.md-h2),
+    :deep(.md-h3),
+    :deep(.md-h4) {
+      font-weight: 600;
+      color: #1f2328;
+      margin: 10px 0 6px;
+      line-height: 1.35;
+    }
+
+    :deep(.md-h1) { font-size: 17px; border-bottom: 1px solid #ebeef5; padding-bottom: 4px; }
+    :deep(.md-h2) { font-size: 15px; }
+    :deep(.md-h3) { font-size: 14px; }
+    :deep(.md-h4) { font-size: 13px; }
+
+    :deep(.md-ul),
+    :deep(.md-ol) {
+      margin: 6px 0;
+      padding-left: 20px;
+    }
+
+    :deep(.md-li) {
+      margin: 3px 0;
+      line-height: 1.5;
+    }
+
+    :deep(.md-inline-code) {
+      background: #f0f2f5;
+      color: #d63200;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-family: Consolas, Monaco, "Courier New", monospace;
+    }
+
+    :deep(.md-code-block) {
+      background: #282c34;
+      color: #abb2bf;
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin: 8px 0;
+      overflow-x: auto;
+      font-size: 13px;
+      line-height: 1.5;
+
+      code {
+        font-family: Consolas, Monaco, "Courier New", monospace;
+        color: inherit;
+        background: transparent;
+        padding: 0;
+      }
+    }
+
+    :deep(.md-quote) {
+      margin: 6px 0;
+      padding: 4px 12px;
+      border-left: 4px solid #409eff;
+      background: #f4f4f5;
+      color: #606266;
+      border-radius: 0 4px 4px 0;
+    }
+
+    :deep(.md-link) {
+      color: #409eff;
+      text-decoration: none;
+      &:hover { text-decoration: underline; }
+    }
+
+    :deep(strong) {
+      font-weight: 600;
+      color: #1f2328;
+    }
+  }
 }
 
 .msg-time {

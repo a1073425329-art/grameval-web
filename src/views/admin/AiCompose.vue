@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { listUsers, listCategoryTree } from '@/api/admin'
+import CategoryMultiPicker from '@/components/CategoryMultiPicker.vue'
+import { listUsers, listCategoryTree, listMyClasses, listClassStudents, type ClassGroup } from '@/api/admin'
 import { analyzeStudent, analyzeStudents, generatePreview, confirmPaper, getMyStudents, directGenerate } from '@/api/ai'
 import type { UserDetail } from '@/types/user'
 import type { Category } from '@/types/category'
@@ -14,6 +16,8 @@ import type {
   GeneratePaperPreview,
 } from '@/types/ai'
 import type { BatchStudentAnalysis } from '@/api/ai'
+
+const router = useRouter()
 
 /* ============================================================ *
  *  1. 学生 & 学情分析
@@ -43,6 +47,9 @@ const isAllSelected = computed(() =>
 )
 
 const toggleSelectAll = () => {
+  // 全选/取消全选是整体操作，班级激活态到此失效（避免取消班级时把刚全选的人又减掉）
+  Object.keys(classAdds).forEach((k) => delete classAdds[Number(k)])
+  activeClassIds.value = []
   if (isAllSelected.value) {
     selectedStudentIds.value = []
   } else {
@@ -79,10 +86,72 @@ const selectMyStudents = async () => {
 
 const clearSelection = () => {
   selectedStudentIds.value = []
+  activeClassIds.value = []
 }
 
-const loadStudents = async () => {
+/* ============================================================ *
+ *  1b. 班级快捷选人
+ *  班级只是"快速选人"的维度（D16）：并入/移出都只作用于下面的
+ *  已选学生集，绝不把 classId 写进题目、试卷或场次。
+ * ============================================================ */
+
+const myClasses = ref<ClassGroup[]>([])
+const loadingClasses = ref(false)
+const activeClassIds = ref<number[]>([])
+/** 点某个班时实际并入的学生；取消该班只减这批人，不动别处带来的 */
+const classAdds = reactive<Record<number, number[]>>({})
+
+/** 除 except 外其他激活班级带入的学生（这些人在取消本班时不能被误删） */
+const contributedByOtherClasses = (except: number) =>
+  new Set(
+    Object.entries(classAdds)
+      .filter(([cid]) => Number(cid) !== except)
+      .flatMap(([, ids]) => ids),
+  )
+
+const loadMyClasses = async () => {
+  loadingClasses.value = true
   try {
+    const res = await listMyClasses()
+    myClasses.value = res.data ?? []
+  } catch {
+    ElMessage.warning('加载我的班级失败，可继续手动搜索学生')
+  } finally {
+    loadingClasses.value = false
+  }
+}
+
+const toggleClass = async (cls: ClassGroup) => {
+  if (activeClassIds.value.includes(cls.id)) {
+    const still = contributedByOtherClasses(cls.id)
+    const drop = new Set((classAdds[cls.id] ?? []).filter((id) => !still.has(id)))
+    selectedStudentIds.value = selectedStudentIds.value.filter((id) => !drop.has(id))
+    delete classAdds[cls.id]
+    activeClassIds.value = activeClassIds.value.filter((id) => id !== cls.id)
+    ElMessage.info(`已移出「${cls.className}」带入的 ${drop.size} 名学生`)
+    return
+  }
+  loadingClasses.value = true
+  try {
+    const res = await listClassStudents(cls.id)
+    const ids = (res.data ?? []).map((s) => s.studentId)
+    if (ids.length === 0) {
+      ElMessage.warning(`「${cls.className}」还没有学生，请先在班级管理里分配`)
+      return
+    }
+    const known = new Set(selectedStudentIds.value)
+    classAdds[cls.id] = ids.filter((id) => !known.has(id))
+    selectedStudentIds.value = [...new Set([...selectedStudentIds.value, ...ids])]
+    activeClassIds.value = [...activeClassIds.value, cls.id]
+    ElMessage.success(`已并入「${cls.className}」${ids.length} 名学生（新增 ${classAdds[cls.id]?.length ?? 0}）`)
+  } catch {
+    ElMessage.error('加载班级学生失败')
+  } finally {
+    loadingClasses.value = false
+  }
+}
+
+const loadStudents = async () => {  try {
     const res = await listUsers({ pageNum: 1, pageSize: 500, role: 'STUDENT' })
     students.value = res.data.records ?? []
   } catch { /* handled */ }
@@ -148,19 +217,6 @@ const loadCategories = async () => {
   } catch { /* silent */ }
 }
 
-/** 打平分类树 */
-const flatCategories = computed(() => {
-  const out: { id: number; label: string; depth: number }[] = []
-  const walk = (arr: Category[], depth: number) => {
-    arr.forEach((c) => {
-      out.push({ id: c.id, label: c.categoryName, depth })
-      if (c.children?.length) walk(c.children, depth + 1)
-    })
-  }
-  walk(categories.value, 0)
-  return out
-})
-
 const formRef = ref<FormInstance>()
 const form = reactive({
   categoryIds: [] as number[],
@@ -216,7 +272,6 @@ const pickWeakCategories = () => {
   form.categoryIds = Array.from(merged)
   ElMessage.success(`已加入 ${weaks.length} 个薄弱专题`)
 }
-const clearCategories = () => { form.categoryIds = [] }
 
 const typeOptions = [
   { label: '单选题', field: 'singleWeight' as const },
@@ -281,7 +336,21 @@ const doCompose = async () => {
  * ============================================================ */
 
 const directGenerating = ref(false)
-const directResult = ref<{ paperId: number; sessionId: number } | null>(null)
+/** 一键模式的生成结果，用于"直达考试信息" */
+const directResult = ref<{
+  paperId: number
+  sessionId: number
+  paperName: string
+  sessionName: string
+  studentCount: number
+  duration: number
+  endTime: string
+} | null>(null)
+/**
+ * 一键模式：只保留「选学生 + 选专题 + 题量」，难度/题型/陷阱等进阶参数按默认值走，
+ * 一个按钮直接出卷并创建考试。进阶参数收起来，是为了让老师不必读懂每个开关就能出题。
+ */
+const quickMode = ref(false)
 
 const doDirectGenerate = async () => {
   if (selectedStudentIds.value.length === 0) { ElMessage.warning('请先选择学生'); return }
@@ -333,10 +402,26 @@ const doDirectGenerate = async () => {
       directResult.value = {
         paperId: res.data.paperId,
         sessionId: res.data.sessionId,
+        paperName,
+        sessionName,
+        studentCount: selectedStudentIds.value.length,
+        duration: Math.min(180, Math.max(20, form.questionCount * 1)),
+        endTime: fmt(later),
       }
       ElMessage.success(`已为 ${names} 创建试卷和考试！试卷ID:${res.data.paperId}`)
     } catch { /* handled */ } finally { directGenerating.value = false }
   })
+}
+
+/** 一键直达考试信息：生成完不跳走，先给出结果卡，由老师点进场次统计 */
+const goExamInfo = () => {
+  if (!directResult.value) return
+  router.push(`/admin/exams/${directResult.value.sessionId}/statistics`)
+}
+
+const goExamList = () => {
+  if (!directResult.value) return
+  router.push('/admin/exams')
 }
 
 /* ============================================================ *
@@ -418,7 +503,7 @@ const diffTagType = (d: Difficulty) => (d === 1 ? 'success' : d === 2 ? 'warning
 const answerText = (q: Question) => q.standardAnswer || '-'
 
 onMounted(async () => {
-  await Promise.all([loadStudents(), loadCategories()])
+  await Promise.all([loadStudents(), loadCategories(), loadMyClasses()])
 })
 </script>
 
@@ -461,6 +546,25 @@ onMounted(async () => {
                 清空
               </el-button>
             </div>
+          </div>
+          <!-- 班级快捷选人：点一下并入该班学生，再点移出该班带入的那批人。
+               班级只是选人维度（D16），不会把 classId 写进题目/试卷/场次。 -->
+          <div v-if="myClasses.length" class="class-chips">
+            <span class="class-chips-label">按班级</span>
+            <button
+              v-for="cls in myClasses"
+              :key="cls.id"
+              type="button"
+              class="class-chip"
+              :class="{ on: activeClassIds.includes(cls.id) }"
+              :disabled="loadingClasses"
+              @click="toggleClass(cls)"
+            >
+              {{ cls.className }}<em>{{ cls.studentCount ?? 0 }}</em>
+            </button>
+            <span v-if="activeClassIds.length" class="class-chips-hint">
+              已选 {{ activeClassIds.length }} 个班 · 当前共 {{ selectedStudentIds.length }} 人
+            </span>
           </div>
           <el-select
             v-model="selectedStudentIds"
@@ -601,31 +705,19 @@ onMounted(async () => {
         </template>
 
         <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
-          <el-form-item label="语法专题（多选）" prop="categoryIds">
-            <div class="cat-panel">
-              <div class="cat-tool">
-                <el-checkbox
-                  :model-value="!!flatCategories.length && form.categoryIds.length === flatCategories.length"
-                  :indeterminate="form.categoryIds.length > 0 && form.categoryIds.length < flatCategories.length"
-                  @change="(v: unknown) => form.categoryIds = (v as boolean) ? flatCategories.map(c => c.id) : []"
-                >
-                  全选
-                </el-checkbox>
-                <el-button size="small" link @click="clearCategories">清空</el-button>
-              </div>
-              <el-checkbox-group v-model="form.categoryIds" class="cat-group">
-                <el-checkbox
-                  v-for="c in flatCategories"
-                  :key="c.id"
-                  :value="c.id"
-                  :style="{ paddingLeft: (c.depth * 14) + 'px' }"
-                >
-                  {{ c.label }}
-                </el-checkbox>
-              </el-checkbox-group>
+          <div class="quick-switch">
+            <el-switch v-model="quickMode" size="large" />
+            <div class="quick-switch-text">
+              <b>一键模式</b>
+              <span>只填「选学生 → 选专题 → 题量」，进阶参数走默认值，一个按钮直接出卷并创建考试</span>
             </div>
+          </div>
+
+          <el-form-item label="语法专题（多选）" prop="categoryIds">
+            <CategoryMultiPicker v-model="form.categoryIds" :categories="categories" />
           </el-form-item>
 
+          <template v-if="!quickMode">
           <el-form-item label="难度百分比（三档之和须 = 100%）">
             <div class="diff-row">
               <div class="diff-item">
@@ -676,6 +768,7 @@ onMounted(async () => {
               </el-form-item>
             </el-col>
           </el-row>
+          </template>
 
           <el-form-item label="题量" prop="questionCount">
             <el-slider v-model="form.questionCount" :min="20" :max="200" :step="5" show-input />
@@ -683,6 +776,7 @@ onMounted(async () => {
 
           <div class="compose-actions">
             <el-button
+              v-if="!quickMode"
               type="primary"
               size="large"
               :loading="composing"
@@ -693,27 +787,33 @@ onMounted(async () => {
               {{ composing ? 'AI 生成中，请稍候 (约 30-90 秒)…' : '开始 AI 出题（预览）' }}
             </el-button>
             <el-button
-              type="success"
+              :type="quickMode ? 'primary' : 'success'"
               size="large"
               :loading="directGenerating"
               :disabled="selectedStudentIds.length === 0 || !difficultyValid || !typeValid"
               @click="doDirectGenerate"
             >
               <el-icon><Promotion /></el-icon>
-              {{ directGenerating ? '正在生成试卷并创建考试…' : '🚀 一键出卷+考试' }}
+              {{ directGenerating
+                ? '正在生成试卷并创建考试…'
+                : (quickMode ? '一键生成考试' : '🚀 一键出卷+考试') }}
             </el-button>
           </div>
 
+          <!-- 一键直达：生成结果不再只报两个 ID，给出可读的考试信息与入口 -->
           <div v-if="directResult" class="direct-result">
-            <el-alert type="success" :closable="false" show-icon>
-              <template #title>
-                ✅ 已成功创建试卷和考试场次！
-              </template>
-              <div class="direct-result-links">
-                <span>试卷 ID: <b>{{ directResult.paperId }}</b></span>
-                <span>考试 ID: <b>{{ directResult.sessionId }}</b></span>
-              </div>
-            </el-alert>
+            <div class="dr-title">✅ 考试已创建</div>
+            <dl class="dr-grid">
+              <div><dt>考试名称</dt><dd>{{ directResult.sessionName }}</dd></div>
+              <div><dt>试卷</dt><dd>{{ directResult.paperName }}（ID {{ directResult.paperId }}）</dd></div>
+              <div><dt>场次 ID</dt><dd>{{ directResult.sessionId }}</dd></div>
+              <div><dt>参加人数</dt><dd>{{ directResult.studentCount }} 人</dd></div>
+              <div><dt>时长 / 截止</dt><dd>{{ directResult.duration }} 分钟 · {{ directResult.endTime.slice(0, 16) }}</dd></div>
+            </dl>
+            <div class="dr-actions">
+              <el-button type="primary" @click="goExamInfo">查看考试信息</el-button>
+              <el-button @click="goExamList">考试管理列表</el-button>
+            </div>
           </div>
         </el-form>
       </el-card>
@@ -864,29 +964,63 @@ onMounted(async () => {
 .weak-tag { margin: 4px 6px 4px 0; }
 .w-count { color: #f56c6c; font-size: 11px; margin-left: 2px; }
 
-.cat-panel {
+/* 班级快捷选人 */
+.class-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 10px;
+}
+.class-chips-label { font-size: 12px; color: #909399; }
+.class-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
   border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  width: 100%;
-  overflow: hidden;
+  border-radius: 999px;
+  background: #fff;
+  color: #606266;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.18s;
 }
-.cat-tool {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 6px 12px; background: #fafafa;
-  border-bottom: 1px solid #dcdfe6;
+.class-chip:hover:not(:disabled) { border-color: #409eff; color: #409eff; }
+.class-chip:disabled { opacity: 0.6; cursor: progress; }
+.class-chip em {
+  font-style: normal;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #f0f2f5;
+  color: #909399;
+  font-size: 11px;
 }
-.cat-group {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 4px 8px;
-  padding: 10px 12px;
-  max-height: 220px;
-  overflow-y: auto;
+.class-chip.on {
+  border-color: #409eff;
+  background: #ecf5ff;
+  color: #1d6fd0;
+  font-weight: 600;
 }
-.cat-group .el-checkbox {
-  margin-right: 0 !important;
-  width: 100%;
+.class-chip.on em { background: #409eff; color: #fff; }
+.class-chips-hint { font-size: 12px; color: #67c23a; }
+
+/* 一键模式开关 */
+.quick-switch {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border: 1px solid #e4e7ed;
+  border-left: 3px solid #409eff;
+  border-radius: 6px;
+  background: #fafcff;
 }
+.quick-switch-text { display: flex; flex-direction: column; line-height: 1.4; }
+.quick-switch-text b { font-size: 13px; color: #303133; }
+.quick-switch-text span { font-size: 12px; color: #909399; }
 
 .diff-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .diff-item {
@@ -971,15 +1105,32 @@ onMounted(async () => {
 }
 
 .direct-result {
-  margin-top: 12px;
+  margin-top: 14px;
+  padding: 14px 16px 16px;
+  border: 1px solid #b3e19d;
+  border-left: 3px solid #67c23a;
+  border-radius: 8px;
+  background: #f2fbef;
 }
 
-.direct-result-links {
-  display: flex;
-  gap: 16px;
-  margin-top: 4px;
-  font-size: 13px;
+.dr-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #529b2e;
+  margin-bottom: 10px;
 }
+
+.dr-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 6px 18px;
+  margin: 0 0 12px;
+}
+
+.dr-grid > div { display: flex; gap: 8px; align-items: baseline; }
+.dr-grid dt { color: #909399; font-size: 12px; white-space: nowrap; }
+.dr-grid dd { margin: 0; color: #303133; font-size: 13px; word-break: break-all; }
+.dr-actions { display: flex; gap: 10px; }
 
 .compose-actions {
   margin-top: 8px;

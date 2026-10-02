@@ -384,3 +384,85 @@ export const batchDeleteReadingPassages = (ids: number[]) =>
 // 页面「重新阅卷」按钮点了无响应（前后端路由对齐核查发现）。
 export const regradeResult = (examId: number, reason?: string) =>
   request.post<ApiResponse<unknown>>(`/admin/results/${examId}/regrade`, { reason })
+
+// ==================== 班级（多对多：学生↔班级、老师↔班级） ====================
+// 定位：班级只是「快速选择学生」的筛选维度，题目/试卷/考试/成绩均不挂班级。
+// 后端：ClassGroupController @RequestMapping("/api/classes")
+
+export interface ClassGroup {
+  id: number
+  className: string
+  schoolName?: string
+  teacherId?: number
+  teacherName?: string
+  teacherIds?: number[]
+  teacherNames?: string[]
+  grade?: string
+  studentCount?: number
+  description?: string
+  status?: number
+  createTime?: string
+  students?: ClassStudent[]
+}
+
+export interface ClassStudent {
+  id?: number
+  classId?: number
+  studentId: number
+  studentName?: string
+  username?: string
+  studentNo?: string
+  avatar?: string
+  joinTime?: string
+  remark?: string
+  /** 一个学生可上多个班 */
+  classNames?: string[]
+  gender?: number
+  email?: string
+  phone?: string
+  status?: number
+  lastLoginTime?: string
+  trainingDays?: string
+  trainingStartDate?: string
+  actualStartDate?: string
+  /** 学习概览（与 AdminStudent 同口径，供「按班级」Tab 渲染） */
+  examCount?: number
+  recentScore?: number
+  averageScore?: number
+  wrongCount?: number
+}
+
+export interface ClassTeacher {
+  id: number
+  classId: number
+  teacherId: number
+  createdAt?: string
+}
+
+/** 我带的班级（班主任 + 任课老师两种来源合并） */
+export const listMyClasses = () =>
+  request.get<ApiResponse<ClassGroup[]>>('/classes/my')
+
+/** 我所带班级下的全部学生（跨班级去重，一人多班；classNames 列出其全部班级） */
+export const listMyClassStudents = () =>
+  request.get<ApiResponse<ClassStudent[]>>('/classes/my/students')
+
+/** 某班级的学生 */
+export const listClassStudents = (classId: number) =>
+  request.get<ApiResponse<ClassStudent[]>>(`/classes/${classId}/students`)
+
+/** 某班级的任课老师（主讲 + 助教） */
+export const listClassTeachers = (classId: number) =>
+  request.get<ApiResponse<ClassTeacher[]>>(`/classes/${classId}/teachers`)
+
+/** 批量重设某班级的任课老师 */
+export const assignClassTeachers = (classId: number, teacherIds: number[]) =>
+  request.put<ApiResponse<void>>(`/classes/${classId}/teachers`, teacherIds)
+
+/** 添加单个学生到班级 */
+export const addClassStudent = (classId: number, studentId: number, studentNo?: string) =>
+  request.post<ApiResponse<void>>(`/classes/${classId}/students/${studentId}`, null, { params: { studentNo } })
+
+/** 从班级移除学生（只解绑该班，不影响其其他班级） */
+export const removeClassStudent = (classId: number, studentId: number) =>
+  request.delete<ApiResponse<void>>(`/classes/${classId}/students/${studentId}`)

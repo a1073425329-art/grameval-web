@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, reactive } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Search, Refresh, UserFilled, Plus, DataAnalysis, Clock, Warning, InfoFilled, List, Grid, Cpu } from '@element-plus/icons-vue'
-import { listMyStudents, listUnassignedStudents, bindMyStudents } from '@/api/admin'
+import { Search, Refresh, UserFilled, Plus, DataAnalysis, Clock, Warning, InfoFilled, List, Grid, Cpu, Close } from '@element-plus/icons-vue'
+import { listMyStudents, listUnassignedStudents, bindMyStudents, listMyClasses, listMyClassStudents, removeClassStudent } from '@/api/admin'
 import type { AdminStudent } from '@/types/admin'
 import type { UserDetail } from '@/types/user'
+import type { ClassGroup, ClassStudent } from '@/api/admin'
 import { useViewMode } from '@/composables/useViewMode'
 
 /* ---------------- 数据 ---------------- */
@@ -12,6 +13,14 @@ const { viewMode, toggleViewMode } = useViewMode('my_students')
 
 const list = ref<AdminStudent[]>([])
 const unassigned = ref<UserDetail[]>([])
+/** 班级维度：一个老师可带多个班（班主任 + 任课老师合并） */
+const myClasses = ref<ClassGroup[]>([])
+/** 跨班级去重后的学生（含其所属班级名集合） */
+const classStudents = ref<ClassStudent[]>([])
+/** 班级筛选：null = 全部班级 */
+const activeClassId = ref<number | null>(null)
+/** 双 Tab 切换：class=按班级（多对多主视图），bind=按绑定（admin_student 历史关系） */
+const activeTab = ref<'class' | 'bind'>('class')
 const loading = ref(false)
 
 const query = reactive({
@@ -25,15 +34,70 @@ const query = reactive({
 const load = async () => {
   loading.value = true
   try {
-    const [my, un] = await Promise.allSettled([
+    const [my, un, classes, clsStudents] = await Promise.allSettled([
       listMyStudents(),
       listUnassignedStudents(),
+      listMyClasses(),
+      listMyClassStudents(),
     ])
     if (my.status === 'fulfilled') list.value = my.value.data ?? []
     if (un.status === 'fulfilled') unassigned.value = un.value.data ?? []
+    if (classes.status === 'fulfilled') myClasses.value = classes.value.data ?? []
+    if (clsStudents.status === 'fulfilled') classStudents.value = clsStudents.value.data ?? []
   } catch { /* handled by interceptor */ }
   finally { loading.value = false }
 }
+
+/* ---------------- 班级维度统计 ---------------- */
+const classStats = computed(() => ({
+  classCount: myClasses.value.length,
+  /** 跨班级去重后的学生数（一个学生上多个班只算一个人） */
+  uniqueStudents: classStudents.value.length,
+  /** 上多个班的学生数 */
+  multiClassStudents: classStudents.value.filter((s) => (s.classNames?.length ?? 0) > 1).length,
+}))
+
+/** 按班级筛选后的学生（activeClassId 为 null 时返回全部） */
+const studentsInScope = computed<ClassStudent[]>(() => {
+  if (activeClassId.value == null) return classStudents.value
+  return classStudents.value.filter((s) => s.classNames?.includes(
+    myClasses.value.find((c) => c.id === activeClassId.value)?.className ?? '',
+  ))
+})
+
+/** 「按班级」Tab 的最终列表：在 studentsInScope 基础上做搜索与成绩段筛选 */
+const filteredClassStudents = computed<ClassStudent[]>(() => {
+  let data = [...studentsInScope.value]
+
+  if (query.keyword.trim()) {
+    const kw = query.keyword.trim().toLowerCase()
+    data = data.filter((s) =>
+      (s.studentName || s.username)?.toLowerCase().includes(kw) ||
+      s.email?.toLowerCase().includes(kw) ||
+      s.phone?.includes(kw) ||
+      // 也支持按班级名搜索
+      s.classNames?.some((c) => c.toLowerCase().includes(kw)),
+    )
+  }
+
+  if (query.scoreFilter === 'low') {
+    data = data.filter((s) => s.averageScore != null && s.averageScore < 60)
+  } else if (query.scoreFilter === 'mid') {
+    data = data.filter((s) => s.averageScore != null && s.averageScore >= 60 && s.averageScore < 80)
+  } else if (query.scoreFilter === 'high') {
+    data = data.filter((s) => s.averageScore != null && s.averageScore >= 80)
+  }
+
+  // 按平均分降序，无成绩排末尾
+  return data.sort((a, b) => {
+    const av = a.averageScore != null ? Number(a.averageScore) : null
+    const bv = b.averageScore != null ? Number(b.averageScore) : null
+    if (av != null && bv != null) return bv - av
+    if (av != null) return -1
+    if (bv != null) return 1
+    return (b.examCount ?? 0) - (a.examCount ?? 0)
+  })
+})
 
 /* ---------------- 统计卡片 ---------------- */
 const stats = computed(() => {
@@ -152,6 +216,24 @@ const unbindOne = async (row: AdminStudent) => {
       .map((r) => r.studentId)
     await bindMyStudents(remain)
     ElMessage.success('已取消绑定')
+    await load()
+  } catch { /* cancelled */ }
+}
+
+/** 从当前班级移除某个学生（只解绑该班，其所在其他班级不受影响） */
+const removeFromClass = async (s: ClassStudent) => {
+  const classId = activeClassId.value
+  if (classId == null) return
+  const cname = myClasses.value.find((c) => c.id === classId)?.className ?? '该班级'
+  try {
+    await ElMessageBox.confirm(
+      `确认将学生「${s.studentName || s.username}」移出「${cname}」？\n` +
+      `若该生还在其他班级，其班级关系不受影响。`,
+      '移出班级',
+      { type: 'warning' },
+    )
+    await removeClassStudent(classId, s.studentId)
+    ElMessage.success('已移出该班级')
     await load()
   } catch { /* cancelled */ }
 }
@@ -284,13 +366,175 @@ onMounted(load)
       </div>
     </div>
 
-    <!-- ============ 主表格 ============ -->
+    <!-- ============ 双 Tab：按班级 / 按绑定 ============ -->
     <el-card shadow="never">
-      <!-- 头部工具栏 -->
-      <div class="card-head">
-        <div>
-          <h3 class="title">学生档案</h3>
-        </div>
+      <el-tabs v-model="activeTab" class="student-tabs">
+        <!-- ============ Tab 1：按班级（多对多主视图） ============ -->
+        <el-tab-pane name="class">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><Grid /></el-icon>按班级
+              <el-badge v-if="classStudents.length" :value="classStudents.length" class="tab-badge" />
+            </span>
+          </template>
+
+          <div class="class-head">
+            <div>
+              <h3 class="title">我带的班级</h3>
+              <p class="title-sub">
+                班级仅用于快速筛选学生；一个学生可加入多个班级，一个班级可有多位任课老师。
+                题目、试卷与考试数据不与班级绑定。
+              </p>
+            </div>
+            <div class="class-stats">
+              <span class="mini-stat"><b>{{ classStats.classCount }}</b> 个班级</span>
+              <el-divider direction="vertical" />
+              <span class="mini-stat"><b>{{ classStats.uniqueStudents }}</b> 名学生</span>
+              <el-divider direction="vertical" />
+              <span class="mini-stat"><b>{{ classStats.multiClassStudents }}</b> 人跨班</span>
+            </div>
+          </div>
+
+          <div class="class-chips">
+            <div class="class-chip all" :class="{ active: activeClassId === null }" @click="activeClassId = null">
+              <span class="chip-name">全部班级</span>
+              <span class="chip-count">{{ classStudents.length }}</span>
+            </div>
+            <div
+              v-for="c in myClasses"
+              :key="c.id"
+              class="class-chip"
+              :class="{ active: activeClassId === c.id }"
+              :title="`${c.className}${c.grade ? ' · ' + c.grade : ''} · 任课老师：${(c.teacherNames ?? []).join('、') || '未设置'}`"
+              @click="activeClassId = c.id"
+            >
+              <span class="chip-name">{{ c.className }}</span>
+              <el-tag v-if="(c.teacherNames?.length ?? 0) > 1" size="small" type="warning" effect="plain">
+                {{ c.teacherNames?.length }} 位老师
+              </el-tag>
+              <span class="chip-count">{{ c.studentCount ?? 0 }}</span>
+            </div>
+            <el-empty v-if="!myClasses.length && !loading" description="暂未分配班级" :image-size="60" />
+          </div>
+
+          <div class="cls-toolbar">
+            <el-input
+              v-model="query.keyword"
+              placeholder="搜索姓名 / 邮箱 / 手机号……"
+              :prefix-icon="Search"
+              clearable
+              style="width: 200px;"
+            />
+            <el-select v-model="query.scoreFilter" placeholder="成绩筛选" clearable style="width: 130px;">
+              <el-option label="全部" value="" />
+              <el-option label="薄弱 (&lt;60)" value="low" />
+              <el-option label="中等 (60-80)" value="mid" />
+              <el-option label="优秀 (≥80)" value="high" />
+            </el-select>
+            <el-button :icon="Refresh" @click="load" :loading="loading">刷新</el-button>
+            <el-button type="primary" size="small" @click="$router.push('/admin/ai-compose')">
+              <el-icon><Cpu /></el-icon>AI学生分析
+            </el-button>
+          </div>
+
+          <el-empty
+            v-if="!loading && !filteredClassStudents.length"
+            :description="activeClassId === null ? '所带班级暂无学生' : '该班暂无学生'"
+          />
+
+          <el-table
+            v-else-if="!loading && filteredClassStudents.length"
+            v-loading="loading"
+            :data="filteredClassStudents"
+            style="width:100%"
+            stripe
+          >
+            <el-table-column type="index" label="#" width="55" />
+            <el-table-column label="学生" min-width="150">
+              <template #default="{ row }">
+                <el-avatar :size="30" :src="row.avatar || '/avatars/student.jpg'" style="margin-right:8px">
+                  <el-icon><UserFilled /></el-icon>
+                </el-avatar>
+                <div>
+                  <div>{{ row.studentName || row.username }}</div>
+                  <div style="font-size:12px;color:#909399">@{{ row.username }}</div>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="所属班级" min-width="180">
+              <template #default="{ row }">
+                <el-tag
+                  v-for="(cn, i) in row.classNames"
+                  :key="i"
+                  size="small"
+                  effect="plain"
+                  :type="i === 0 ? 'primary' : 'success'"
+                  class="cls-tag"
+                >{{ cn }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="性别" width="70" align="center">
+              <template #default="{ row }">
+                <span :style="{ color: genderColor(row.gender) }">{{ genderLabel(row.gender) || '-' }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="考试次数" width="90" align="center">
+              <template #default="{ row }">{{ row.examCount ?? 0 }}</template>
+            </el-table-column>
+            <el-table-column label="平均分" width="90" align="center">
+              <template #default="{ row }">
+                <span :class="['score-badge', scoreClass(row.averageScore)]">
+                  {{ row.averageScore != null ? Number(row.averageScore).toFixed(0) : '-' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="最近成绩" width="90" align="center">
+              <template #default="{ row }">
+                <span :class="['score-badge', scoreClass(row.recentScore)]">
+                  {{ row.recentScore != null ? Number(row.recentScore).toFixed(0) : '-' }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="错题数" width="85" align="center">
+              <template #default="{ row }">
+                <span :class="{ 'wrong-num': (row.wrongCount ?? 0) > 0 }">{{ row.wrongCount ?? 0 }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="状态" width="85">
+              <template #default="{ row }">
+                <el-tag :type="(row.status ?? 1) === 0 ? 'danger' : 'success'" size="small" effect="light">
+                  {{ statusLabel(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="90" align="center">
+              <template #default="{ row }">
+                <el-tooltip content="从当前班级移除" placement="top">
+                  <el-button link type="danger" size="small" @click="removeFromClass(row)">
+                    <el-icon><Close /></el-icon>
+                  </el-button>
+                </el-tooltip>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+
+        <!-- ============ Tab 2：按绑定（admin_student，历史关系） ============ -->
+        <el-tab-pane name="bind">
+          <template #label>
+            <span class="tab-label">
+              <el-icon><List /></el-icon>按绑定
+              <el-badge v-if="list.length" :value="list.length" class="tab-badge" />
+            </span>
+          </template>
+
+          <div class="bind-tip">
+            「按绑定」为历史遗留的教师-学生直接绑定关系（admin_student），与班级体系相互独立。
+            当前共 {{ list.length }} 条绑定记录。
+          </div>
+
+          <div class="card-head">
+            <div><h3 class="title">已绑定学生</h3></div>
         <div class="head-actions">
           <el-input
             v-model="query.keyword"
@@ -492,6 +736,8 @@ onMounted(load)
         共 <b>{{ sortedList.length }}</b> 名学生
         <template v-if="query.keyword || query.scoreFilter || query.gender != null || query.status != null || query.hasExam != null">（筛选自 {{ list.length }} 人）</template>
       </div>
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
 
     <!-- ============ 绑定管理弹窗 ============ -->
@@ -542,6 +788,81 @@ onMounted(load)
   flex-direction: column;
   gap: 16px;
 }
+
+/* ---------------- 统计卡片 ---------------- */
+/* ---------------- 双 Tab ---------------- */
+.student-tabs :deep(.el-tabs__header) { margin-bottom: 16px; }
+.tab-label {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 14px; font-weight: 500;
+}
+.tab-badge {
+  transform: translateY(-1px);
+  :deep(.el-badge__content) { font-size: 11px; height: 16px; line-height: 16px; padding: 0 5px; }
+}
+.cls-toolbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+  margin: 14px 0 12px;
+}
+.cls-tag { margin-right: 4px; }
+.bind-tip {
+  margin-bottom: 14px; padding: 10px 14px;
+  border-left: 4px solid #e6a23c; border-radius: 6px;
+  background: #fdf6ec; font-size: 12px; color: #a3702a; line-height: 1.7;
+}
+
+/* ---------------- 班级面板（快速选人） ---------------- */
+.class-panel { margin-bottom: 2px; }
+.class-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 14px;
+}
+.title-sub {
+  margin: 4px 0 0; font-size: 12px; color: #909399; line-height: 1.6; max-width: 720px;
+}
+.class-stats { display: flex; align-items: center; flex-shrink: 0; }
+.mini-stat { font-size: 12px; color: #909399; white-space: nowrap; }
+.mini-stat b { font-size: 16px; color: #303133; margin: 0 2px; }
+
+.class-chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.class-chip {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid #e4e7ed; border-radius: 999px;
+  background: #fff; cursor: pointer;
+  transition: all 0.18s ease;
+  &:hover { border-color: #a3cfff; background: #f5f9ff; }
+  &.active {
+    border-color: #409eff; background: #ecf5ff; color: #1a73e8;
+    .chip-count { background: #409eff; color: #fff; }
+  }
+  &.all { border-style: dashed; }
+}
+.chip-name { font-size: 13px; font-weight: 500; }
+.chip-count {
+  min-width: 20px; padding: 0 6px;
+  border-radius: 999px; background: #f0f2f5; color: #606266;
+  font-size: 12px; font-weight: 600; text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.class-detail {
+  margin-top: 14px; padding: 12px 16px;
+  border: 1px dashed #d9ecff; border-radius: 10px;
+  background: #f7fbff;
+}
+.detail-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+.detail-title { font-size: 14px; font-weight: 600; color: #1f2d3d; }
+.detail-teachers { font-size: 12px; color: #909399; display: inline-flex; align-items: center; gap: 6px; }
+.teacher-tag { margin-right: 2px; }
+.detail-body { display: flex; flex-wrap: wrap; gap: 8px; }
+.stu-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px; border: 1px solid #ebeef5; border-radius: 8px;
+  background: #fff; font-size: 12px;
+}
+.stu-name { font-weight: 500; color: #303133; }
+.muted { font-size: 12px; color: #c0c4cc; }
 
 /* ---------------- 统计卡片 ---------------- */
 .stats-row {

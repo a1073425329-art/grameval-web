@@ -17,6 +17,11 @@ import {
   Download,
   Upload,
   Document,
+  View,
+  Hide,
+  CopyDocument,
+  Tickets,
+  ArrowDown,
 } from '@element-plus/icons-vue'
 import {
   listAdminQuestions,
@@ -28,6 +33,8 @@ import {
   listCategoryTree,
   listReadingPassages,
   createReadingPassage,
+  updateReadingPassage,
+  getReadingPassageDetail,
   addPassageQuestion,
   downloadImportTemplate,
   importQuestions,
@@ -39,6 +46,7 @@ import type { Difficulty, QuestionType } from '@/types/common'
 import type { Category } from '@/types/category'
 import type { ReadingPassage, ReadingQuestionItem } from '@/types/reading'
 import { useViewMode } from '@/composables/useViewMode'
+import PassageCard from '@/components/PassageCard.vue'
 
 const { viewMode, toggleViewMode } = useViewMode('question_manage')
 
@@ -85,6 +93,31 @@ const diffLabel = (d?: Difficulty) =>
   diffOptions.find((o) => o.value === d)?.label ?? String(d)
 const diffTagType = (d?: Difficulty) =>
   d === 1 ? 'success' : d === 2 ? 'warning' : 'danger'
+
+/** 来源列：库里取值历史上有中英混杂（MANUAL / 系统 / SEED_READING…），认得的翻成中文，认得的原文兜底 */
+const SOURCE_LABELS: Record<string, string> = {
+  MANUAL: '人工录入',
+  AI: 'AI 生成',
+  AI_STUDENT: '学生错题变式',
+  IMPORT: '批量导入',
+  SEED_READING: '阅读题库',
+  系统: '系统内置',
+}
+const sourceLabel = (s?: string) => {
+  if (!s) return '-'
+  return SOURCE_LABELS[s] ?? s
+}
+
+/** 更新时间只到分钟，列表里够用来判断新旧 */
+const fmtDate = (s?: string) => {
+  if (!s) return '-'
+  const d = new Date(s)
+  if (Number.isNaN(d.getTime())) return s.slice(0, 10)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(
+    d.getMinutes()
+  )}`
+}
 
 const load = async () => {
   loading.value = true
@@ -256,13 +289,93 @@ const removeOption = (idx: number) => {
 }
 
 /* ---------- 阅读理解表单 ---------- */
+/** 阅读子题型：与后端 QuestionSubtype 枚举一致 */
+const subtypeOptions: { label: string; value: string }[] = [
+  { label: '细节题', value: 'DETAIL' },
+  { label: '主旨题', value: 'MAIN_IDEA' },
+  { label: '推断题', value: 'INFERENCE' },
+  { label: '词义题', value: 'VOCABULARY' },
+  { label: '态度题', value: 'ATTITUDE' },
+]
+const subtypeLabel = (v?: string) =>
+  subtypeOptions.find((o) => o.value === v)?.label || ''
+
+/** 历史数据里出现过 READING_DETAIL / MAIN 这类写法，下拉框要先认得才能显示出来 */
+const normalizeSubtype = (raw?: string | null): string => {
+  if (!raw) return ''
+  let s = String(raw).trim().toUpperCase()
+  if (s.startsWith('READING_')) s = s.slice('READING_'.length)
+  if (s === 'MAIN') s = 'MAIN_IDEA'
+  return subtypeOptions.some((o) => o.value === s) ? s : ''
+}
+
+/** 给分方式只认 PARTIAL，其余一律按整题给分显示 —— 与后端 resolveScoreType 同口径 */
+const normalizeScoreType = (raw?: string | null): 'FULL' | 'PARTIAL' =>
+  String(raw ?? '').trim().toUpperCase() === 'PARTIAL' ? 'PARTIAL' : 'FULL'
+
 type ReadingSubQ = {
+  /** 已有题的 ID；显式放宽 undefined —— 项目开了 exactOptionalPropertyTypes，复制新建要清空 ID */
+  id?: number | undefined
   stem: string
-  standardAnswer: string
+  /** 作答位：单选用一个单选框，多空用复选框 —— 决定答案串里是几个字母 */
+  blankMode: 'single' | 'multi'
+  picks: string[]
+  questionSubtype: string
+  /** 给分方式：整题给分 / 逐空给分（只有多空作答位时才有意义） */
+  scoreType: 'FULL' | 'PARTIAL'
+  status: 0 | 1
   analysis: string
   knowledgePoints: string[]
   options: QuestionOption[]
   defaultScore: number
+}
+
+const defaultOptions = (): QuestionOption[] => [
+  { optionLabel: 'A', optionContent: '', sortNo: 1 },
+  { optionLabel: 'B', optionContent: '', sortNo: 2 },
+  { optionLabel: 'C', optionContent: '', sortNo: 3 },
+  { optionLabel: 'D', optionContent: '', sortNo: 4 },
+]
+
+/** 答案串：多空按字母排序落库，与后端「保存前统一去重排序」保持一致 */
+const readingAnswerOf = (q: ReadingSubQ): string => {
+  const picked = [...q.picks].sort()
+  return q.blankMode === 'single' ? String(picked[0] ?? '') : picked.join(',')
+}
+
+/** 英文词数：与后端 estimateWordCount 同口径（按空白切分），让老师边写边看到达标没有 */
+const wordCountOf = (text: string): number =>
+  text.trim() ? text.trim().split(/\s+/).length : 0
+
+const onBlankModeChange = (q: ReadingSubQ) => {
+  if (q.blankMode === 'single' && q.picks.length > 1) {
+    q.picks = q.picks.slice(0, 1)
+  }
+  // 退回单个作答位时比例给分没有意义，必须一起清掉，否则界面上看不见却仍在库里存着 PARTIAL
+  if (q.blankMode === 'single') {
+    q.scoreType = 'FULL'
+  }
+}
+
+const toReadingSubQ = (q: Question): ReadingSubQ => {
+  const picks = (q.standardAnswer || '')
+    .toUpperCase()
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return {
+    id: q.id,
+    stem: q.stem,
+    blankMode: picks.length > 1 ? 'multi' : 'single',
+    picks,
+    questionSubtype: normalizeSubtype(q.questionSubtype),
+    scoreType: normalizeScoreType(q.scoreType),
+    status: (q.status ?? 1) as 0 | 1,
+    analysis: q.analysis || '',
+    knowledgePoints: q.knowledgePoints ? [...q.knowledgePoints] : [],
+    options: q.options?.length ? q.options.map((o) => ({ ...o })) : defaultOptions(),
+    defaultScore: Number(q.defaultScore ?? 2),
+  }
 }
 
 type ReadingForm = {
@@ -352,19 +465,25 @@ const addSubQuestion = () => {
   }
   readingForm.subQuestions.push({
     stem: '',
-    standardAnswer: 'A',
+    blankMode: 'single',
+    picks: [],
+    questionSubtype: '',
+    scoreType: 'FULL',
+    status: 1,
     analysis: '',
     knowledgePoints: [],
-    options: [
-      { optionLabel: 'A', optionContent: '', sortNo: 1 },
-      { optionLabel: 'B', optionContent: '', sortNo: 2 },
-      { optionLabel: 'C', optionContent: '', sortNo: 3 },
-      { optionLabel: 'D', optionContent: '', sortNo: 4 },
-    ],
+    options: defaultOptions(),
     defaultScore: 2,
   })
 }
 const removeSubQuestion = (idx: number) => {
+  const q = readingForm.subQuestions[idx]
+  if (q?.id) {
+    // 已入库的题不做物理删除：论文 L956 的原则是被引用只停用
+    q.status = 0
+    ElMessage.warning('该题已入库，已就地停用；如需彻底删除请到列表用「删除」')
+    return
+  }
   readingForm.subQuestions.splice(idx, 1)
 }
 const addSubOpt = (qIdx: number) => {
@@ -415,18 +534,29 @@ const aiGenerateReading = async () => {
     readingForm.passageTitle = data.title
     readingForm.passageContent = data.content
     readingForm.summary = data.summary || ''
-    readingForm.subQuestions = data.questions.map((q: any) => ({
-      stem: q.stem,
-      standardAnswer: q.standardAnswer,
-      analysis: q.analysis || '',
-      knowledgePoints: q.knowledgePoints || ['阅读理解'],
-      options: (q.options || []).map((o: any, i: number) => ({
-        optionLabel: o.optionLabel || String.fromCharCode(65 + i),
-        optionContent: o.optionContent,
-        sortNo: i + 1,
-      })),
-      defaultScore: 2,
-    }))
+    readingForm.subQuestions = data.questions.map((q: any): ReadingSubQ => {
+      const picks = String(q.standardAnswer || '')
+        .toUpperCase()
+        .split(',')
+        .map((s: string) => s.trim())
+        .filter(Boolean)
+      return {
+        stem: q.stem,
+        blankMode: picks.length > 1 ? 'multi' : 'single',
+        picks,
+        questionSubtype: normalizeSubtype(q.questionSubtype),
+        scoreType: normalizeScoreType(q.scoreType),
+        status: 1,
+        analysis: q.analysis || '',
+        knowledgePoints: q.knowledgePoints || ['阅读理解'],
+        options: (q.options || []).map((o: any, i: number) => ({
+          optionLabel: o.optionLabel || String.fromCharCode(65 + i),
+          optionContent: o.optionContent,
+          sortNo: i + 1,
+        })),
+        defaultScore: 2,
+      }
+    })
     readingForm.source = 'AI'
     ElMessage.success('AI 生成成功')
   } catch {
@@ -499,8 +629,23 @@ const doValidate = async () => {
 }
 
 /* ---------- 弹窗打开/关闭 ---------- */
+/** 编辑态锁题型：改题型会让历史作答记录失去意义，只能停用后另建（后端同步拒绝） */
+const typeLocked = computed(() => editMode.value === 'edit')
+const isReadingEdit = computed(
+  () => activeTab.value === 'READING' && editMode.value === 'edit'
+)
+/** 编辑态拦下 tab 切换：题型不能改，切换前先说明为什么改不了 */
+const lockTabsIfEditing = () => {
+  if (!typeLocked.value) return true
+  ElMessage.warning('编辑态不能切换题型，如需换题型请用「复制新建」另存一题')
+  return false
+}
+
 const dialogTitle = computed(() => {
-  if (editMode.value === 'edit') return '编辑试题'
+  if (editMode.value === 'edit') {
+    const tabLabel = tabOptions.find((t) => t.value === activeTab.value)?.label || ''
+    return `编辑${tabLabel}`
+  }
   const tabLabel = tabOptions.find((t) => t.value === activeTab.value)?.label || ''
   return `新增${tabLabel}`
 })
@@ -511,6 +656,7 @@ const openCreate = (tab: TabType = 'SINGLE') => {
   resetNormalForm()
   resetReadingForm()
   validationResult.value = null
+  activeSubIndex.value = -1
   if (tab === 'READING') {
     loadPassages()
     // 默认添加 5 道题
@@ -524,81 +670,201 @@ const openEdit = (row: Question) => {
   resetNormalForm()
   resetReadingForm()
   validationResult.value = null
+  activeSubIndex.value = -1
 
   // 设置活动标签页
   activeTab.value = row.questionType
 
   if (row.questionType === 'READING') {
-    readingForm.selectedPassageId = row.passageId
-    readingForm.categoryId = row.categoryId
-    readingForm.difficulty = row.difficulty
-    readingForm.passageMode = 'select'
-    // 单题编辑模式下，只读显示文章，只编辑本题
-    normalForm.id = row.id
-    normalForm.categoryId = row.categoryId
-    normalForm.questionType = 'READING'
-    normalForm.difficulty = row.difficulty
-    normalForm.stem = row.stem
-    normalForm.defaultScore = row.defaultScore ?? 2
-    normalForm.status = (row.status ?? 1) as 0 | 1
-    normalForm.hasTrap = !!row.hasTrap
-    normalForm.trapNote = row.trapNote || ''
-    normalForm.analysis = row.analysis || ''
-    normalForm.knowledgePoints = row.knowledgePoints || []
-    normalForm.passageId = row.passageId
-    normalForm.options = row.options?.length
-      ? row.options.map((o) => ({ ...o }))
-      : normalForm.options
-    normalForm.answerSingle = row.standardAnswer || ''
-  } else {
-    normalForm.id = row.id
-    normalForm.categoryId = row.categoryId
-    normalForm.questionType = row.questionType
-    normalForm.difficulty = row.difficulty
-    normalForm.stem = row.stem
-    normalForm.defaultScore = row.defaultScore ?? 2
-    normalForm.status = (row.status ?? 1) as 0 | 1
-    normalForm.hasTrap = !!row.hasTrap
-    normalForm.trapNote = row.trapNote || ''
-    normalForm.analysis = row.analysis || ''
-    normalForm.knowledgePoints = row.knowledgePoints || []
-    normalForm.options = row.options?.length
-      ? row.options.map((o) => ({ ...o }))
-      : normalForm.options
+    // 阅读题必须用阅读编辑器打开：一道题离不开它的那篇文章
+    loadReadingGroup(row)
+    return
+  }
 
-    const a = row.standardAnswer || ''
-    if (row.questionType === 'MULTIPLE') {
-      normalForm.answerMulti = a.split(',').map((s) => s.trim()).filter(Boolean)
-    } else if (row.questionType === 'JUDGE') {
-      normalForm.answerJudge = (a.toUpperCase() === 'TRUE'
-        ? 'TRUE'
-        : a.toUpperCase() === 'FALSE'
-          ? 'FALSE'
-          : '') as 'TRUE' | 'FALSE' | ''
-    } else if (row.questionType === 'FILL_HINT') {
-      normalForm.answerFill = a
-    } else {
-      normalForm.answerSingle = a
-    }
+  normalForm.id = row.id
+  normalForm.categoryId = row.categoryId
+  normalForm.questionType = row.questionType
+  normalForm.difficulty = row.difficulty
+  normalForm.stem = row.stem
+  normalForm.defaultScore = row.defaultScore ?? 2
+  normalForm.status = (row.status ?? 1) as 0 | 1
+  normalForm.hasTrap = !!row.hasTrap
+  normalForm.trapNote = row.trapNote || ''
+  normalForm.analysis = row.analysis || ''
+  normalForm.knowledgePoints = row.knowledgePoints || []
+  normalForm.options = row.options?.length
+    ? row.options.map((o) => ({ ...o }))
+    : normalForm.options
+
+  const a = row.standardAnswer || ''
+  if (row.questionType === 'MULTIPLE') {
+    normalForm.answerMulti = a.split(',').map((s) => s.trim()).filter(Boolean)
+  } else if (row.questionType === 'JUDGE') {
+    normalForm.answerJudge = (a.toUpperCase() === 'TRUE'
+      ? 'TRUE'
+      : a.toUpperCase() === 'FALSE'
+        ? 'FALSE'
+        : '') as 'TRUE' | 'FALSE' | ''
+  } else if (row.questionType === 'FILL_HINT') {
+    normalForm.answerFill = a
+  } else {
+    normalForm.answerSingle = a
   }
 
   dialogVisible.value = true
 }
 
-/* ---------- 提交 ---------- */
-const submit = async () => {
-  if (!formRef.value) return
+/* ---------- 阅读题组编辑 ---------- */
+const groupLoading = ref(false)
+const activeSubIndex = ref(-1)
+const groupWordCount = ref(0)
+const groupQuestionTotal = ref(0)
 
-  // 阅读理解批量提交
-  if (activeTab.value === 'READING' && editMode.value === 'create') {
-    await submitReadingBatch()
+/** 按题序加载整组：编辑一道阅读题 = 编辑它所在的那一组 */
+const loadReadingGroup = async (row: Question) => {
+  if (!row.passageId) {
+    ElMessage.error('该题没有绑定文章，请先在文章库里补全关联')
     return
   }
+  groupLoading.value = true
+  dialogVisible.value = true
+  try {
+    const res = await getReadingPassageDetail(row.passageId, true)
+    const p = res.data
+    readingForm.selectedPassageId = p.id
+    readingForm.passageTitle = p.title ?? ''
+    readingForm.passageContent = p.content ?? ''
+    readingForm.passageType = p.passageType ?? ''
+    readingForm.topic = p.topic ?? ''
+    readingForm.summary = p.summary ?? ''
+    readingForm.categoryId = p.categoryId ?? row.categoryId
+    readingForm.difficulty = p.difficulty ?? row.difficulty
+    readingForm.source = p.source ?? 'MANUAL'
+    groupWordCount.value = p.wordCount ?? 0
+    const rows = (p.questions ?? []).slice().sort(
+      (a, b) =>
+        (a.passageQuestionOrder ?? 9999) - (b.passageQuestionOrder ?? 9999) ||
+        a.id - b.id
+    )
+    groupQuestionTotal.value = rows.length
+    readingForm.subQuestions = rows.map(toReadingSubQ)
+    activeSubIndex.value = readingForm.subQuestions.findIndex((q) => q.id === row.id)
+  } catch {
+    dialogVisible.value = false
+  } finally {
+    groupLoading.value = false
+  }
+}
+
+const readingItemPayload = (q: ReadingSubQ) => ({
+  stem: q.stem,
+  standardAnswer: readingAnswerOf(q),
+  analysis: q.analysis,
+  knowledgePoints: q.knowledgePoints,
+  options: q.options.map((o, i) => ({
+    optionLabel: o.optionLabel,
+    optionContent: o.optionContent,
+    sortNo: i + 1,
+  })),
+  defaultScore: q.defaultScore,
+  questionSubtype: q.questionSubtype || undefined,
+  scoreType: q.scoreType,
+})
+
+/** 逐题校验：空题干、选项不足、答案缺失或不足 2 个作答位都在这里挡下 */
+const validateReadingRows = (): string | null => {
+  const rows = readingForm.subQuestions
+  for (let i = 0; i < rows.length; i++) {
+    const q = rows[i]!
+    const no = `第 ${i + 1} 题`
+    if (!q.stem.trim()) return `${no}题干不能为空`
+    if (q.options.length < 2) return `${no}至少需要 2 个选项`
+    if (q.options.some((o) => !o.optionContent.trim()))
+      return `${no}存在空白选项，请补全或删除`
+    if (!q.picks.length) return `请选择${no}的正确答案`
+    if (q.blankMode === 'multi' && q.picks.length < 2)
+      return `${no}是多空题，至少勾选 2 个答案（或改回「单个作答位」）`
+  }
+  return null
+}
+
+/** 保存题组：文章信息一次 PUT，题目按新增/更新分别落库 */
+const saveReadingGroup = async () => {
+  const pid = readingForm.selectedPassageId
+  if (!pid) {
+    ElMessage.error('缺少文章 ID，无法保存')
+    return
+  }
+  const err = validateReadingRows()
+  if (err) {
+    ElMessage.warning(err)
+    return
+  }
+  submittingReading.value = true
+  try {
+    await updateReadingPassage(pid, {
+      categoryId: readingForm.categoryId,
+      title: readingForm.passageTitle,
+      content: readingForm.passageContent,
+      difficulty: readingForm.difficulty,
+      passageType: readingForm.passageType || undefined,
+      topic: readingForm.topic || undefined,
+      summary: readingForm.summary,
+    })
+    let updated = 0
+    let created = 0
+    for (const q of readingForm.subQuestions) {
+      const item = readingItemPayload(q)
+      if (q.id) {
+        await updateQuestion(q.id, {
+          categoryId: readingForm.categoryId!,
+          questionType: 'READING',
+          stem: item.stem,
+          standardAnswer: item.standardAnswer,
+          analysis: item.analysis,
+          knowledgePoints: item.knowledgePoints,
+          difficulty: readingForm.difficulty,
+          defaultScore: item.defaultScore,
+          status: q.status,
+          passageId: pid,
+          questionSubtype: item.questionSubtype,
+          scoreType: item.scoreType,
+          options: item.options,
+        })
+        updated++
+      } else {
+        await addPassageQuestion(pid, item as ReadingQuestionItem)
+        created++
+      }
+    }
+    ElMessage.success(
+      `已保存：更新 ${updated} 道${created ? ` / 新增 ${created} 道` : ''}`
+    )
+    dialogVisible.value = false
+    load()
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    submittingReading.value = false
+  }
+}
+
+/* ---------- 提交 ---------- */
+const submit = async () => {
+  // 阅读理解：编辑态保存整个题组，新增态批量建文+建题
+  if (activeTab.value === 'READING') {
+    if (editMode.value === 'edit') await saveReadingGroup()
+    else await submitReadingBatch()
+    return
+  }
+
+  const form = formRef.value
+  if (!form) return
 
   // 将当前 tab 赋值给 questionType
   normalForm.questionType = activeTab.value
 
-  await formRef.value.validate(async (valid) => {
+  await form.validate(async (valid) => {
     if (!valid) return
 
     let standardAnswer = ''
@@ -691,7 +957,7 @@ const submit = async () => {
   })
 }
 
-/* 阅读理解批量提交：先建文章，再逐个建题目 */
+/* 阅读理解批量提交：先建文章，再逐个建题目（选已有文章时只追加题目） */
 const submittingReading = ref(false)
 const submitReadingBatch = async () => {
   if (!readingForm.passageContent.trim()) {
@@ -702,23 +968,10 @@ const submitReadingBatch = async () => {
     ElMessage.warning('请至少添加一道题目')
     return
   }
-
-  // 校验每道题
-  for (let i = 0; i < readingForm.subQuestions.length; i++) {
-    const q = readingForm.subQuestions[i]
-    if (!q) continue
-    if (!q.stem.trim()) {
-      ElMessage.warning(`第 ${i + 1} 题题干不能为空`)
-      return
-    }
-    if (q.options.length < 2) {
-      ElMessage.warning(`第 ${i + 1} 题至少需要 2 个选项`)
-      return
-    }
-    if (!q.standardAnswer) {
-      ElMessage.warning(`请选择第 ${i + 1} 题的正确答案`)
-      return
-    }
+  const err = validateReadingRows()
+  if (err) {
+    ElMessage.warning(err)
+    return
   }
 
   submittingReading.value = true
@@ -738,28 +991,13 @@ const submitReadingBatch = async () => {
         summary: readingForm.summary,
         status: 1,
         isTemp: readingForm.source === 'TEMP',
-        questions: readingForm.subQuestions.map((q) => ({
-          stem: q.stem,
-          standardAnswer: q.standardAnswer,
-          analysis: q.analysis,
-          knowledgePoints: q.knowledgePoints,
-          options: q.options,
-          defaultScore: q.defaultScore,
-        })),
+        questions: readingForm.subQuestions.map(readingItemPayload),
       })
       passageId = passageRes.data.id
     } else {
       // 使用已有文章，逐个添加题目
       for (const q of readingForm.subQuestions) {
-        const item: ReadingQuestionItem = {
-          stem: q.stem,
-          standardAnswer: q.standardAnswer,
-          analysis: q.analysis,
-          knowledgePoints: q.knowledgePoints,
-          options: q.options,
-          defaultScore: q.defaultScore,
-        }
-        await addPassageQuestion(passageId, item)
+        await addPassageQuestion(passageId, readingItemPayload(q) as ReadingQuestionItem)
       }
     }
 
@@ -787,6 +1025,118 @@ const confirmDelete = async (row: Question) => {
   } catch {
     /* cancelled */
   }
+}
+
+/* ---------- 答案显隐 ---------- */
+/**
+ * 标准答案默认遮起来：列表页常投屏，答案露着会被学生顺手看到；
+ * 老师点眼睛才展开，逐题控制而不是整页开关。
+ */
+const revealedIds = ref<number[]>([])
+const isRevealed = (id: number) => revealedIds.value.includes(id)
+const toggleReveal = (id: number) => {
+  revealedIds.value = isRevealed(id)
+    ? revealedIds.value.filter((x) => x !== id)
+    : [...revealedIds.value, id]
+}
+const revealAll = () => {
+  revealedIds.value = revealedIds.value.length
+    ? []
+    : list.value.map((q) => q.id)
+}
+
+/**
+ * 卡片视图里高亮正确选项 —— 只在答案已展开时高亮，
+ * 否则遮罩就白做了（阅读题多空答案形如 "A,C"，逐项比对而不是整串相等）。
+ */
+const isRightOption = (q: Question, label: string) => {
+  if (!isRevealed(q.id)) return false
+  const a = (q.standardAnswer || '').toUpperCase()
+  if (!a || q.questionType === 'JUDGE' || q.questionType === 'FILL' || q.questionType === 'FILL_HINT') {
+    return false
+  }
+  return a
+    .split(',')
+    .map((s) => s.trim())
+    .includes(label.toUpperCase())
+}
+
+/* ---------- 详情抽屉 ---------- */
+const drawerVisible = ref(false)
+const detail = ref<Question | null>(null)
+const detailPassage = ref<ReadingPassage | null>(null)
+const detailLoading = ref(false)
+
+const openDetail = async (row: Question) => {
+  detail.value = row
+  detailPassage.value = null
+  drawerVisible.value = true
+  if (!row.passageId) return
+  detailLoading.value = true
+  try {
+    const res = await getReadingPassageDetail(row.passageId, false)
+    detailPassage.value = res.data
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+/* ---------- 行内启停 ---------- */
+const toggleStatus = async (row: Question) => {
+  const next: 0 | 1 = row.status === 1 ? 0 : 1
+  try {
+    await batchStatusQuestions([row.id], next)
+    row.status = next
+    ElMessage.success(next === 1 ? '已启用' : '已停用')
+  } catch {
+    /* 拦截器已提示 */
+  }
+}
+
+/* ---------- 复制新建 ---------- */
+/** 题型一旦定下就不能改（改题型会让历史作答失去意义），要换题型只能复制一条新的 */
+const openCopy = async (row: Question) => {
+  if (row.questionType === 'READING') {
+    editMode.value = 'create'
+    activeTab.value = 'READING'
+    resetNormalForm()
+    resetReadingForm()
+    validationResult.value = null
+    activeSubIndex.value = -1
+    const copy = toReadingSubQ(row)
+    copy.id = undefined
+    readingForm.passageMode = 'select'
+    readingForm.selectedPassageId = row.passageId
+    readingForm.subQuestions = [copy]
+    loadPassages()
+    dialogVisible.value = true
+    if (row.passageId) {
+      const res = await getReadingPassageDetail(row.passageId, false)
+      const p = res.data
+      Object.assign(readingForm, {
+        passageTitle: p.title ?? '',
+        passageContent: p.content ?? '',
+        passageType: p.passageType ?? '',
+        topic: p.topic ?? '',
+        summary: p.summary ?? '',
+        categoryId: p.categoryId ?? row.categoryId,
+        difficulty: p.difficulty ?? row.difficulty,
+        source: p.source ?? 'MANUAL',
+      })
+    }
+    ElMessage.info('已复制本题：保存后作为同组新题入库')
+    return
+  }
+  openEdit(row)
+  editMode.value = 'create'
+  normalForm.id = 0
+  ElMessage.info('已复制到新增表单，可换题型后另存为新题')
+}
+
+const onRowCommand = (cmd: string, row: Question) => {
+  if (cmd === 'copy') void openCopy(row)
+  else if (cmd === 'toggle') void toggleStatus(row)
+  else if (cmd === 'delete') void confirmDelete(row)
 }
 
 const onSelection = (rows: Question[]) => {
@@ -1051,6 +1401,10 @@ onMounted(async () => {
               <el-icon><Search /></el-icon>查询
             </el-button>
             <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
+            <el-button size="small" @click="revealAll">
+              <el-icon><Hide v-if="revealedIds.length" /><View v-else /></el-icon>
+              {{ revealedIds.length ? '隐藏全部答案' : '显示全部答案' }}
+            </el-button>
             <el-button
               @click="toggleViewMode"
               :type="viewMode === 'card' ? 'primary' : 'default'"
@@ -1120,12 +1474,28 @@ onMounted(async () => {
         @selection-change="onSelection"
       >
         <el-table-column type="selection" width="50" />
-        <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="stem" label="题干" min-width="200" show-overflow-tooltip />
+        <el-table-column type="index" label="#" width="55" />
+        <el-table-column label="题干" min-width="230" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span class="stem-cell">
+              <el-tag
+                v-if="row.questionType === 'READING' && row.passageId"
+                size="small"
+                type="warning"
+                effect="plain"
+                class="group-tag"
+              >
+                {{ row.passageTitle || '文章#' + row.passageId }}
+                ·第{{ row.passageQuestionOrder ?? '?' }}题
+              </el-tag>
+              {{ row.stem }}
+            </span>
+          </template>
+        </el-table-column>
         <el-table-column
           prop="categoryName"
           label="分类"
-          width="120"
+          width="110"
           show-overflow-tooltip
         />
         <el-table-column label="题型" width="120">
@@ -1139,41 +1509,112 @@ onMounted(async () => {
               {{ typeLabel(row.questionType) }}
             </el-tag>
             <span v-else>{{ typeLabel(row.questionType) }}</span>
+            <el-tag
+              v-if="row.questionSubtype"
+              size="small"
+              type="info"
+              effect="plain"
+              class="subtype-tag"
+            >
+              {{ subtypeLabel(row.questionSubtype) }}
+            </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="难度" width="100">
+        <el-table-column label="分值" width="72" align="center">
+          <template #default="{ row }">{{ row.defaultScore ?? 2 }}</template>
+        </el-table-column>
+        <el-table-column label="标准答案" width="130" align="center">
+          <template #default="{ row }">
+            <div class="answer-cell">
+              <span class="answer-text" :class="{ masked: !isRevealed(row.id) }">
+                {{ row.standardAnswer || '-' }}
+              </span>
+              <el-button
+                link
+                size="small"
+                :title="isRevealed(row.id) ? '隐藏答案' : '显示答案'"
+                @click="toggleReveal(row.id)"
+              >
+                <el-icon><Hide v-if="isRevealed(row.id)" /><View v-else /></el-icon>
+              </el-button>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="难度" width="90">
           <template #default="{ row }">
             <el-tag :type="diffTagType(row.difficulty)" size="small">{{
               diffLabel(row.difficulty)
             }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="80">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">{{
               row.status === 1 ? '启用' : '停用'
             }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="引用" width="80" align="center">
+        <el-table-column label="知识点" min-width="150">
+          <template #default="{ row }">
+            <el-tag
+              v-for="tag in (row.knowledgePoints || []).slice(0, 3)"
+              :key="tag"
+              size="small"
+              type="info"
+              effect="plain"
+              class="kp-tag"
+            >
+              {{ tag }}
+            </el-tag>
+            <span v-if="(row.knowledgePoints || []).length > 3" class="kp-more">
+              +{{ row.knowledgePoints.length - 3 }}
+            </span>
+            <span v-if="!(row.knowledgePoints || []).length" class="empty-dash">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="来源" width="86" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.aiGenerated" type="primary" size="small" effect="light">AI</el-tag>
+            <span v-else class="source-text">{{ sourceLabel(row.source) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="创建人" width="92" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.createByName || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="更新" width="112" align="center">
+          <template #default="{ row }">{{ fmtDate(row.updateTime || row.createTime) }}</template>
+        </el-table-column>
+        <el-table-column label="引用" width="62" align="center">
           <template #default="{ row }">{{ row.usageCount ?? 0 }}</template>
         </el-table-column>
-        <el-table-column label="陷阱" width="80" align="center">
+        <el-table-column label="陷阱" width="62" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.hasTrap" type="danger" size="small" effect="light">是</el-tag>
             <span v-else style="color: #c0c4cc">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="AI" width="70" align="center">
+        <el-table-column label="操作" width="188" align="center" fixed="right">
           <template #default="{ row }">
-            <el-tag v-if="row.aiGenerated" type="primary" size="small" effect="light">AI</el-tag>
-            <span v-else style="color: #c0c4cc">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="150" align="center" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button type="danger" size="small" @click="confirmDelete(row)">删除</el-button>
+            <el-button link type="primary" size="small" @click="openDetail(row)">
+              <el-icon><Tickets /></el-icon>详情
+            </el-button>
+            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-dropdown trigger="click" size="small" @command="(cmd: string) => onRowCommand(cmd, row)">
+              <el-button link type="primary" size="small">
+                更多<el-icon><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="copy">复制新建</el-dropdown-item>
+                  <el-dropdown-item command="toggle">
+                    {{ row.status === 1 ? '停用该题' : '启用该题' }}
+                  </el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>
+                    <span class="danger-item">删除/停用</span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -1227,9 +1668,25 @@ onMounted(async () => {
               <span class="meta-label">分值</span>
               <span class="meta-value">{{ item.defaultScore ?? 2 }} 分</span>
             </span>
+            <span class="meta-item">
+              <span class="meta-label">来源</span>
+              <span class="meta-value">
+                {{ item.aiGenerated ? 'AI 生成' : sourceLabel(item.source) }}
+              </span>
+            </span>
+          </div>
+          <div class="card-passage" v-if="item.questionType === 'READING' && item.passageTitle">
+            <el-tag size="small" type="warning" effect="plain">
+              {{ item.passageTitle }} · 第{{ item.passageQuestionOrder ?? '?' }}题
+            </el-tag>
           </div>
           <div class="card-options" v-if="item.options?.length">
-            <div v-for="opt in item.options" :key="opt.optionLabel" class="opt-item">
+            <div
+              v-for="opt in item.options"
+              :key="opt.optionLabel"
+              class="opt-item"
+              :class="{ 'opt-right': isRightOption(item, opt.optionLabel) }"
+            >
               <span class="opt-label">{{ opt.optionLabel }}.</span>
               <span class="opt-content">{{ opt.optionContent }}</span>
             </div>
@@ -1245,12 +1702,34 @@ onMounted(async () => {
             </el-tag>
           </div>
           <div class="card-footer">
-            <span class="answer-hint">答案：{{ item.standardAnswer || '-' }}</span>
+            <span class="answer-hint">
+              答案：
+              <span class="answer-text" :class="{ masked: !isRevealed(item.id) }">
+                {{ item.standardAnswer || '-' }}
+              </span>
+              <el-button link size="small" @click.stop="toggleReveal(item.id)">
+                <el-icon><Hide v-if="isRevealed(item.id)" /><View v-else /></el-icon>
+              </el-button>
+            </span>
             <div class="actions">
-              <el-button type="primary" size="small" @click.stop="openEdit(item)">
+              <el-button link type="primary" size="small" @click.stop="openDetail(item)">
+                详情
+              </el-button>
+              <el-button link type="primary" size="small" @click.stop="openEdit(item)">
                 编辑
               </el-button>
-              <el-button type="danger" size="small" @click.stop="confirmDelete(item)">
+              <el-button link type="primary" size="small" @click.stop="openCopy(item)">
+                <el-icon><CopyDocument /></el-icon>复制
+              </el-button>
+              <el-button
+                link
+                :type="item.status === 1 ? 'warning' : 'success'"
+                size="small"
+                @click.stop="toggleStatus(item)"
+              >
+                {{ item.status === 1 ? '停用' : '启用' }}
+              </el-button>
+              <el-button link type="danger" size="small" @click.stop="confirmDelete(item)">
                 删除
               </el-button>
             </div>
@@ -1281,10 +1760,26 @@ onMounted(async () => {
       top="5vh"
       class="question-dialog"
     >
+      <!-- 编辑态提示：题型决定作答组件与判分方式，改题型会让历史作答记录失去意义 -->
+      <el-alert
+        v-if="typeLocked"
+        class="type-lock-tip"
+        type="info"
+        :closable="false"
+        show-icon
+        title="编辑态已锁定题型"
+        :description="
+          activeTab === 'READING'
+            ? '正在按题组编辑：上方是本组文章，下方是共用这篇文章的全部题目。'
+            : '需要改成别的题型时，请关闭本窗口用「复制新建」另存一道，原题可停用。'
+        "
+      />
+
       <!-- 题型标签页切换 -->
       <el-tabs
         v-model="activeTab"
         type="card"
+        :before-leave="lockTabsIfEditing"
         @tab-change="(tab: TabType) => {
           if (tab === 'READING') loadPassages()
           // 切换题型时初始化选项
@@ -1696,7 +2191,7 @@ onMounted(async () => {
 
         <!-- 阅读理解 -->
         <el-tab-pane label="阅读理解" name="READING">
-          <div class="reading-form">
+          <div class="reading-form" v-loading="groupLoading">
             <el-form label-width="90px">
               <el-row :gutter="12">
                 <el-col :span="10">
@@ -1718,8 +2213,11 @@ onMounted(async () => {
                   </el-form-item>
                 </el-col>
                 <el-col :span="8">
-                  <el-form-item label="文章来源">
-                    <el-radio-group v-model="readingForm.passageMode">
+                  <el-form-item label="文章">
+                    <span v-if="isReadingEdit" class="bound-passage">
+                      文章 #{{ readingForm.selectedPassageId }}
+                    </span>
+                    <el-radio-group v-else v-model="readingForm.passageMode">
                       <el-radio value="select">从库中选择</el-radio>
                       <el-radio value="create">临时创建</el-radio>
                     </el-radio-group>
@@ -1727,29 +2225,8 @@ onMounted(async () => {
                 </el-col>
               </el-row>
 
-              <!-- 文章库选择 -->
-              <div v-if="readingForm.passageMode === 'select'" class="passage-selector">
-                <div class="selector-toolbar">
-                  <el-input v-model="passageSearchKw" placeholder="搜索文章标题/内容" clearable size="small" style="width: 240px">
-                    <template #prefix><Search /></template>
-                  </el-input>
-                  <el-button size="small" type="primary" @click="loadPassages">搜索</el-button>
-                </div>
-                <div class="passage-list" v-loading="passageLoading">
-                  <div v-for="p in passageList" :key="p.id" class="passage-item" :class="{ selected: readingForm.selectedPassageId === p.id }" @click="selectPassage(p)">
-                    <div class="passage-item-title">
-                      {{ p.title || '(无标题)' }}
-                      <el-tag size="small" type="info" class="passage-tag">{{ diffLabel(p.difficulty) }}</el-tag>
-                      <el-tag size="small" class="passage-tag">{{ p.questionCount ?? 0 }} 题</el-tag>
-                    </div>
-                    <div class="passage-item-content">{{ p.content }}</div>
-                  </div>
-                  <el-empty v-if="!passageList.length && !passageLoading" description="暂无文章" />
-                </div>
-              </div>
-
-              <!-- 临时创建文章 -->
-              <div v-else class="passage-create">
+              <!-- 文章正文：编辑态按题组改，新增态在「临时创建」下填写 -->
+              <template v-if="isReadingEdit || readingForm.passageMode === 'create'">
                 <el-row :gutter="12">
                   <el-col :span="14">
                     <el-form-item label="标题">
@@ -1770,11 +2247,49 @@ onMounted(async () => {
                   </el-col>
                 </el-row>
                 <el-form-item label="文章内容">
-                  <el-input v-model="readingForm.passageContent" type="textarea" :rows="6" placeholder="请输入文章正文" />
+                  <el-input
+                    v-model="readingForm.passageContent"
+                    type="textarea"
+                    :rows="isReadingEdit ? 5 : 6"
+                    placeholder="请输入文章正文"
+                  />
+                  <span class="fill-hint">
+                    英文词数约 {{ wordCountOf(readingForm.passageContent) }} 词
+                    <template v-if="isReadingEdit">（原库存 {{ groupWordCount }} 词）</template>
+                  </span>
                 </el-form-item>
                 <el-form-item label="摘要">
                   <el-input v-model="readingForm.summary" type="textarea" :rows="2" placeholder="文章摘要（可选）" />
                 </el-form-item>
+              </template>
+
+              <!-- 文章库选择 -->
+              <div v-if="!isReadingEdit && readingForm.passageMode === 'select'" class="passage-selector">
+                <div class="selector-toolbar">
+                  <el-input v-model="passageSearchKw" placeholder="搜索文章标题/内容" clearable size="small" style="width: 240px">
+                    <template #prefix><Search /></template>
+                  </el-input>
+                  <el-button size="small" type="primary" @click="loadPassages">搜索</el-button>
+                </div>
+                <div class="passage-list" v-loading="passageLoading">
+                  <div v-for="p in passageList" :key="p.id" class="passage-item" :class="{ selected: readingForm.selectedPassageId === p.id }" @click="selectPassage(p)">
+                    <div class="passage-item-title">
+                      {{ p.title || '(无标题)' }}
+                      <el-tag size="small" type="info" class="passage-tag">{{ diffLabel(p.difficulty) }}</el-tag>
+                      <el-tag size="small" class="passage-tag">{{ p.questionCount ?? 0 }} 题</el-tag>
+                    </div>
+                    <div class="passage-item-content">{{ p.content }}</div>
+                  </div>
+                  <el-empty v-if="!passageList.length && !passageLoading" description="暂无文章" />
+                </div>
+                <div v-if="readingForm.passageContent" class="passage-preview">
+                  <div class="preview-title">{{ readingForm.passageTitle || '(无标题)' }}</div>
+                  <div class="preview-body">{{ readingForm.passageContent }}</div>
+                </div>
+              </div>
+
+              <!-- 临时创建的入库方式与 AI 生成 -->
+              <template v-if="!isReadingEdit && readingForm.passageMode === 'create'">
                 <el-form-item label="入库方式">
                   <el-radio-group v-model="readingForm.source">
                     <el-radio value="TEMP">仅临时出题（不入库）</el-radio>
@@ -1787,26 +2302,82 @@ onMounted(async () => {
                     <el-icon><MagicStick /></el-icon>AI 生成文章 + 5 道题
                   </el-button>
                 </div>
-              </div>
+              </template>
 
               <!-- 题目列表 -->
               <el-divider content-position="left">
-                <span class="divider-title">📝 题目列表（{{ readingForm.subQuestions.length }} 道）</span>
+                <span class="divider-title">
+                  📝 {{ isReadingEdit ? '本组题目' : '题目列表' }}（{{ readingForm.subQuestions.length }} 道）
+                </span>
+                <span v-if="isReadingEdit" class="divider-sub">
+                  共用这篇文章的题都在下方，改动会逐题保存
+                </span>
               </el-divider>
 
               <div class="sub-questions">
                 <div class="sq-toolbar">
-                  <el-button size="small" type="primary" plain @click="addSubQuestion"><el-icon><Plus /></el-icon>添加题目</el-button>
+                  <el-button size="small" type="primary" plain @click="addSubQuestion">
+                    <el-icon><Plus /></el-icon>{{ isReadingEdit ? '给本组加一题' : '添加题目' }}
+                  </el-button>
                   <span class="sq-hint">提示：阅读理解通常一篇文章配 3-5 道选择题</span>
                 </div>
 
-                <div v-for="(q, qIdx) in readingForm.subQuestions" :key="qIdx" class="sub-q-card">
+                <div
+                  v-for="(q, qIdx) in readingForm.subQuestions"
+                  :key="q.id ?? `new-${qIdx}`"
+                  class="sub-q-card"
+                  :class="{ 'is-active': qIdx === activeSubIndex, 'is-off': q.status === 0 }"
+                >
                   <div class="sub-q-header">
-                    <span class="sub-q-num">第 {{ qIdx + 1 }} 题</span>
+                    <span class="sub-q-num">
+                      第 {{ qIdx + 1 }} 题
+                      <el-tag v-if="q.id" size="small" type="info" effect="plain">#{{ q.id }}</el-tag>
+                      <el-tag v-else size="small" type="success" effect="plain">新增</el-tag>
+                    </span>
                     <div class="sub-q-actions">
+                      <el-select
+                        v-model="q.questionSubtype"
+                        size="small"
+                        clearable
+                        placeholder="子题型"
+                        style="width: 104px"
+                      >
+                        <el-option v-for="st in subtypeOptions" :key="st.value" :label="st.label" :value="st.value" />
+                      </el-select>
+                      <el-select
+                        v-model="q.blankMode"
+                        size="small"
+                        style="width: 118px"
+                        @change="onBlankModeChange(q)"
+                      >
+                        <el-option label="单个作答位" value="single" />
+                        <el-option label="多空（复选）" value="multi" />
+                      </el-select>
+                      <el-select
+                        v-if="q.blankMode === 'multi'"
+                        v-model="q.scoreType"
+                        size="small"
+                        style="width: 108px"
+                        title="整题给分＝全选对才得分；逐空给分＝按答对的空数比例给分"
+                      >
+                        <el-option label="整题给分" value="FULL" />
+                        <el-option label="逐空给分" value="PARTIAL" />
+                      </el-select>
                       <el-input-number v-model="q.defaultScore" :min="0.5" :max="20" :step="0.5" size="small" />
                       <span style="margin-left: 4px">分</span>
-                      <el-button link type="danger" size="small" @click="removeSubQuestion(qIdx)">移除</el-button>
+                      <el-switch
+                        v-if="q.id"
+                        v-model="q.status"
+                        :active-value="1"
+                        :inactive-value="0"
+                        size="small"
+                        active-text="启用"
+                        inline-prompt
+                        style="margin: 0 6px"
+                      />
+                      <el-button link type="danger" size="small" @click="removeSubQuestion(qIdx)">
+                        {{ q.id ? '停用' : '移除' }}
+                      </el-button>
                     </div>
                   </div>
                   <el-form-item label="题干" :label-width="60">
@@ -1825,9 +2396,19 @@ onMounted(async () => {
                     <el-button size="small" type="primary" link @click="addSubOpt(qIdx)">+ 添加选项</el-button>
                   </el-form-item>
                   <el-form-item label="答案" :label-width="60">
-                    <el-radio-group v-model="q.standardAnswer">
-                      <el-radio v-for="opt in q.options" :key="opt.optionLabel" :value="opt.optionLabel">{{ opt.optionLabel }}</el-radio>
+                    <el-radio-group v-if="q.blankMode === 'single'" v-model="q.picks[0]">
+                      <el-radio v-for="opt in q.options" :key="opt.optionLabel" :value="opt.optionLabel">
+                        {{ opt.optionLabel }}
+                      </el-radio>
                     </el-radio-group>
+                    <el-checkbox-group v-else v-model="q.picks">
+                      <el-checkbox v-for="opt in q.options" :key="opt.optionLabel" :value="opt.optionLabel">
+                        {{ opt.optionLabel }}
+                      </el-checkbox>
+                    </el-checkbox-group>
+                    <span class="fill-hint">
+                      {{ q.blankMode === 'multi' ? `多空题：已选 ${q.picks.length} 个，落库答案 ${readingAnswerOf(q) || '—'}` : `落库答案 ${readingAnswerOf(q) || '—'}` }}
+                    </span>
                   </el-form-item>
                   <el-form-item label="解析" :label-width="60">
                     <el-input v-model="q.analysis" type="textarea" :rows="2" placeholder="答案解析" />
@@ -1855,12 +2436,148 @@ onMounted(async () => {
           <el-icon><Lightning /></el-icon>AI验证
         </el-button>
         <el-button type="primary" @click="submit" :loading="submittingReading">
-          保存
+          {{ isReadingEdit ? '保存题组' : '保存' }}
         </el-button>
       </template>
     </el-dialog>
 
     <!-- CSV 导入弹窗 -->
+    <!-- ======================================================
+         题目详情抽屉：列表里放不下题干全文、解析和文章，这里一次看全
+         ====================================================== -->
+    <el-drawer v-model="drawerVisible" title="题目详情" size="520px">
+      <div v-if="detail" class="detail-box">
+        <div class="detail-tags">
+          <el-tag size="small" :type="detail.questionType === 'READING' ? 'warning' : 'info'">
+            {{ typeLabel(detail.questionType) }}
+          </el-tag>
+          <el-tag v-if="detail.questionSubtype" size="small" type="info" effect="plain">
+            {{ subtypeLabel(detail.questionSubtype) }}
+          </el-tag>
+          <el-tag :type="diffTagType(detail.difficulty)" size="small">
+            {{ diffLabel(detail.difficulty) }}
+          </el-tag>
+          <el-tag :type="detail.status === 1 ? 'success' : 'info'" size="small">
+            {{ detail.status === 1 ? '启用' : '停用' }}
+          </el-tag>
+          <el-tag v-if="detail.hasTrap" type="danger" size="small" effect="light">陷阱题</el-tag>
+          <el-tag v-if="detail.aiGenerated" type="primary" size="small" effect="light">AI</el-tag>
+        </div>
+
+        <el-descriptions :column="2" size="small" border class="detail-desc">
+          <el-descriptions-item label="ID">{{ detail.id }}</el-descriptions-item>
+          <el-descriptions-item label="分类">{{ detail.categoryName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="分值">{{ detail.defaultScore ?? 2 }} 分</el-descriptions-item>
+          <el-descriptions-item label="被引用">{{ detail.usageCount ?? 0 }} 次</el-descriptions-item>
+          <el-descriptions-item label="标准答案">{{ detail.standardAnswer || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="作答位">
+            {{ detail.multiAnswer ? '多个（复选）' : '单个' }}
+          </el-descriptions-item>
+          <el-descriptions-item label="来源">{{ sourceLabel(detail.source) }}</el-descriptions-item>
+          <el-descriptions-item label="创建人">{{ detail.createByName || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间" :span="2">
+            {{ fmtDate(detail.createTime) }}
+          </el-descriptions-item>
+          <el-descriptions-item label="更新时间" :span="2">
+            {{ fmtDate(detail.updateTime) }}
+          </el-descriptions-item>
+        </el-descriptions>
+
+        <div class="detail-block">
+          <div class="detail-label">题干</div>
+          <div class="detail-stem">{{ detail.stem }}</div>
+        </div>
+
+        <div class="detail-block" v-if="detail.options?.length">
+          <div class="detail-label">选项</div>
+          <div
+            v-for="opt in detail.options"
+            :key="opt.optionLabel"
+            class="detail-opt"
+            :class="{ 'opt-right': isRightOption(detail, opt.optionLabel) }"
+          >
+            <span class="opt-label">{{ opt.optionLabel }}.</span>
+            <span>{{ opt.optionContent }}</span>
+            <el-tag
+              v-if="isRightOption(detail, opt.optionLabel)"
+              size="small"
+              type="success"
+              effect="dark"
+              class="right-tag"
+            >
+              正确
+            </el-tag>
+          </div>
+          <div class="detail-hint">
+            展开列表答案后（眼睛图标），此处才会标出正确选项
+          </div>
+        </div>
+
+        <template v-if="detail.hintText">
+          <div class="detail-block">
+            <div class="detail-label">括号提示</div>
+            <div>{{ detail.hintText }}</div>
+          </div>
+        </template>
+
+        <div class="detail-block" v-if="detail.trapNote">
+          <div class="detail-label">陷阱说明</div>
+          <div class="trap-note">{{ detail.trapNote }}</div>
+        </div>
+
+        <div class="detail-block" v-if="detail.analysis">
+          <div class="detail-label">解析</div>
+          <div class="detail-analysis">{{ detail.analysis }}</div>
+        </div>
+
+        <div class="detail-block" v-if="detail.knowledgePoints?.length">
+          <div class="detail-label">知识点</div>
+          <div>
+            <el-tag
+              v-for="tag in detail.knowledgePoints"
+              :key="tag"
+              size="small"
+              type="info"
+              class="kp-tag"
+            >
+              {{ tag }}
+            </el-tag>
+          </div>
+        </div>
+
+        <div class="detail-block" v-if="detail.passageId" v-loading="detailLoading">
+          <div class="detail-label">
+            阅读理解文章
+            <el-tag size="small" type="warning" effect="plain">
+              第 {{ detail.passageQuestionOrder ?? '?' }} 题
+            </el-tag>
+          </div>
+          <PassageCard
+            :title="detailPassage?.title ?? detail.passageTitle"
+            :content="detailPassage?.content ?? detail.passageContent ?? ''"
+            :word-count="detailPassage?.wordCount ?? detail.passageWordCount"
+            :group-total="detailPassage?.questionCount"
+          />
+        </div>
+
+        <div class="detail-actions">
+          <el-button type="primary" size="small" @click="drawerVisible = false; openEdit(detail)">
+            编辑
+          </el-button>
+          <el-button size="small" @click="drawerVisible = false; openCopy(detail)">
+            <el-icon><CopyDocument /></el-icon>复制新建
+          </el-button>
+          <el-button
+            :type="detail.status === 1 ? 'warning' : 'success'"
+            size="small"
+            @click="toggleStatus(detail)"
+          >
+            {{ detail.status === 1 ? '停用' : '启用' }}
+          </el-button>
+        </div>
+      </div>
+    </el-drawer>
+
     <el-dialog v-model="importDialogVisible" title="批量导入题目" width="560px">
       <div style="margin-bottom: 12px;">
         <el-button text type="primary" @click="downloadTemplate">
@@ -2340,5 +3057,200 @@ onMounted(async () => {
     font-weight: 500;
     color: #409eff;
   }
+}
+
+/* ============ 列表新增列 ============ */
+.stem-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.group-tag {
+  flex-shrink: 0;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtype-tag {
+  margin-left: 6px;
+}
+
+.answer-cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+/* 遮罩用模糊而不是打码字符：列宽固定，展开/收起不抖动 */
+.answer-text.masked {
+  filter: blur(4.5px);
+  user-select: none;
+}
+
+.kp-tag {
+  margin: 2px 4px 2px 0;
+}
+
+.kp-more,
+.empty-dash {
+  font-size: 12px;
+  color: #909399;
+}
+
+.source-text {
+  font-size: 12px;
+  color: #606266;
+}
+
+.danger-item {
+  color: #f56c6c;
+}
+
+.card-passage {
+  margin: 6px 0;
+}
+
+.opt-item.opt-right {
+  background: #f0f9eb;
+  border: 1px solid #e1f3d8;
+}
+
+/* ============ 阅读题组编辑器 ============ */
+.type-lock-tip {
+  margin-bottom: 12px;
+}
+
+.bound-passage {
+  font-size: 13px;
+  color: #e6a23c;
+  font-weight: 500;
+}
+
+.passage-preview {
+  margin: 10px 0;
+  padding: 10px 14px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 6px;
+  background: #fafcff;
+  max-height: 160px;
+  overflow-y: auto;
+
+  .preview-title {
+    font-weight: 600;
+    color: #303133;
+    margin-bottom: 6px;
+  }
+
+  .preview-body {
+    font-size: 13px;
+    line-height: 1.8;
+    color: #606266;
+    white-space: pre-wrap;
+  }
+}
+
+.divider-sub {
+  margin-left: 10px;
+  font-size: 12px;
+  color: #909399;
+  font-weight: normal;
+}
+
+.sub-q-card.is-active {
+  border-color: #409eff;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.16);
+}
+
+.sub-q-card.is-off {
+  opacity: 0.6;
+  background: #fafafa;
+
+  &::before {
+    background: #c0c4cc;
+  }
+}
+
+/* ============ 详情抽屉 ============ */
+.detail-box {
+  padding: 0 4px 12px;
+}
+
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.detail-desc {
+  margin-bottom: 14px;
+}
+
+.detail-block {
+  margin-bottom: 14px;
+
+  .detail-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #303133;
+    margin-bottom: 6px;
+  }
+
+  .detail-stem {
+    font-size: 14px;
+    line-height: 1.8;
+    color: #303133;
+    white-space: pre-wrap;
+  }
+
+  .detail-opt {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: #f5f7fa;
+    font-size: 13px;
+    margin-bottom: 4px;
+
+    &.opt-right {
+      background: #f0f9eb;
+      border: 1px solid #e1f3d8;
+    }
+  }
+
+  .right-tag {
+    margin-left: auto;
+  }
+
+  .detail-hint,
+  .detail-analysis,
+  .trap-note {
+    font-size: 12px;
+    color: #909399;
+    line-height: 1.7;
+  }
+
+  .detail-analysis {
+    font-size: 13px;
+    color: #606266;
+    white-space: pre-wrap;
+  }
+
+  .trap-note {
+    font-size: 13px;
+    color: #f56c6c;
+  }
+}
+
+.detail-actions {
+  display: flex;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #ebeef5;
 }
 </style>

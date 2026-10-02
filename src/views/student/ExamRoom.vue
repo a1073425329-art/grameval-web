@@ -12,6 +12,8 @@ import type { ExamPaperView, ExamQuestion } from '@/types/exam'
 import type { QuestionType } from '@/types/common'
 import Countdown from '@/components/Countdown.vue'
 import AnswerSheet from '@/components/AnswerSheet.vue'
+import PassageCard from '@/components/PassageCard.vue'
+import { readingSubtypeLabel } from '@/utils/dict'
 import { useExamWebSocket } from '@/composables/useExamWebSocket'
 
 const route = useRoute()
@@ -48,6 +50,9 @@ const submitted = ref(false)
 const currentIdx = ref(1)
 const current = computed<ExamQuestion | undefined>(() => questions.value[currentIdx.value - 1])
 
+/** 阅读子题型的中文名；非阅读题为空串，模板据此隐藏标签 */
+const subtypeLabel = computed(() => readingSubtypeLabel(current.value?.questionSubtype))
+
 /** 学生答案 map，key = questionId（值都是 string 或 string[]，提交前 join） */
 const answers = reactive<Record<number, string | string[]>>({})
 
@@ -77,12 +82,34 @@ const deadlineTs = computed(() => {
 // const remainingSeconds = ref(0)
 
 /* ---------------- 加载 ---------------- */
+/**
+ * 需要多个作答位的题：多选，以及多空阅读题（标准答案形如 "A,C,D"）。
+ * 阅读题的 question_type 仍是 READING，作答组件由答案形态决定，否则会拿单选框去答多选答案。
+ */
+const isMultiAnswer = (q: ExamQuestion) =>
+  q.questionType === 'MULTIPLE' || (q.questionType === 'READING' && q.multiAnswer === true)
+
+/**
+ * 文章卡只在本组第一题上方出现。考试题目顺序由 questionOrder 决定、不能重排，
+ * 所以这里按"前一题是否同一篇"判断（组卷成组抽取保证同篇相邻）。
+ */
+const isPassageHead = (idx: number) => {
+  const q = questions.value[idx]
+  if (!q?.passageId) return false
+  return questions.value[idx - 1]?.passageId !== q.passageId
+}
+
+const passageGroupSize = (idx: number) => {
+  const pid = questions.value[idx]?.passageId
+  return pid == null ? 0 : questions.value.filter((q) => q.passageId === pid).length
+}
+
 const buildAnswerFrom = (q: ExamQuestion) => {
   const v = q.userAnswer
   if (v === undefined || v === null || v === '') {
-    return q.questionType === 'MULTIPLE' ? [] : ''
+    return isMultiAnswer(q) ? [] : ''
   }
-  if (q.questionType === 'MULTIPLE') {
+  if (isMultiAnswer(q)) {
     return v.split(',').map((s) => s.trim()).filter(Boolean)
   }
   return v
@@ -491,17 +518,24 @@ const confirmSubmit = () => {
             </div>
           </transition>
 
-          <!-- 阅读理解：先渲染文章 -->
-          <div v-if="current.passage" class="passage">
-            <h4 v-if="current.passage.title" class="passage-title">{{ current.passage.title }}</h4>
-            <div class="passage-content">{{ current.passage.content }}</div>
+          <!-- 阅读理解：同组第一题上方显示一次文章，组内其余题不再重复 -->
+          <PassageCard
+            v-if="current.passageContent && isPassageHead(currentIdx - 1)"
+            :content="current.passageContent"
+            :title="current.passageTitle"
+            :word-count="current.passageWordCount"
+            :group-total="passageGroupSize(currentIdx - 1)"
+          />
+
+          <div v-if="subtypeLabel" class="q-subtype">
+            <el-tag size="small" type="success" effect="plain">{{ subtypeLabel }}</el-tag>
           </div>
 
           <div class="q-stem">{{ currentIdx }}. {{ current.stem }}</div>
 
-          <!-- 单选 / 阅读理解 -->
+          <!-- 单选 / 阅读（单空） -->
           <el-radio-group
-            v-if="current.questionType === 'SINGLE' || current.questionType === 'READING'"
+            v-if="(current.questionType === 'SINGLE' || current.questionType === 'READING') && !isMultiAnswer(current)"
             v-model="answers[current.questionId]"
             class="opt-list"
             @change="onAnswerChange"
@@ -511,9 +545,9 @@ const confirmSubmit = () => {
             </el-radio>
           </el-radio-group>
 
-          <!-- 多选 -->
+          <!-- 多选 / 阅读（多空） -->
           <el-checkbox-group
-            v-else-if="current.questionType === 'MULTIPLE'"
+            v-else-if="isMultiAnswer(current)"
             v-model="answers[current.questionId] as string[]"
             class="opt-list"
             @change="onAnswerChange"
@@ -641,6 +675,9 @@ const confirmSubmit = () => {
   --exam-font-size: 16px;
   --exam-opt-font-size: 15px;
   --exam-passage-font-size: 14px;
+  /* 传给 PassageCard：考试页保留字号设置与长文滚动 */
+  --passage-font-size: var(--exam-passage-font-size);
+  --passage-max-height: 300px;
 }
 
 [data-font-size="small"] {
@@ -719,30 +756,30 @@ const confirmSubmit = () => {
   }
 }
 
-.passage {
-  background: #f5f7fa;
-  padding: 14px 18px;
-  border-left: 3px solid #409eff;
-  border-radius: 4px;
-  margin-bottom: 16px;
-  max-height: 240px;
-  overflow-y: auto;
-}
-.passage-title { margin: 0 0 8px; font-size: var(--exam-font-size); color: #303133; font-weight: 500; }
-.passage-content { line-height: 1.9; color: #606266; font-size: var(--exam-passage-font-size); white-space: pre-wrap; }
+/* 阅读理解文章卡样式见 @/components/PassageCard.vue */
 
+.q-subtype { margin-bottom: 8px; }
 .q-stem { font-size: var(--exam-font-size); line-height: 1.9; color: #303133; margin-bottom: 20px; white-space: pre-wrap; }
-.opt-list { display: flex; flex-direction: column; gap: 12px; }
+.opt-list { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+/* 选项卡片：不要用 display:flex !important 覆盖 el-radio/el-checkbox 根元素，
+   那会把内部 __input(圆圈) 与 __label(文字) 挤到同一行，圆圈被压没、点击热区错乱。 */
 .opt-row {
-  display: flex !important; align-items: flex-start;
-  padding: 14px 18px; margin: 0; border-radius: 8px;
-  background: #fafafa; transition: all 0.2s;
+  display: flex; align-items: center;
+  width: 100%; height: auto; min-height: 44px;
+  padding: 12px 16px; margin: 0; border-radius: 8px;
+  background: #fff; transition: all 0.18s;
   font-size: var(--exam-opt-font-size);
+  border: 1px solid #e4e7ed;
   border-left: 3px solid transparent;
-  &:hover { background: #f0f9ff; border-left-color: #b3d8ff; }
+  cursor: pointer;
+  &:hover { background: #f5f9ff; border-color: #a3cfff; }
 }
 .opt-key { font-weight: 700; color: #409eff; margin-right: 8px; font-size: var(--exam-font-size); }
-
+:deep(.el-radio__input), :deep(.el-checkbox__input) { flex-shrink: 0; margin-right: 8px; }
+:deep(.el-radio__label), :deep(.el-checkbox__label) {
+  display: flex; align-items: center; flex: 1;
+  white-space: normal; line-height: 1.6; color: #303133; padding-left: 8px;
+}
 :deep(.opt-row.is-checked) {
   background: #ecf5ff;
   border-left-color: #409eff;

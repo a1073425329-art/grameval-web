@@ -7,6 +7,7 @@ import type { Question } from '@/types/question'
 import type { Category } from '@/types/category'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { getJudgeOptionLabel } from '@/utils/dict'
+import PassageCard from '@/components/PassageCard.vue'
 import { Cpu } from '@element-plus/icons-vue'
 
 const query = reactive({
@@ -287,6 +288,14 @@ onMounted(async () => {
           </div>
           <span class="wc-time">首次错误：{{ w.firstWrongTime?.slice(0, 16) }}</span>
         </div>
+
+        <!-- 阅读理解：复盘必须带上当时的文章，否则题干里的 "According to the passage" 无从对照 -->
+        <PassageCard
+          v-if="w.passageContent"
+          :content="w.passageContent"
+          :title="w.passageTitle"
+          :word-count="w.passageWordCount"
+        />
 
         <!-- 题干 -->
         <div class="wc-stem">{{ w.stem }}</div>

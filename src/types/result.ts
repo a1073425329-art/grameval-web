@@ -88,6 +88,11 @@ export interface WrongBookItem {
     optionContent: string
     sortNo: number
   }>
+  /** 阅读理解：复盘时必须能看到当时的文章 */
+  passageId?: number
+  passageTitle?: string
+  passageContent?: string
+  passageWordCount?: number
 }
 
 /** 错题本查询参数（请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明） */

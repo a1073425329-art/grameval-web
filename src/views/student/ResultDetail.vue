@@ -6,6 +6,7 @@ import type { ResultDetail as ResultDetailType } from '@/types/result'
 import type { DimensionAnalysis } from '@/types/stats'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { getJudgeOptionLabel } from '@/utils/dict'
+import PassageCard from '@/components/PassageCard.vue'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -71,8 +72,21 @@ const wrongCount = computed(() => detail.value?.wrongCount ?? 0)
 const totalCount = computed(() => correctCount.value + wrongCount.value)
 const accuracy = computed(() => totalCount.value > 0 ? (correctCount.value / totalCount.value * 100).toFixed(1) : '0.0')
 
-const typeLabel = (t: QuestionType) =>
-  ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
+const typeLabel = (t: QuestionType) => ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
+
+/** 同一篇短文只在组首那题上方显示一次，回顾页不必把文章重复贴三遍 */
+const isPassageHead = (idx: number) => {
+  const list = detail.value?.answers ?? []
+  const a = list[idx]
+  if (!a?.passageId) return false
+  return list[idx - 1]?.passageId !== a.passageId
+}
+
+const passageGroupSize = (idx: number) => {
+  const list = detail.value?.answers ?? []
+  const pid = list[idx]?.passageId
+  return pid == null ? 0 : list.filter((x) => x.passageId === pid).length
+}
 
 const difficultyLabel = (d: Difficulty) => {
   if (d === 1) return { text: '简单', color: '#67c23a' }
@@ -95,7 +109,13 @@ const durationText = computed(() =>
 
 const submitStatusLabel = computed(() => {
   const status = detail.value?.submitStatus
-  if (status === 1) return { text: '正常提交', color: '#67c23a' }
+  const scoreReady = detail.value?.totalScore != null
+  if (status === 1) {
+    // [2026-09-26 新增] 论文 L497「尚未完成阅卷时显示处理中」：
+    //   已提交但成绩尚未生成（如阅卷异常暂停后待管理员重新阅卷）→ 处理中
+    if (!scoreReady) return { text: '处理中', color: '#e6a23c' }
+    return { text: '正常提交', color: '#67c23a' }
+  }
   if (status === 2) return { text: '超时提交', color: '#f56c6c' }
   return { text: '未提交', color: '#909399' }
 })
@@ -321,6 +341,15 @@ const dimDifficultyChartOption = computed(() => {
           </div>
         </div>
 
+        <!-- 阅读理解：回顾要带上当时的文章 -->
+        <PassageCard
+          v-if="a.passageContent && isPassageHead(idx)"
+          :content="a.passageContent"
+          :title="a.passageTitle"
+          :word-count="a.passageWordCount"
+          :group-total="passageGroupSize(idx)"
+        />
+
         <!-- 题干 -->
         <div class="q-stem">{{ a.stem }}</div>
 
@@ -401,6 +430,30 @@ const dimDifficultyChartOption = computed(() => {
         <template #header>按题型</template>
         <el-table :data="dim.byQuestionType" size="small">
           <el-table-column prop="questionTypeLabel" label="题型" width="140" />
+          <el-table-column prop="total" label="总题数" width="100" align="center" />
+          <el-table-column prop="correct" label="答对" width="80" align="center">
+            <template #default="{ row }"><span style="color:#67c23a;font-weight:600">{{ row.correct }}</span></template>
+          </el-table-column>
+          <el-table-column prop="wrong" label="答错" width="80" align="center">
+            <template #default="{ row }"><span style="color:#f56c6c;font-weight:600">{{ row.wrong }}</span></template>
+          </el-table-column>
+          <el-table-column label="正确率" min-width="150">
+            <template #default="{ row }">
+              <el-progress
+                :percentage="Math.min(row.accuracy, 100)"
+                :color="row.accuracy >= 80 ? '#67c23a' : row.accuracy >= 60 ? '#e6a23c' : '#f56c6c'"
+                :stroke-width="14"
+              />
+            </template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
+      <!-- 阅读子题型：看清「细节找得到但主旨推不出」这类结构性弱点（只统计带子题型的阅读题） -->
+      <el-card shadow="never" class="dim-card" v-if="dim.bySubtype?.length" style="margin-top:14px">
+        <template #header>阅读子题型</template>
+        <el-table :data="dim.bySubtype" size="small">
+          <el-table-column prop="subtypeLabel" label="子题型" width="140" />
           <el-table-column prop="total" label="总题数" width="100" align="center" />
           <el-table-column prop="correct" label="答对" width="80" align="center">
             <template #default="{ row }"><span style="color:#67c23a;font-weight:600">{{ row.correct }}</span></template>

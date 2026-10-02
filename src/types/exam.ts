@@ -92,12 +92,16 @@ export interface ExamQuestion {
   userAnswer?: string
   /** 阅读理解特有：文章 ID（前端可据此聚合渲染） */
   passageId?: number
-  /** 阅读理解题：文章内容（如果后端返回） */
-  passage?: {
-    id: number
-    title?: string
-    content: string
-  }
+  /** 阅读文章标题（后端随题目下发，供「先读文后答题」卡片渲染） */
+  passageTitle?: string
+  /** 阅读文章正文 */
+  passageContent?: string
+  /** 阅读文章英文词数 */
+  passageWordCount?: number
+  /** 需要对多个作答位（多选、或多空阅读题）—— 决定渲染单选框还是复选框 */
+  multiAnswer?: boolean
+  /** 阅读子题型：DETAIL/MAIN_IDEA/INFERENCE/VOCABULARY/ATTITUDE */
+  questionSubtype?: string
   /** 兼容旧字段 */
   passageTempId?: string
 }
@@ -161,6 +165,11 @@ export interface AnswerDetail {
   isCorrect?: 0 | 1 | null
   obtainedScore?: number
   analysis?: string
+  /** 阅读理解：所属文章（成绩回顾要带上当时读的那篇） */
+  passageId?: number
+  passageTitle?: string
+  passageContent?: string
+  passageWordCount?: number
   difficulty?: Difficulty
   questionScore?: number
   questionOrder?: number

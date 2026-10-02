@@ -35,13 +35,34 @@ export interface Question {
   defaultScore?: number
   status?: 0 | 1
   createBy?: number
+  /** 创建人姓名（后端已按 realName → username 归一） */
+  createByName?: string
   usageCount?: number
   /** 阅读理解题：所属文章 ID */
   passageId?: number
+  /** 阅读文章标题（后端 passageId 非空时回填） */
+  passageTitle?: string
+  /** 阅读文章正文（后端 passageId 非空时回填） */
+  passageContent?: string
+  /** 阅读文章英文词数 */
+  passageWordCount?: number
+  /** 需要对多个作答位（多选、或多空阅读题）—— 决定渲染单选框还是复选框 */
+  multiAnswer?: boolean
+  /** 作答位数量（由标准答案形态得出） */
+  blankCount?: number
+  /** 计分方式：FULL(全对才给分) / PARTIAL(多空按答对空数比例给分) */
+  scoreType?: string
+  /** 阅读子题型：DETAIL/MAIN_IDEA/INFERENCE/VOCABULARY/ATTITUDE */
+  questionSubtype?: string
+  /** 本题在所属文章题组中的题序 */
+  passageQuestionOrder?: number
+  /** 题目来源：MANUAL / AI / IMPORT / SEED_READING … */
+  source?: string
   hasTrap?: boolean
   aiGenerated?: boolean
   targetUserId?: number
   trapNote?: string
+  hintText?: string
   createTime?: string
   updateTime?: string
   options?: QuestionOption[]
@@ -63,6 +84,12 @@ export interface QuestionForm {
   passageId?: number | undefined
   hasTrap?: boolean | undefined
   trapNote?: string | undefined
+  /** 括号提示词（FILL_HINT） */
+  hintText?: string | undefined
+  /** 阅读子题型（仅 READING 有意义） */
+  questionSubtype?: string | undefined
+  /** 计分方式：FULL(全对才给分) / PARTIAL(多空题逐空给分)，仅多空题有意义 */
+  scoreType?: string | undefined
   options?: Array<{
     optionLabel: string
     optionContent: string

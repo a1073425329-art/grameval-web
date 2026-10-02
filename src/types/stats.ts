@@ -129,6 +129,17 @@ export interface DimensionAnalysis {
   byDifficulty: DifficultyDimension[]
   /** 按题型对错 */
   byQuestionType: QuestionTypeDimension[]
+  /** 按阅读子题型对错（细节/主旨/推断/词义/态度），按正确率升序 */
+  bySubtype?: SubtypeDimension[] | undefined
+}
+
+export interface SubtypeDimension {
+  subtype: string
+  subtypeLabel: string
+  total: number
+  correct: number
+  wrong: number
+  accuracy: number
 }
 
 export interface TagDimension {

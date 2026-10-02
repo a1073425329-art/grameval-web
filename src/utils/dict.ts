@@ -37,6 +37,22 @@ export const questionTypeDict: DictOption[] = [
   { value: 'READING', label: '阅读理解' },
 ]
 
+/**
+ * 阅读子题型。值与后端 question.question_subtype 一致
+ * （实体 Question.java 声明的 DETAIL/MAIN_IDEA/INFERENCE/VOCABULARY/ATTITUDE；
+ * 库里的 READING_* 旧值已在 2026-10-02 归一，见 sql/fix_reading_orphans_20261002.sql）。
+ */
+export const readingSubtypeDict: DictOption[] = [
+  { value: 'DETAIL', label: '细节题' },
+  { value: 'MAIN_IDEA', label: '主旨题' },
+  { value: 'INFERENCE', label: '推断题' },
+  { value: 'VOCABULARY', label: '词义题' },
+  { value: 'ATTITUDE', label: '态度题' },
+]
+
+export const readingSubtypeLabel = (v?: string | undefined): string =>
+  readingSubtypeDict.find(d => d.value === v)?.label || ''
+
 // ========== 用户角色相关 ==========
 
 export const userRoleDict: DictOption[] = [

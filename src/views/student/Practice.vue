@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { getCategoryTree, getPracticeQuestions, submitPractice, listPractices, startPractice as openPracticeSession, answerInPractice, finishPractice } from '@/api/student'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { getCategoryTree, getPracticeQuestions, submitPractice, listPractices, startPractice as openPracticeSession, answerInPractice, finishPractice, generateStudentQuestions } from '@/api/student'
 import type { Category } from '@/types/category'
 import type { Question, QuickPracticeResult, PracticeRecord } from '@/types/question'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
+import PassageCard from '@/components/PassageCard.vue'
+import { readingSubtypeLabel } from '@/utils/dict'
 
 const authStore = useAuthStore()
 
@@ -23,6 +25,41 @@ const feedbacks = ref<Record<number, QuickPracticeResult>>({})
 
 const current = computed<Question | undefined>(() => questions.value[currentIndex.value])
 const currentFeedback = computed(() => current.value ? feedbacks.value[current.value.id] : undefined)
+
+/**
+ * 同一篇短文的题排到相邻位置。阅读理解是「一文 N 题」，散开会让学生反复读同一段材料，
+ * 文章卡也会在同一篇上出现多次。组内顺序沿用后端按 passage_question_order 排好的次序。
+ */
+const groupByPassage = (list: Question[]): Question[] => {
+  const out: Question[] = []
+  const taken = new Set<number>()
+  list.forEach((q) => {
+    const pid = q.passageId
+    if (pid == null) {
+      out.push(q)
+      return
+    }
+    if (taken.has(pid)) return
+    taken.add(pid)
+    out.push(...list.filter((x) => x.passageId === pid))
+  })
+  return out
+}
+
+/** 文章卡只在所在组的第一题上方显示 */
+const isPassageHead = (idx: number) => {
+  const q = questions.value[idx]
+  if (!q?.passageId) return false
+  return questions.value.slice(0, idx).every((prev) => prev.passageId !== q.passageId)
+}
+
+const passageGroupSize = (idx: number) => {
+  const pid = questions.value[idx]?.passageId
+  return pid == null ? 0 : questions.value.filter((q) => q.passageId === pid).length
+}
+
+/** 阅读子题型的中文名（细节题/主旨题/推断题…）；非阅读题为空串，模板据此隐藏标签 */
+const subtypeLabel = computed(() => readingSubtypeLabel(current.value?.questionSubtype))
 
 /* ============================================================ *
  *  练习会话（落库）：startPractice / answerInPractice / finishPractice
@@ -56,19 +93,35 @@ const onBeforeUnload = () => {
 
 /* ============================================================ *
  *  新增：收藏题目功能（localStorage 持久化）
+ *
+ *  [2026-09-27 修复] key 改为**按账号隔离**：
+ *   答辩演示会在一个浏览器里开多窗口登录不同账号（决策 D12），
+ *   原固定 key 会让 A 窗口学生看到 B 窗口管理员的收藏（串号）。
+ *   现 key 拼上当前登录用户 id，各窗口互不可见；
+ *   未登录时归到 'anon'，不会污染任何已登录账号的数据。
  * ============================================================ */
-const BOOKMARK_KEY = 'grameval_practice_bookmarks'
-const bookmarkedIds = ref<Set<number>>(new Set(loadBookmarks()))
+const bookmarkKey = () =>
+  `grameval_practice_bookmarks:${authStore.userInfo?.id ?? 'anon'}`
+
+const bookmarkedIds = ref<Set<number>>(new Set())
 
 function loadBookmarks(): number[] {
   try {
-    const raw = localStorage.getItem(BOOKMARK_KEY)
+    const raw = localStorage.getItem(bookmarkKey())
     return raw ? (JSON.parse(raw) as number[]) : []
   } catch { return [] }
 }
 function saveBookmarks() {
-  localStorage.setItem(BOOKMARK_KEY, JSON.stringify(Array.from(bookmarkedIds.value)))
+  localStorage.setItem(bookmarkKey(), JSON.stringify(Array.from(bookmarkedIds.value)))
 }
+
+// [2026-09-27 ocr 闭环] 用户 id 就绪/变化时重新加载收藏。
+// 只在 onMounted 读一次会踩两个坑：①挂载时 userInfo 可能还没拉回来（落 anon key）；
+// ②切换账号后仍显示上一个账号的收藏。watch 覆盖这两种时序。
+watch(
+  () => authStore.userInfo?.id,
+  () => { bookmarkedIds.value = new Set(loadBookmarks()) },
+)
 const isBookmarked = (qid: number) => bookmarkedIds.value.has(qid)
 const toggleBookmark = (qid: number) => {
   const next = new Set(bookmarkedIds.value)
@@ -195,7 +248,7 @@ const startPractice = async (catId: number) => {
   await finishCurrentPractice()
   try {
     const res = await getPracticeQuestions(catId, 10)
-    questions.value = Array.isArray(res.data) ? res.data : []
+    questions.value = Array.isArray(res.data) ? groupByPassage(res.data) : []
     currentIndex.value = 0
     userAnswers.value = {}
     feedbacks.value = {}
@@ -272,6 +325,8 @@ const answerText = (a: string | string[] | undefined) => {
 }
 
 onMounted(() => {
+  // [2026-09-27] 收藏按账号隔离 → 挂载时按当前用户 id 加载
+  bookmarkedIds.value = new Set(loadBookmarks())
   loadCategories()
   loadPracticeRecords()
 })
@@ -283,6 +338,59 @@ onBeforeUnmount(() => {
 })
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', onBeforeUnload)
+}
+
+/* ============================================================ *
+ *  AI 补题：练习时增量生成题目 → 写入公共题库（target_user_id=null，
+ *  source=AI_STUDENT，全班可见）。零限流（2026-09-27 拍板）。
+ * ============================================================ */
+const aiDialogVisible = ref(false)
+const aiCategoryIds = ref<number[]>([])
+const aiCount = ref(5)
+const aiInsight = ref('')
+const aiLoading = ref(false)
+
+/** 打开补题弹窗：默认带上当前正在练的专题 */
+const openAiDialog = () => {
+  aiCategoryIds.value = activeCategoryId.value ? [activeCategoryId.value] : []
+  aiCount.value = 5
+  aiInsight.value = ''
+  aiDialogVisible.value = true
+}
+
+const submitAiGenerate = async () => {
+  if (aiLoading.value) return
+  if (!aiCount.value || aiCount.value < 1) {
+    ElMessage.warning('题数至少 1 道')
+    return
+  }
+  aiLoading.value = true
+  try {
+    const res = await generateStudentQuestions({
+      categoryIds: aiCategoryIds.value.length ? aiCategoryIds.value : undefined,
+      questionCount: aiCount.value,
+      insight: aiInsight.value.trim() || undefined,
+    })
+    const d = res.data
+    if (d && d.added > 0) {
+      ElMessage.success(
+        `AI 新增 ${d.added} 道公共题` +
+          (d.duplicates ? `（另有 ${d.duplicates} 道重复跳过）` : '') +
+          '，全班同学之后都能做到',
+      )
+      aiDialogVisible.value = false
+      // 新题立即可练：刷新当前专题；分类题量变了也刷新侧栏
+      if (activeCategoryId.value) await startPractice(activeCategoryId.value)
+      loadCategories()
+    } else {
+      ElMessage.warning(
+        `生成的 ${d?.requested ?? aiCount.value} 道题与公共题库已有题目全部重复` +
+          `（${d?.duplicates ?? 0} 道），换个专题试试`,
+      )
+    }
+  } finally {
+    aiLoading.value = false
+  }
 }
 </script>
 
@@ -362,7 +470,10 @@ if (typeof window !== 'undefined') {
     <div class="practice-main">
       <!-- 左侧：专题列表 -->
       <div class="left-panel">
-        <div class="panel-title">选择语法专题</div>
+        <div class="panel-title">
+          <span>选择语法专题</span>
+          <el-button size="small" type="primary" plain @click="openAiDialog">AI 补题</el-button>
+        </div>
         <el-scrollbar height="calc(100vh - 300px)">
           <div
             v-for="c in flatCategories"
@@ -377,6 +488,54 @@ if (typeof window !== 'undefined') {
           </div>
           <el-empty v-if="!flatCategories.length" description="暂无分类" :image-size="60" />
         </el-scrollbar>
+
+        <!-- AI 补题：增量生成题目写入公共题库，全班可见 -->
+        <el-dialog v-model="aiDialogVisible" title="AI 补题（写入公共题库）" width="520px">
+          <el-alert
+            type="info"
+            :closable="false"
+            style="margin-bottom: 14px"
+            title="生成的题目会加入公共题库，全班同学之后都能做到；与已有题目重复的会自动跳过。"
+          />
+          <el-form label-width="84px">
+            <el-form-item label="专题">
+              <el-select
+                v-model="aiCategoryIds"
+                multiple
+                clearable
+                placeholder="不选 = 由 AI 自选专题"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="c in flatCategories"
+                  :key="c.id"
+                  :label="c.categoryName"
+                  :value="c.id"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="题数">
+              <el-input-number v-model="aiCount" :min="1" :step="1" />
+              <span style="margin-left: 10px; font-size: 12px; color: #909399">
+                Dify 生成约需 1~3 分钟，请耐心等待
+              </span>
+            </el-form-item>
+            <el-form-item label="出题提示">
+              <el-input
+                v-model="aiInsight"
+                type="textarea"
+                :rows="2"
+                placeholder="可选，例如：重点练虚拟语气"
+              />
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="aiDialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="aiLoading" @click="submitAiGenerate">
+              {{ aiLoading ? '生成中…' : '开始生成' }}
+            </el-button>
+          </template>
+        </el-dialog>
       </div>
 
       <!-- 右侧：练习区 -->
@@ -423,6 +582,19 @@ if (typeof window !== 'undefined') {
           </div>
 
           <div class="q-content">
+            <!-- 阅读理解：同组第一题上方显示一次文章，组内其余题不再重复 -->
+            <PassageCard
+              v-if="current.passageContent && isPassageHead(currentIndex)"
+              :content="current.passageContent"
+              :title="current.passageTitle"
+              :word-count="current.passageWordCount"
+              :group-total="passageGroupSize(currentIndex)"
+            />
+
+            <div v-if="subtypeLabel" class="q-subtype">
+              <el-tag size="small" type="success" effect="plain">{{ subtypeLabel }}</el-tag>
+            </div>
+
             <div class="q-stem">{{ currentIndex + 1 }}. {{ current.stem }}</div>
 
             <!-- 新增：知识点关联标签 -->
@@ -439,9 +611,9 @@ if (typeof window !== 'undefined') {
               >{{ kp }}</el-tag>
             </div>
 
-            <!-- 单选 / 阅读理解 -->
+            <!-- 单选 / 阅读（单空） -->
             <el-radio-group
-              v-if="current.questionType === 'SINGLE' || current.questionType === 'READING'"
+              v-if="(current.questionType === 'SINGLE' || current.questionType === 'READING') && !current.multiAnswer"
               v-model="userAnswers[current.id]"
               :disabled="!!currentFeedback"
               class="opt-list"
@@ -451,9 +623,9 @@ if (typeof window !== 'undefined') {
               </el-radio>
             </el-radio-group>
 
-            <!-- 多选 -->
+            <!-- 多选 / 阅读（多空） -->
             <el-checkbox-group
-              v-else-if="current.questionType === 'MULTIPLE'"
+              v-else-if="current.questionType === 'MULTIPLE' || (current.questionType === 'READING' && current.multiAnswer)"
               v-model="userAnswers[current.id] as string[]"
               :disabled="!!currentFeedback"
               class="opt-list"
@@ -718,6 +890,7 @@ if (typeof window !== 'undefined') {
 }
 .kp-icon { color: #409eff; font-size: 14px; }
 .kp-label { font-size: 12px; color: #909399; }
+.q-subtype { margin-bottom: 8px; }
 .kp-tag { font-size: 12px; }
 
 .q-content { flex: 1; overflow-y: auto; }
@@ -728,9 +901,47 @@ if (typeof window !== 'undefined') {
   margin-bottom: 20px;
   white-space: pre-wrap;
 }
-.opt-list { display: flex; flex-direction: column; gap: 12px; }
-.opt-row { display: flex !important; align-items: flex-start; margin: 0; padding: 10px 12px; border-radius: 4px; background: #fafafa; }
+/* 阅读理解文章卡样式见 @/components/PassageCard.vue */
+
+
+/* 选择题选项：卡片式。
+   注意不要用 .opt-row { display: flex !important } —— 那会覆盖 el-radio/el-checkbox
+   根元素布局，把内部 __input(圆圈) 与 __label(文字) 挤到同一行，圆圈被压没、点击热区错乱，
+   表现为「只看到 A/B/C/D 纯文本、点不动」。这里用 :deep 只做外观包裹，不改内部布局。 */
+.opt-list { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.opt-list :deep(.opt-row) {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: auto;
+  min-height: 44px;
+  margin: 0;
+  padding: 10px 14px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  background: #fff;
+  transition: all 0.18s ease;
+  cursor: pointer;
+}
+.opt-list :deep(.opt-row:hover) { border-color: #a3cfff; background: #f5f9ff; }
+.opt-list :deep(.opt-row.is-checked) { border-color: #409eff; background: #ecf5ff; }
+.opt-list :deep(.opt-row.is-disabled) { cursor: default; }
+.opt-list :deep(.opt-row.is-disabled:hover) { border-color: #e4e7ed; background: #fff; }
+.opt-list :deep(.el-radio__input),
+.opt-list :deep(.el-checkbox__input) { flex-shrink: 0; margin-right: 8px; }
+.opt-list :deep(.el-radio__label),
+.opt-list :deep(.el-checkbox__label) {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  white-space: normal;
+  line-height: 1.6;
+  color: #303133;
+}
+.opt-list :deep(.el-radio__label),
+.opt-list :deep(.el-checkbox__label) { padding-left: 8px; }
 .opt-key { font-weight: 600; color: #409eff; margin-right: 6px; }
+.opt-list :deep(.is-checked) .opt-key { color: #1a73e8; }
 
 .feedback {
   margin-top: 24px;

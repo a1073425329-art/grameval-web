@@ -47,6 +47,10 @@ export interface ReadingQuestionItem {
   knowledgePoints?: string[]
   options?: QuestionOption[]
   defaultScore?: number
+  /** 阅读子题型：DETAIL/MAIN_IDEA/INFERENCE/VOCABULARY/ATTITUDE */
+  questionSubtype?: string | undefined
+  /** 计分方式：FULL / PARTIAL（PARTIAL = 多空题按答对空数比例给分） */
+  scoreType?: string | undefined
 }
 
 export type ReadingPassagePageResult = PageResult<ReadingPassage>

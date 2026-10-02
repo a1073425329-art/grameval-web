@@ -796,6 +796,7 @@ import {
 } from '@element-plus/icons-vue'
 import {
   getAiOverview,
+  getConfigsByGroup,
   testDeepSeekConnection,
   batchUpdateConfigs,
   refreshConfigs,
@@ -856,7 +857,7 @@ const aiForm = reactive({
   qianwenBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   qianwenApiKey: '',
   qianwenModel: 'qwen-max',
-  difyBaseUrl: 'https://api.dify.ai/v1',
+  difyBaseUrl: 'http://127.0.0.1:19002/v1',
   difyAnalyzeKey: '',
   difyGenerateKey: '',
   mockEnabled: true,
@@ -1012,6 +1013,38 @@ watch(() => chatForm.provider, async () => {
 }, { immediate: true })
 
 // 方法
+/**
+ * 把 sys_config 的 ai 分组配置回填到表单。
+ * [2026-09-27 修复] 原来只有 provider / 模型名回填，difyBaseUrl、deepseekBaseUrl、qianwenBaseUrl、
+ * temperature、maxTokens、systemPrompt、timeout 一直停留在代码里写死的默认值；而 handleSaveAiConfig
+ * 对这些字段是无条件写入 —— 页面上随便点一次「保存 AI 配置」，就把默认值覆盖进 sys_config。
+ * 实测影响：Dify 地址原本写死为云端 https://api.dify.ai/v1，保存一次后 DifyClient 就改打云端了。
+ * 加密项（各 api_key）回填的是脱敏值 app***xxx：保存时被 !includes('***') 挡住不回写，
+ * 后端 updateConfig 遇 *** 也会跳过，双重保险，不会产生双重加密。
+ */
+const loadAiConfigs = async () => {
+  try {
+    const res = await getConfigsByGroup('ai')
+    if (res.code !== 200 || !res.data) return
+    const map = new Map<string, string>()
+    for (const c of res.data) map.set(c.configKey, c.configValue ?? '')
+    const g = (k: string) => map.get(k) ?? ''
+    if (g('ai.dify.base_url')) aiForm.difyBaseUrl = g('ai.dify.base_url')
+    if (g('ai.deepseek.base_url')) aiForm.deepseekBaseUrl = g('ai.deepseek.base_url')
+    if (g('ai.qianwen.base_url')) aiForm.qianwenBaseUrl = g('ai.qianwen.base_url')
+    if (g('ai.deepseek.api_key')) aiForm.deepseekApiKey = g('ai.deepseek.api_key')
+    if (g('ai.qianwen.api_key')) aiForm.qianwenApiKey = g('ai.qianwen.api_key')
+    if (g('ai.dify.analyze_key')) aiForm.difyAnalyzeKey = g('ai.dify.analyze_key')
+    if (g('ai.dify.generate_key')) aiForm.difyGenerateKey = g('ai.dify.generate_key')
+    if (g('ai.temperature')) aiForm.temperature = Number(g('ai.temperature'))
+    if (g('ai.max_tokens')) aiForm.maxTokens = Number(g('ai.max_tokens'))
+    if (g('ai.timeout')) aiForm.timeout = Number(g('ai.timeout'))
+    if (g('ai.system_prompt')) aiForm.systemPrompt = g('ai.system_prompt')
+  } catch (e) {
+    console.error('加载 AI 配置失败', e)
+  }
+}
+
 const loadAiOverview = async () => {
   loading.value = true
   try {
@@ -1028,6 +1061,9 @@ const loadAiOverview = async () => {
       // 加载配置值到表单
       if (res.data.defaultModel) aiForm.deepseekModel = res.data.defaultModel
       if ((res.data as any).qianwenModel) aiForm.qianwenModel = (res.data as any).qianwenModel
+
+      // 回填 ai 分组其余配置（Dify 地址 / API Key / 温度等），避免保存时把默认值覆盖进库
+      await loadAiConfigs()
     }
   } catch (e) {
     console.error('加载 AI 概览失败', e)

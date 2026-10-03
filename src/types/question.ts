@@ -26,8 +26,14 @@ export interface Question {
   categoryName?: string
   questionType: QuestionType
   stem: string
-  /** 标准答案，一律大写；多选 "A,B"；判断 "TRUE"/"FALSE" */
+  /** 标准答案。选择题类一律大写；填空类按 answerFormat 决定是否保留原样大小写 */
   standardAnswer?: string
+  /**
+   * 答案大小写要求（对齐后端 question.answer_format）：
+   * CASE_INSENSITIVE(默认，忽略大小写) / CASE_SENSITIVE(区分大小写，仅填空类) /
+   * WORD_ONLY(仅单词) / SENTENCE(整句)。选择题类恒为 CASE_INSENSITIVE。
+   */
+  answerFormat?: string
   analysis?: string
   /** 知识点标签列表 */
   knowledgePoints?: string[]
@@ -46,6 +52,10 @@ export interface Question {
   passageContent?: string
   /** 阅读文章英文词数 */
   passageWordCount?: number
+  /** 阅读文章中文翻译（可选） */
+  passageTranslation?: string
+  /** 阅读文章重点词汇 JSON 字符串（可选） */
+  passageKeyVocabulary?: string
   /** 需要对多个作答位（多选、或多空阅读题）—— 决定渲染单选框还是复选框 */
   multiAnswer?: boolean
   /** 作答位数量（由标准答案形态得出） */
@@ -75,6 +85,8 @@ export interface QuestionForm {
   questionType: QuestionType
   stem: string
   standardAnswer: string
+  /** 答案大小写要求：CASE_INSENSITIVE(默认)/CASE_SENSITIVE/WORD_ONLY/SENTENCE（仅填空类有意义） */
+  answerFormat?: string | undefined
   analysis?: string | undefined
   /** 知识点标签列表 */
   knowledgePoints?: string[] | undefined

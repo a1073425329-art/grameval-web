@@ -121,12 +121,16 @@ export interface ReadingSubQuestion {
   analysis: string
   knowledgePoints: string[]
   defaultScore?: number
+  /** 阅读子题型：DETAIL/MAIN_IDEA/INFERENCE/VOCABULARY/ATTITUDE（可选） */
+  questionSubtype?: string
 }
 
 export interface AiReadingResult {
   title: string
   content: string
   summary: string
+  /** 全文中文翻译（可选） */
+  translation?: string
   questions: ReadingSubQuestion[]
 }
 

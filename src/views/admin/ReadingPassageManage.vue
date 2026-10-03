@@ -13,7 +13,8 @@ import {
   listCategoryTree,
 } from '@/api/admin'
 import { generateReading } from '@/api/ai'
-import type { ReadingPassage, ReadingPassageForm } from '@/types/reading'
+import { readingSubtypeDict } from '@/utils/dict'
+import type { ReadingPassage, ReadingPassageForm, VocabularyItem } from '@/types/reading'
 import type { QuestionOption } from '@/types/question'
 import type { Category } from '@/types/category'
 import type { Difficulty } from '@/types/common'
@@ -107,6 +108,8 @@ type SubQuestion = {
   standardAnswer: string
   analysis: string
   knowledgePoints: string[]
+  /** 阅读子题型 DETAIL/MAIN_IDEA/INFERENCE/VOCABULARY/ATTITUDE */
+  questionSubtype: string
   options: QuestionOption[]
   defaultScore: number
 }
@@ -116,16 +119,49 @@ const form = reactive({
   categoryId: undefined as number | undefined,
   title: '',
   content: '',
+  translation: '',
+  summary: '',
+  /** 文章级知识点（多选） */
+  knowledgePoints: [] as string[],
+  /** 重点词汇 */
+  keyVocabulary: [] as VocabularyItem[],
   difficulty: 2 as Difficulty,
   passageType: '',
   topic: '',
   source: 'MANUAL',
-  summary: '',
   status: 1 as 0 | 1,
   isTemp: false,
   aiPrompt: '',
   questions: [] as SubQuestion[],
 })
+
+/** 知识点候选：取分类树全部节点名称，用户可下拉多选，也可回车自建 */
+const knowledgePointOptions = ref<string[]>([])
+const buildKnowledgePointOptions = (tree: Category[]) => {
+  const set = new Set<string>()
+  const walk = (nodes: Category[]) => {
+    for (const n of nodes) {
+      if (n.categoryName) set.add(n.categoryName)
+      if (n.children?.length) walk(n.children)
+    }
+  }
+  walk(tree)
+  // 常用阅读考点补充（不重复）
+  ;['细节理解', '主旨大意', '推理判断', '词义猜测', '作者态度', '时态', '语态', '从句', '固定搭配'].forEach((t) => set.add(t))
+  knowledgePointOptions.value = Array.from(set)
+}
+
+/* 重点词汇行编辑 */
+const addVocabRow = () => {
+  if (form.keyVocabulary.length >= 30) {
+    ElMessage.warning('最多 30 条重点词汇')
+    return
+  }
+  form.keyVocabulary.push({ word: '', phonetic: '', meaning: '' })
+}
+const removeVocabRow = (idx: number) => {
+  form.keyVocabulary.splice(idx, 1)
+}
 
 const rules: FormRules = {
   content: [{ required: true, message: '请输入文章内容', trigger: 'blur' }],
@@ -136,11 +172,14 @@ const resetForm = () => {
   form.categoryId = undefined
   form.title = ''
   form.content = ''
+  form.translation = ''
+  form.summary = ''
+  form.knowledgePoints = []
+  form.keyVocabulary = []
   form.difficulty = 2
   form.passageType = ''
   form.topic = ''
   form.source = 'MANUAL'
-  form.summary = ''
   form.status = 1
   form.isTemp = false
   form.aiPrompt = ''
@@ -170,11 +209,14 @@ const openEdit = (row: ReadingPassage) => {
   form.categoryId = row.categoryId
   form.title = row.title ?? ''
   form.content = row.content
+  form.translation = row.translation ?? ''
+  form.summary = row.summary ?? ''
+  form.knowledgePoints = row.knowledgePoints ? [...row.knowledgePoints] : []
+  form.keyVocabulary = (row.keyVocabulary ?? []).map((v) => ({ ...v }))
   form.difficulty = row.difficulty
   form.passageType = row.passageType ?? ''
   form.topic = row.topic ?? ''
   form.source = row.source ?? 'MANUAL'
-  form.summary = row.summary ?? ''
   form.status = (row.status ?? 1) as 0 | 1
   form.isTemp = !!row.isTemp
   form.aiPrompt = row.aiPrompt ?? ''
@@ -184,6 +226,7 @@ const openEdit = (row: ReadingPassage) => {
     standardAnswer: q.standardAnswer ?? '',
     analysis: q.analysis ?? '',
     knowledgePoints: q.knowledgePoints ?? [],
+    questionSubtype: q.questionSubtype ?? '',
     options: (q.options ?? []).map((o) => ({ ...o })),
     defaultScore: q.defaultScore ?? 2,
   }))
@@ -201,6 +244,7 @@ const addSubQuestion = () => {
     standardAnswer: 'A',
     analysis: '',
     knowledgePoints: [],
+    questionSubtype: '',
     options: [
       { optionLabel: 'A', optionContent: '', sortNo: 1 },
       { optionLabel: 'B', optionContent: '', sortNo: 2 },
@@ -237,6 +281,10 @@ const aiGeneratePassage = async () => {
     form.title = data.title ?? ''
     form.content = data.content
     form.summary = data.summary ?? ''
+    // AI 返回可选的中文翻译
+    if (data.translation) {
+      form.translation = data.translation
+    }
     form.source = 'AI'
     form.aiPrompt = `AI 生成：主题 ${form.topic || '综合'}，类型 ${typeLabel(form.passageType) || '通用'}，难度 ${diffLabel(form.difficulty)}`
     // 后端生成的配套题目带 options，映射为表单子题结构
@@ -246,6 +294,7 @@ const aiGeneratePassage = async () => {
         standardAnswer: q.standardAnswer ?? 'A',
         analysis: q.analysis ?? '',
         knowledgePoints: q.knowledgePoints ?? [],
+        questionSubtype: q.questionSubtype ?? '',
         options: (q.options ?? []).map((o, i) => ({
           optionLabel: o.optionLabel,
           optionContent: o.optionContent,
@@ -267,6 +316,9 @@ const submit = async () => {
   await formRef.value.validate(async (valid) => {
     if (!valid) return
 
+    // 过滤空白的重点词汇行
+    const vocab = form.keyVocabulary.filter((v) => v.word.trim() && v.meaning.trim())
+
     const payload: ReadingPassageForm = {
       categoryId: form.categoryId,
       title: form.title,
@@ -276,6 +328,9 @@ const submit = async () => {
       topic: form.topic || undefined,
       source: form.source,
       summary: form.summary,
+      translation: form.translation || undefined,
+      keyVocabulary: vocab.length ? vocab : undefined,
+      knowledgePoints: form.knowledgePoints.length ? form.knowledgePoints : undefined,
       status: form.status,
       isTemp: form.isTemp,
       aiPrompt: form.aiPrompt || undefined,
@@ -284,6 +339,7 @@ const submit = async () => {
         standardAnswer: q.standardAnswer,
         analysis: q.analysis,
         knowledgePoints: q.knowledgePoints,
+        questionSubtype: q.questionSubtype || undefined,
         options: q.options,
         defaultScore: q.defaultScore,
       })),
@@ -354,6 +410,7 @@ onMounted(async () => {
   try {
     const c = await listCategoryTree()
     categories.value = c.data ?? []
+    buildKnowledgePointOptions(categories.value)
   } catch {
     /* silent */
   }
@@ -481,6 +538,14 @@ onMounted(async () => {
         <el-table-column label="类型" width="100">
           <template #default="{ row }">{{ typeLabel(row.passageType) }}</template>
         </el-table-column>
+        <el-table-column label="附加" width="110" align="center">
+          <template #default="{ row }">
+            <el-tooltip v-if="row.translation" content="含中文翻译"><el-tag size="small" type="success" effect="plain">译</el-tag></el-tooltip>
+            <el-tooltip v-if="row.keyVocabulary?.length" :content="`${row.keyVocabulary.length} 条重点词汇`">
+              <el-tag size="small" type="warning" effect="plain">词{{ row.keyVocabulary.length }}</el-tag>
+            </el-tooltip>
+          </template>
+        </el-table-column>
         <el-table-column label="来源" width="100">
           <template #default="{ row }">{{ sourceLabel(row.source) }}</template>
         </el-table-column>
@@ -548,6 +613,14 @@ onMounted(async () => {
             <span class="meta-item">
               <span class="meta-label">来源</span>
               <span class="meta-value">{{ sourceLabel(item.source) }}</span>
+            </span>
+            <span class="meta-item" v-if="item.translation">
+              <span class="meta-label">翻译</span>
+              <span class="meta-value" style="color:#67c23a">✓ 中文</span>
+            </span>
+            <span class="meta-item" v-if="item.keyVocabulary?.length">
+              <span class="meta-label">重点词汇</span>
+              <span class="meta-value">{{ item.keyVocabulary.length }} 条</span>
             </span>
           </div>
           <div class="card-footer">
@@ -654,19 +727,69 @@ onMounted(async () => {
             :rows="8"
             :maxlength="FormLimits.articleText.max"
             show-word-limit
-            placeholder="请输入文章正文"
+            placeholder="请输入文章正文（完形填空可在文中用 ____ 表示空位）"
           />
         </el-form-item>
 
-        <el-form-item label="摘要">
+        <el-form-item label="中文翻译">
           <el-input
-            v-model="form.summary"
+            v-model="form.translation"
             type="textarea"
-            :rows="2"
-            :maxlength="FormLimits.mediumText.max"
+            :rows="5"
+            :maxlength="FormLimits.articleText.max"
             show-word-limit
-            placeholder="文章摘要/简介（可选）"
+            placeholder="全文中文翻译（可选，学生复盘/学习时展示）"
           />
+        </el-form-item>
+
+        <el-row :gutter="12">
+          <el-col :span="14">
+            <el-form-item label="摘要">
+              <el-input
+                v-model="form.summary"
+                type="textarea"
+                :rows="2"
+                :maxlength="FormLimits.mediumText.max"
+                show-word-limit
+                placeholder="文章摘要/简介（可选）"
+              />
+            </el-form-item>
+          </el-col>
+          <el-col :span="10">
+            <el-form-item label="知识点">
+              <el-select
+                v-model="form.knowledgePoints"
+                multiple
+                collapse-tags
+                :max-collapse-tags="3"
+                allow-create
+                filterable
+                default-first-option
+                placeholder="选择或输入后回车"
+                style="width: 100%"
+              >
+                <el-option v-for="op in knowledgePointOptions" :key="op" :label="op" :value="op" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+
+        <!-- 重点词汇编辑 -->
+        <el-form-item label="重点词汇">
+          <div class="vocab-editor">
+            <div v-if="!form.keyVocabulary.length" class="vocab-empty">
+              <el-text type="info" size="small">暂无词汇，点击下方按钮添加；学生端会在文章详情展示</el-text>
+            </div>
+            <div v-for="(v, vi) in form.keyVocabulary" :key="vi" class="vocab-row">
+              <el-input v-model="v.word" placeholder="单词/短语 *" :maxlength="FormLimits.shortText.max" class="vocab-word" />
+              <el-input v-model="v.phonetic" placeholder="音标（可选）" :maxlength="FormLimits.shortText.max" class="vocab-phonetic" />
+              <el-input v-model="v.meaning" placeholder="中文释义 *" :maxlength="FormLimits.shortText.max" class="vocab-meaning" />
+              <el-button link type="danger" @click="removeVocabRow(vi)"><el-icon><Delete /></el-icon></el-button>
+            </div>
+            <el-button size="small" type="primary" plain @click="addVocabRow">
+              <el-icon><Plus /></el-icon>添加词汇
+            </el-button>
+          </div>
         </el-form-item>
 
         <el-divider content-position="left">
@@ -684,7 +807,12 @@ onMounted(async () => {
               <el-button link type="danger" size="small" @click="removeSubQuestion(qIdx)">移除</el-button>
             </div>
             <el-form-item label="题干" :label-width="60">
-              <el-input v-model="q.stem" :maxlength="FormLimits.questionStem.max" placeholder="题目题干" />
+              <el-input v-model="q.stem" :maxlength="FormLimits.questionStem.max" placeholder="题目题干（完形填空可写：第 1 空应填…）" />
+            </el-form-item>
+            <el-form-item label="子题型" :label-width="60">
+              <el-select v-model="q.questionSubtype" clearable placeholder="留空自动推断" style="width: 100%">
+                <el-option v-for="d in readingSubtypeDict" :key="d.value" :label="d.label" :value="d.value" />
+              </el-select>
             </el-form-item>
             <el-form-item label="选项" :label-width="60">
               <div class="sub-options">
@@ -707,7 +835,19 @@ onMounted(async () => {
               <el-input v-model="q.analysis" type="textarea" :rows="2" :maxlength="FormLimits.analysis.max" show-word-limit placeholder="答案解析" />
             </el-form-item>
             <el-form-item label="知识点" :label-width="60">
-              <el-select v-model="q.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入后回车添加" style="width: 100%" />
+              <el-select
+                v-model="q.knowledgePoints"
+                multiple
+                collapse-tags
+                :max-collapse-tags="3"
+                allow-create
+                filterable
+                default-first-option
+                placeholder="选择或输入后回车"
+                style="width: 100%"
+              >
+                <el-option v-for="op in knowledgePointOptions" :key="op" :label="op" :value="op" />
+              </el-select>
             </el-form-item>
           </div>
         </div>
@@ -888,5 +1028,22 @@ onMounted(async () => {
   width: 28px;
   text-align: center;
   font-weight: 600;
+}
+
+/* 重点词汇编辑器 */
+.vocab-editor {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vocab-empty {
+  padding: 6px 0;
+}
+.vocab-row {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1.6fr auto;
+  gap: 8px;
+  align-items: center;
 }
 </style>

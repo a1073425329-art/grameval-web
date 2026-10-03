@@ -82,6 +82,21 @@ const diffOptions: { label: string; value: Difficulty }[] = [
   { label: '困难', value: 3 },
 ]
 
+/* 题型 Tabs：把原先"题型下拉框"换成顶部页签，切换更直观 */
+const typeTabOptions: { label: string; value: string }[] = [
+  { label: '全部', value: 'ALL' },
+  { label: '单选题', value: 'SINGLE' },
+  { label: '多选题', value: 'MULTIPLE' },
+  { label: '判断题', value: 'JUDGE' },
+  { label: '填空题', value: 'FILL_HINT' },
+  { label: '阅读理解', value: 'READING' },
+]
+const typeTab = ref<string>('ALL')
+const onTypeTabChange = (name: string | number) => {
+  query.questionType = name === 'ALL' ? undefined : (name as QuestionType)
+  search()
+}
+
 const allTypeOptions: { label: string; value: QuestionType }[] = [
   ...normalTypeOptions,
   { label: '阅读理解选择题', value: 'READING' },
@@ -154,6 +169,7 @@ const reset = () => {
   query.minUsageCount = undefined
   query.maxUsageCount = undefined
   query.pageNum = 1
+  typeTab.value = 'ALL'
   load()
 }
 
@@ -194,6 +210,8 @@ type NormalForm = {
   answerMulti: string[]
   answerJudge: 'TRUE' | 'FALSE' | ''
   answerFill: string
+  /** 填空类答案的大小写要求（answer_format），仅 FILL_HINT 有意义 */
+  answerFormat: string
   analysis: string
   knowledgePoints: string[]
   fillHint: string
@@ -220,6 +238,7 @@ const normalForm = reactive<NormalForm>({
   answerMulti: [],
   answerJudge: '',
   answerFill: '',
+  answerFormat: 'CASE_INSENSITIVE',
   analysis: '',
   knowledgePoints: [],
   fillHint: '',
@@ -253,6 +272,7 @@ const resetNormalForm = () => {
     answerMulti: [],
     answerJudge: '',
     answerFill: '',
+    answerFormat: 'CASE_INSENSITIVE',
     analysis: '',
     knowledgePoints: [],
     fillHint: '',
@@ -592,7 +612,13 @@ const doValidate = async () => {
       standardAnswer = normalForm.answerJudge
     } else if (activeTab.value === 'FILL_HINT' || activeTab.value === 'FILL') {
       if (!normalForm.answerFill.trim()) return
-      standardAnswer = normalForm.answerFill.trim().toUpperCase()
+      // [2026-10-03 修正] 这里原注释写「按自然大小写保存、强制大写会让答案库显示失真」，
+      // 但后端 QuestionService.normalizeAnswer 会按 answer_format 归一化：
+      //   · CASE_INSENSITIVE（默认）→ 存大写（与库内既有 4600+ 行一致），判分时两边都转大写，
+      //     所以 was reading / WAS READING 都能判对；
+      //   · CASE_SENSITIVE（专有名词等必须照抄）→ 原样保留大小写。
+      // 前端只负责把管理员输入原样提交，是否大写由上面的下拉决定，不再在注释里假设行为。
+      standardAnswer = normalForm.answerFill.trim()
     } else {
       if (!normalForm.answerSingle) return
       standardAnswer = normalForm.answerSingle
@@ -705,8 +731,9 @@ const openEdit = (row: Question) => {
       : a.toUpperCase() === 'FALSE'
         ? 'FALSE'
         : '') as 'TRUE' | 'FALSE' | ''
-  } else if (row.questionType === 'FILL_HINT') {
+  } else if (row.questionType === 'FILL_HINT' || row.questionType === 'FILL') {
     normalForm.answerFill = a
+    normalForm.answerFormat = row.answerFormat || 'CASE_INSENSITIVE'
   } else {
     normalForm.answerSingle = a
   }
@@ -899,21 +926,23 @@ const submit = async () => {
         ElMessage.warning('请输入填空答案')
         return
       }
-      if (normalForm.answerFill.trim().includes(' ')) {
-        ElMessage.warning('填空答案应为单个单词，不含空格')
+      // 只有「仅单词(WORD_ONLY)」才禁止空格；SENTENCE 允许整句作答。
+      // 其余情况下是否含空格由管理员按题目实际需要决定（如 "ARE PLAYING" 这种多词答案）。
+      if (normalForm.answerFormat === 'WORD_ONLY' && normalForm.answerFill.trim().includes(' ')) {
+        ElMessage.warning('答案格式为「仅单词(WORD_ONLY)」，填空答案不能包含空格')
         return
       }
-      standardAnswer = normalForm.answerFill.trim().toUpperCase()
+      standardAnswer = normalForm.answerFill.trim()
     } else if (activeTab.value === 'FILL') {
       if (!normalForm.answerFill.trim()) {
         ElMessage.warning('请输入填空答案')
         return
       }
-      if (normalForm.answerFill.trim().includes(' ')) {
-        ElMessage.warning('填空答案应为单个单词，不含空格')
+      if (normalForm.answerFormat === 'WORD_ONLY' && normalForm.answerFill.trim().includes(' ')) {
+        ElMessage.warning('答案格式为「仅单词(WORD_ONLY)」，填空答案不能包含空格')
         return
       }
-      standardAnswer = normalForm.answerFill.trim().toUpperCase()
+      standardAnswer = normalForm.answerFill.trim()
     }
 
     const payload: QuestionForm = {
@@ -921,6 +950,11 @@ const submit = async () => {
       questionType: normalForm.questionType,
       stem: normalForm.stem,
       standardAnswer,
+      // 仅填空类携带该字段；选择题类的答案就是选项标签，后端会统一回落 CASE_INSENSITIVE
+      answerFormat:
+        activeTab.value === 'FILL_HINT' || activeTab.value === 'FILL'
+          ? normalForm.answerFormat
+          : undefined,
       analysis: normalForm.analysis,
       knowledgePoints: normalForm.knowledgePoints,
       difficulty: normalForm.difficulty,
@@ -1062,6 +1096,23 @@ const isRightOption = (q: Question, label: string) => {
 }
 
 /* ---------- 详情抽屉 ---------- */
+
+/** 把题干里的 (提示词) 与 ____ 高亮切分（FILL_HINT 预览用） */
+interface StemSeg { text: string; hint?: boolean }
+const stemSegments = (stem?: string): StemSeg[] => {
+  if (!stem) return []
+  const re = /(\([^()]{1,40}\)|_{2,}|\[BLANK\])/g
+  const out: StemSeg[] = []
+  let last = 0
+  let m: RegExpExecArray | null
+  while ((m = re.exec(stem))) {
+    if (m.index > last) out.push({ text: stem.slice(last, m.index) })
+    out.push({ text: m[0], hint: true })
+    last = m.index + m[0].length
+  }
+  if (last < stem.length) out.push({ text: stem.slice(last) })
+  return out
+}
 const drawerVisible = ref(false)
 const detail = ref<Question | null>(null)
 const detailPassage = ref<ReadingPassage | null>(null)
@@ -1292,6 +1343,20 @@ onMounted(async () => {
 
 <template>
   <div class="page">
+    <!-- 题型切换 Tabs（替代原来的题型下拉框，切换更直观） -->
+    <el-tabs
+      v-model="typeTab"
+      class="type-tabs"
+      @tab-change="onTypeTabChange"
+    >
+      <el-tab-pane
+        v-for="t in typeTabOptions"
+        :key="t.value"
+        :label="t.label"
+        :name="t.value"
+      />
+    </el-tabs>
+
     <!-- 筛选栏 -->
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
@@ -1319,26 +1384,6 @@ onMounted(async () => {
               placeholder="选择分类"
               style="width: 200px"
             />
-          </el-form-item>
-          <el-form-item label="题型">
-            <el-select
-              v-model="query.questionType"
-              clearable
-              placeholder="全部"
-              style="width: 140px"
-            >
-              <el-option-group label="普通题型">
-                <el-option
-                  v-for="op in normalTypeOptions"
-                  :key="op.value"
-                  :label="op.label"
-                  :value="op.value"
-                />
-              </el-option-group>
-              <el-option-group label="阅读理解">
-                <el-option label="阅读理解选择题" value="READING" />
-              </el-option-group>
-            </el-select>
           </el-form-item>
           <el-form-item label="难度">
             <el-select
@@ -2082,8 +2127,16 @@ onMounted(async () => {
               <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干，使用 [BLANK] 或 __ 表示填空位置" />
             </el-form-item>
             <el-form-item label="填空答案">
-              <el-input v-model="normalForm.answerFill" placeholder="填空答案（单个单词，会自动转大写）" />
-              <span class="fill-hint">提示：填空答案应为单个单词，不含空格</span>
+              <el-input v-model="normalForm.answerFill" placeholder="填空答案，如 GETS / ARE PLAYING / Paris" />
+              <span class="fill-hint">默认忽略大小写判分；选「区分大小写」后学生必须原样输入</span>
+            </el-form-item>
+            <el-form-item label="答案格式">
+              <el-select v-model="normalForm.answerFormat" style="width: 100%">
+                <el-option label="忽略大小写（默认，推荐）" value="CASE_INSENSITIVE" />
+                <el-option label="区分大小写（专有名词等必须照抄）" value="CASE_SENSITIVE" />
+                <el-option label="仅单词（答案不含空格）" value="WORD_ONLY" />
+                <el-option label="整句作答（允许空格与标点）" value="SENTENCE" />
+              </el-select>
             </el-form-item>
             <el-form-item label="陷阱干扰">
               <el-switch v-model="normalForm.hasTrap" />
@@ -2156,8 +2209,16 @@ onMounted(async () => {
               <el-input v-model="normalForm.fillHint" placeholder="括号内的提示词，如：verb, noun, past tense" />
             </el-form-item>
             <el-form-item label="填空答案">
-              <el-input v-model="normalForm.answerFill" placeholder="填空答案（单个单词，会自动转大写）" />
-              <span class="fill-hint">提示：填空答案应为单个单词，不含空格</span>
+              <el-input v-model="normalForm.answerFill" placeholder="填空答案，如 GETS / ARE PLAYING / Paris" />
+              <span class="fill-hint">默认忽略大小写判分；选「区分大小写」后学生必须原样输入</span>
+            </el-form-item>
+            <el-form-item label="答案格式">
+              <el-select v-model="normalForm.answerFormat" style="width: 100%">
+                <el-option label="忽略大小写（默认，推荐）" value="CASE_INSENSITIVE" />
+                <el-option label="区分大小写（专有名词等必须照抄）" value="CASE_SENSITIVE" />
+                <el-option label="仅单词（答案不含空格）" value="WORD_ONLY" />
+                <el-option label="整句作答（允许空格与标点）" value="SENTENCE" />
+              </el-select>
             </el-form-item>
             <el-form-item label="陷阱干扰">
               <el-switch v-model="normalForm.hasTrap" />
@@ -2485,7 +2546,26 @@ onMounted(async () => {
 
         <div class="detail-block">
           <div class="detail-label">题干</div>
-          <div class="detail-stem">{{ detail.stem }}</div>
+          <div class="detail-stem">
+            <template v-for="(seg, si) in stemSegments(detail.stem)" :key="si">
+              <span v-if="seg.hint" class="stem-hint-mark">{{ seg.text }}</span>
+              <template v-else>{{ seg.text }}</template>
+            </template>
+          </div>
+        </div>
+
+        <!-- 填空题：学生视角预览 -->
+        <div v-if="detail.questionType === 'FILL_HINT'" class="fill-preview">
+          <div class="detail-label">学生视角（填空效果）</div>
+          <div class="fill-preview-body">
+            <template v-for="(seg, si) in stemSegments(detail.stem)" :key="si">
+              <span v-if="seg.hint && seg.text.includes('(')" class="fill-hint-inline">{{ seg.text }}</span>
+              <span v-else-if="seg.hint" class="fill-blank-inline">
+                <span class="fill-blank-answer">{{ detail.standardAnswer || '?' }}</span>
+              </span>
+              <template v-else>{{ seg.text }}</template>
+            </template>
+          </div>
         </div>
 
         <div class="detail-block" v-if="detail.options?.length">
@@ -2630,6 +2710,25 @@ onMounted(async () => {
 }
 .filter-card :deep(.el-card__body) {
   padding-bottom: 0;
+}
+/* 题型 Tabs */
+.type-tabs {
+  margin-bottom: 12px;
+  background: #fff;
+  border-radius: 4px;
+  padding: 0 16px;
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.04);
+}
+.type-tabs :deep(.el-tabs__header) {
+  margin: 0;
+}
+.type-tabs :deep(.el-tabs__item) {
+  font-size: 14px;
+  height: 48px;
+  line-height: 48px;
+}
+.type-tabs :deep(.el-tabs__item.is-active) {
+  font-weight: 600;
 }
 .toolbar {
   margin-bottom: 12px;
@@ -3205,6 +3304,45 @@ onMounted(async () => {
     line-height: 1.8;
     color: #303133;
     white-space: pre-wrap;
+  }
+
+  .stem-hint-mark {
+    background: #fef0e6;
+    color: #b88230;
+    padding: 0 4px;
+    border-radius: 3px;
+    font-weight: 600;
+  }
+
+  .fill-preview {
+    margin-bottom: 14px;
+    padding: 12px 14px;
+    background: #f0f7ff;
+    border: 1px dashed #b3d8ff;
+    border-radius: 6px;
+
+    .fill-preview-body {
+      font-size: 15px;
+      line-height: 2;
+      color: #303133;
+    }
+    .fill-hint-inline {
+      color: #b88230;
+      font-size: 12px;
+      margin: 0 2px;
+    }
+    .fill-blank-inline {
+      display: inline-block;
+      min-width: 70px;
+      padding: 0 8px;
+      border-bottom: 2px solid #409eff;
+      text-align: center;
+      margin: 0 2px;
+    }
+    .fill-blank-answer {
+      color: #67c23a;
+      font-weight: 700;
+    }
   }
 
   .detail-opt {

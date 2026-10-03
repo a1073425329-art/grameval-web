@@ -1,6 +1,13 @@
 import type { Difficulty, PageResult } from './common'
 import type { Question, QuestionOption } from './question'
 
+/** 重点词汇项 */
+export interface VocabularyItem {
+  word: string
+  phonetic?: string
+  meaning: string
+}
+
 export interface ReadingPassage {
   id: number
   categoryId?: number
@@ -13,6 +20,12 @@ export interface ReadingPassage {
   topic?: string
   source?: string
   summary?: string
+  /** 全文中文翻译（可选） */
+  translation?: string
+  /** 重点词汇 */
+  keyVocabulary?: VocabularyItem[]
+  /** 文章级知识点标签 */
+  knowledgePoints?: string[]
   questionCount?: number
   usageCount?: number
   status?: 0 | 1
@@ -34,6 +47,9 @@ export interface ReadingPassageForm {
   topic?: string | undefined
   source?: string | undefined
   summary?: string | undefined
+  translation?: string | undefined
+  keyVocabulary?: VocabularyItem[] | undefined
+  knowledgePoints?: string[] | undefined
   status?: 0 | 1 | undefined
   isTemp?: boolean | undefined
   aiPrompt?: string | undefined

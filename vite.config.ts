@@ -44,6 +44,16 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+    watch: {
+      // 忽略编辑器/写入工具的原子写临时目录（形如 .foo.ts.12345.<uuid>.tmpdir/foo.ts.tmp），
+      // 避免 chokidar 对被锁定的 .tmp 发起 fs.watch 抛 EBUSY 把 dev server 打挂
+      ignored: [
+        '**/node_modules/**',
+        '**/.git/**',
+        '**/*.tmpdir/**',           // DSH/edit 工具的原子写临时目录
+        '**/*.tmp',                 // 任何 .tmp 文件
+      ],
+    },
   },
   build: {
     rollupOptions: {

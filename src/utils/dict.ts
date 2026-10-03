@@ -39,8 +39,9 @@ export const questionTypeDict: DictOption[] = [
 
 /**
  * 阅读子题型。值与后端 question.question_subtype 一致
- * （实体 Question.java 声明的 DETAIL/MAIN_IDEA/INFERENCE/VOCABULARY/ATTITUDE；
- * 库里的 READING_* 旧值已在 2026-10-02 归一，见 sql/fix_reading_orphans_20261002.sql）。
+ * （实体 Question.java 声明的取值；READING_* 旧值已在 2026-10-02 归一，
+ * 见 sql/fix_reading_orphans_20261002.sql。2026-10-03 扩展至 16 种，
+ * 对齐中考/高考/CET-4/6/雅思/托福的真实阅读题型）。
  */
 export const readingSubtypeDict: DictOption[] = [
   { value: 'DETAIL', label: '细节题' },
@@ -48,6 +49,17 @@ export const readingSubtypeDict: DictOption[] = [
   { value: 'INFERENCE', label: '推断题' },
   { value: 'VOCABULARY', label: '词义题' },
   { value: 'ATTITUDE', label: '态度题' },
+  { value: 'REFERENCE', label: '指代题' },
+  { value: 'ORGANIZATION', label: '篇章结构' },
+  { value: 'SENTENCE_SIMPLIFICATION', label: '句子简化' },
+  { value: 'TRUE_FALSE_NG', label: '判断正误' },
+  { value: 'GAP_FILL', label: '语篇补文' },
+  { value: 'MATCHING_HEADINGS', label: '标题匹配' },
+  { value: 'MATCHING_FEATURES', label: '信息匹配' },
+  { value: 'SENTENCE_COMPLETION', label: '句子补全' },
+  { value: 'SUMMARY_CLOZE', label: '摘要填空' },
+  { value: 'SHORT_ANSWER', label: '简答题' },
+  { value: 'TABLE_COMPLETION', label: '表格填空' },
 ]
 
 export const readingSubtypeLabel = (v?: string | undefined): string =>

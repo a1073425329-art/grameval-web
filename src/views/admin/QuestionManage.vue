@@ -596,6 +596,20 @@ const validationResult = ref<{
   improvedAnalysis?: string
 } | null>(null)
 
+/* 批量 AI 验证：逐题调用后端（每题一次请求），避免把多题塞进一次 prompt 导致上下文爆炸 */
+const batchValidating = ref(false)
+const batchProgress = ref({ done: 0, total: 0 })
+const batchDialogVisible = ref(false)
+const batchResults = ref<Array<{
+  id: number
+  stem: string
+  questionType: string
+  isValid: boolean
+  confidence: number
+  suggestions: string[]
+}>>([])
+const BATCH_LIMIT = 50
+
 const doValidate = async () => {
   if (!formRef.value || activeTab.value === 'READING') return
   // 将当前 tab 赋值给 questionType
@@ -640,8 +654,11 @@ const doValidate = async () => {
         standardAnswer,
         analysis: normalForm.analysis,
       })
-      validationResult.value = res.data
-      if (res.data.isValid) {
+      // 兼容：后端 Jackson 历史上会把 boolean isValid 序列化成 "valid"，两个键都兜住
+      const rd = res.data as unknown as { isValid?: boolean; valid?: boolean }
+      const ok = rd.isValid ?? rd.valid ?? false
+      validationResult.value = { ...res.data, isValid: ok }
+      if (ok) {
         ElMessage.success(`AI验证通过，置信度 ${res.data.confidence}%`)
       } else {
         ElMessage.warning('AI验证未通过，请查看建议')
@@ -1223,6 +1240,55 @@ const batchToggle = async (status: 0 | 1) => {
   load()
 }
 
+/**
+ * 批量 AI 验证：逐题调用后端 validate-question（**每题一次请求**）。
+ * 为什么不用「一次 prompt 塞多题」：那会让上下文随题量线性膨胀、很快超限、成本高且一题出错全批重来；
+ * 逐题请求每次上下文都很小、互不影响，也便于逐题给出结论。
+ */
+const batchValidate = async () => {
+  if (!selected.value.length) {
+    ElMessage.warning('请先勾选要验证的题目')
+    return
+  }
+  const rows = selected.value.slice(0, BATCH_LIMIT)
+  if (selected.value.length > BATCH_LIMIT) {
+    ElMessage.info(`一次最多验证 ${BATCH_LIMIT} 道，已取前 ${BATCH_LIMIT} 道`)
+  }
+  batchValidating.value = true
+  batchResults.value = []
+  batchProgress.value = { done: 0, total: rows.length }
+  try {
+    for (const row of rows) {
+      try {
+        const res = await validateQuestion({
+          questionType: row.questionType,
+          stem: row.stem,
+          options: row.options?.length
+            ? row.options.map((o) => ({ optionLabel: o.optionLabel, optionContent: o.optionContent }))
+            : undefined,
+          standardAnswer: row.standardAnswer ?? '',
+          analysis: row.analysis ?? '',
+        })
+        const d = res.data as unknown as { isValid?: boolean; valid?: boolean; confidence: number; suggestions: string[] }
+        batchResults.value.push({
+          id: row.id, stem: row.stem, questionType: row.questionType,
+          isValid: d.isValid ?? d.valid ?? false, confidence: d.confidence ?? 0,
+          suggestions: d.suggestions ?? [],
+        })
+      } catch {
+        batchResults.value.push({
+          id: row.id, stem: row.stem, questionType: row.questionType,
+          isValid: false, confidence: 0, suggestions: ['验证请求失败'],
+        })
+      }
+      batchProgress.value.done++
+    }
+    batchDialogVisible.value = true
+  } finally {
+    batchValidating.value = false
+  }
+}
+
 /* CSV 导出（前端从当前 list 生成） */
 const exporting = ref(false)
 const escapeCsv = (val: unknown): string => {
@@ -1446,14 +1512,13 @@ onMounted(async () => {
               <el-icon><Search /></el-icon>查询
             </el-button>
             <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-            <el-button size="small" @click="revealAll">
+            <el-button @click="revealAll">
               <el-icon><Hide v-if="revealedIds.length" /><View v-else /></el-icon>
               {{ revealedIds.length ? '隐藏全部答案' : '显示全部答案' }}
             </el-button>
             <el-button
               @click="toggleViewMode"
               :type="viewMode === 'card' ? 'primary' : 'default'"
-              size="small"
             >
               <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
               {{ viewMode === 'card' ? '表格' : '卡片' }}
@@ -1499,6 +1564,15 @@ onMounted(async () => {
           @click="batchDelete"
         >
           批量删除
+        </el-button>
+        <el-button
+          type="primary"
+          plain
+          :disabled="!selected.length"
+          :loading="batchValidating"
+          @click="batchValidate"
+        >
+          <el-icon><Lightning /></el-icon>批量AI验证
         </el-button>
         <el-button :loading="exporting" @click="exportCsv">
           <el-icon><Download /></el-icon>导出 CSV
@@ -2554,8 +2628,8 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- 填空题：学生视角预览 -->
-        <div v-if="detail.questionType === 'FILL_HINT'" class="fill-preview">
+        <!-- 填空题 / 无选项阅读题：学生视角预览 -->
+        <div v-if="!detail.options?.length && detail.questionType !== 'JUDGE'" class="fill-preview">
           <div class="detail-label">学生视角（填空效果）</div>
           <div class="fill-preview-body">
             <template v-for="(seg, si) in stemSegments(detail.stem)" :key="si">
@@ -2697,6 +2771,39 @@ onMounted(async () => {
       <template #footer>
         <el-button @click="importDialogVisible = false">关闭</el-button>
         <el-button type="primary" :loading="importing" @click="handleImport">开始导入</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 批量 AI 验证结果 -->
+    <el-dialog v-model="batchDialogVisible" title="批量 AI 验证结果" width="780px" top="6vh">
+      <div class="batch-summary">
+        <el-tag type="success" effect="dark">通过 {{ batchResults.filter((r) => r.isValid).length }}</el-tag>
+        <el-tag type="danger" effect="dark">未通过 {{ batchResults.filter((r) => !r.isValid).length }}</el-tag>
+        <span class="batch-hint">
+          共 {{ batchResults.length }} 题 · 逐题验证（未把多题塞进一次请求，避免上下文超限）
+        </span>
+      </div>
+      <el-table :data="batchResults" max-height="460" style="width:100%">
+        <el-table-column prop="id" label="ID" width="90" />
+        <el-table-column prop="stem" label="题干" min-width="250" show-overflow-tooltip />
+        <el-table-column label="题型" width="90" align="center">
+          <template #default="{ row }">{{ row.questionType }}</template>
+        </el-table-column>
+        <el-table-column label="结论" width="120" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.isValid ? 'success' : 'danger'" size="small">{{ row.isValid ? '通过' : '未通过' }}</el-tag>
+            <span style="color:#909399"> {{ row.confidence }}%</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="建议" min-width="220">
+          <template #default="{ row }">
+            <span v-if="row.suggestions?.length">{{ row.suggestions.join('；') }}</span>
+            <span v-else style="color:#909399">—</span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <template #footer>
+        <el-button @click="batchDialogVisible = false">关闭</el-button>
       </template>
     </el-dialog>
   </div>
@@ -3390,5 +3497,15 @@ onMounted(async () => {
   gap: 8px;
   padding-top: 12px;
   border-top: 1px solid #ebeef5;
+}
+.batch-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.batch-hint {
+  font-size: 12px;
+  color: #909399;
 }
 </style>

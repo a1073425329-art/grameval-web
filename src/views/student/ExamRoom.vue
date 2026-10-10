@@ -90,6 +90,15 @@ const isMultiAnswer = (q: ExamQuestion) =>
   q.questionType === 'MULTIPLE' || (q.questionType === 'READING' && q.multiAnswer === true)
 
 /**
+ * 需要「文本作答」的题：填空题，或**没有选项**的题（如阅读的摘要填空 SUMMARY_CLOZE、
+ * 句子补全 SENTENCE_COMPLETION，答案是单词/短语，形如 (run)→running）。
+ * 这类题的 question_type 可能仍是 READING，若只按题型渲染会拿到空的单选组、无法作答，
+ * 因此渲染以「答案形态」为准：无选项 → 文本框。
+ */
+const isTextAnswer = (q: ExamQuestion) =>
+  q.questionType === 'FILL_HINT' || (q.options?.length ?? 0) === 0
+
+/**
  * 文章卡只在本组第一题上方出现。考试题目顺序由 questionOrder 决定、不能重排，
  * 所以这里按"前一题是否同一篇"判断（组卷成组抽取保证同篇相邻）。
  */
@@ -533,9 +542,23 @@ const confirmSubmit = () => {
 
           <div class="q-stem">{{ currentIdx }}. {{ current.stem }}</div>
 
+          <!-- 文本作答：填空 / 无选项阅读题（摘要填空、句子补全等，答案形如 running） -->
+          <div v-if="isTextAnswer(current)" class="text-answer">
+            <div v-if="current.hintText" class="hint-line">
+              <el-tag size="small" type="warning" effect="plain">提示</el-tag>
+              <span>{{ current.hintText }}</span>
+            </div>
+            <el-input
+              v-model="answers[current.questionId] as string"
+              :placeholder="current.hintText ? '请填入括号内单词的正确形式' : '请输入答案（单词/短语）'"
+              style="max-width: 500px; margin-top: 12px"
+              @change="onAnswerChange"
+            />
+          </div>
+
           <!-- 单选 / 阅读（单空） -->
           <el-radio-group
-            v-if="(current.questionType === 'SINGLE' || current.questionType === 'READING') && !isMultiAnswer(current)"
+            v-else-if="(current.questionType === 'SINGLE' || current.questionType === 'READING') && !isMultiAnswer(current)"
             v-model="answers[current.questionId]"
             class="opt-list"
             @change="onAnswerChange"
@@ -567,15 +590,6 @@ const confirmSubmit = () => {
             <el-radio value="TRUE" class="opt-row">对</el-radio>
             <el-radio value="FALSE" class="opt-row">错</el-radio>
           </el-radio-group>
-
-          <!-- 填空 -->
-          <el-input
-            v-else-if="current.questionType === 'FILL_HINT'"
-            v-model="answers[current.questionId] as string"
-            placeholder="请输入答案（单词）"
-            style="max-width: 500px; margin-top: 12px"
-            @change="onAnswerChange"
-          />
 
           <div class="footer">
             <el-button :disabled="currentIdx === 1" @click="goPrev">
@@ -761,6 +775,14 @@ const confirmSubmit = () => {
 .q-subtype { margin-bottom: 8px; }
 .q-stem { font-size: var(--exam-font-size); line-height: 1.9; color: #303133; margin-bottom: 20px; white-space: pre-wrap; }
 .opt-list { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+/* 文本作答（填空 / 无选项阅读题：摘要填空、句子补全等） */
+.text-answer { width: 100%; }
+.hint-line {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 4px; padding: 6px 12px;
+  background: #fff8e6; border: 1px dashed #f0c36d; border-radius: 6px;
+  font-size: 13px; color: #8a6d3b;
+}
 /* 选项卡片：不要用 display:flex !important 覆盖 el-radio/el-checkbox 根元素，
    那会把内部 __input(圆圈) 与 __label(文字) 挤到同一行，圆圈被压没、点击热区错乱。 */
 .opt-row {

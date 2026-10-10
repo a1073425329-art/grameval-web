@@ -611,9 +611,26 @@ const submitAiGenerate = async () => {
               >{{ kp }}</el-tag>
             </div>
 
+            <!-- 文本作答：填空 / 无选项阅读题（摘要填空、句子补全等，答案形如 running） -->
+            <div
+              v-if="current.questionType === 'FILL_HINT' || (current.options?.length ?? 0) === 0"
+              class="text-answer"
+            >
+              <div v-if="current.hintText" class="hint-line">
+                <el-tag size="small" type="warning" effect="plain">提示</el-tag>
+                <span>{{ current.hintText }}</span>
+              </div>
+              <el-input
+                v-model="userAnswers[current.id] as string"
+                :disabled="!!currentFeedback"
+                :placeholder="current.hintText ? '请填入括号内单词的正确形式' : '请输入答案（单词/短语）'"
+                style="max-width: 400px; margin-top: 12px"
+              />
+            </div>
+
             <!-- 单选 / 阅读（单空） -->
             <el-radio-group
-              v-if="(current.questionType === 'SINGLE' || current.questionType === 'READING') && !current.multiAnswer"
+              v-else-if="(current.questionType === 'SINGLE' || current.questionType === 'READING') && !current.multiAnswer"
               v-model="userAnswers[current.id]"
               :disabled="!!currentFeedback"
               class="opt-list"
@@ -645,15 +662,6 @@ const submitAiGenerate = async () => {
               <el-radio value="TRUE" class="opt-row">对</el-radio>
               <el-radio value="FALSE" class="opt-row">错</el-radio>
             </el-radio-group>
-
-            <!-- 填空 -->
-            <el-input
-              v-else-if="current.questionType === 'FILL_HINT'"
-              v-model="userAnswers[current.id] as string"
-              :disabled="!!currentFeedback"
-              placeholder="请输入答案（单词）"
-              style="max-width: 400px; margin-top: 12px"
-            />
 
             <!-- 反馈区 -->
             <div v-if="currentFeedback" class="feedback" :class="{ ok: currentFeedback.isCorrect, ng: !currentFeedback.isCorrect }">
@@ -909,6 +917,14 @@ const submitAiGenerate = async () => {
    根元素布局，把内部 __input(圆圈) 与 __label(文字) 挤到同一行，圆圈被压没、点击热区错乱，
    表现为「只看到 A/B/C/D 纯文本、点不动」。这里用 :deep 只做外观包裹，不改内部布局。 */
 .opt-list { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+/* 文本作答（填空 / 无选项阅读题：摘要填空、句子补全等） */
+.text-answer { width: 100%; }
+.hint-line {
+  display: inline-flex; align-items: center; gap: 8px;
+  margin-top: 4px; padding: 6px 12px;
+  background: #fff8e6; border: 1px dashed #f0c36d; border-radius: 6px;
+  font-size: 13px; color: #8a6d3b;
+}
 .opt-list :deep(.opt-row) {
   display: flex;
   align-items: center;

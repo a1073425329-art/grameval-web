@@ -185,39 +185,52 @@ export interface SessionStatistics {
   distribution: Array<{ range: string; count: number }>
 }
 
-/** 题目质量分析 —— QuestionAnalyticsVO */
+/** 聚合行（分类/题型/子题型共用结构） */
+export interface AnalyticsAggRow {
+  questionCount: number
+  totalAttempts: number
+  totalCorrect: number
+  accuracy: number
+}
+
+/** 题目质量分析 —— QuestionAnalyticsVO（字段与后端 VO 对齐） */
 export interface QuestionAnalytics {
   /** 逐题正确率 */
   questions: QuestionAnalyticsRow[]
   /** 分类聚合 */
-  byCategory: Array<{
-    categoryId: number
-    categoryName: string
-    total: number
-    correct: number
-    wrong: number
-    accuracy: number
-  }>
+  categoryStats: Array<AnalyticsAggRow & { categoryId: number; categoryName: string }>
   /** 难度聚合 */
-  byDifficulty: Array<{
-    difficulty: 1 | 2 | 3
-    total: number
-    correct: number
-    wrong: number
-    accuracy: number
-  }>
+  difficultyStats: Array<AnalyticsAggRow & { difficulty: 1 | 2 | 3; label: string }>
+  /** 总体 KPI */
+  kpi?: {
+    totalQuestions: number
+    attemptedQuestions: number
+    neverAttempted: number
+    totalAttempts: number
+    totalCorrect: number
+    overallAccuracy: number
+    categoryCount: number
+    typeCount: number
+  }
+  /** 题型聚合 */
+  typeStats?: Array<AnalyticsAggRow & { questionType: string; label: string }>
+  /** 阅读子题型聚合 */
+  subtypeStats?: Array<AnalyticsAggRow & { subtype: string; label: string }>
+  /** 正确率区间分布 */
+  accuracyBuckets?: Array<{ label: string; count: number }>
 }
 
 export interface QuestionAnalyticsRow {
   questionId: number
-  stem: string
+  stemPreview: string
+  categoryId?: number
   categoryName?: string
   questionType: string
   difficulty: 1 | 2 | 3
-  totalCount: number
+  attemptCount: number
   correctCount: number
-  wrongCount: number
   accuracy: number
+  usageCount?: number
 }
 
 /** 操作日志 */

@@ -135,6 +135,13 @@ const isOptionSelected = (optionLabel: string) => {
   return answer.includes(optionLabel)
 }
 
+/** 无选项题（填空 / 判断 / 无选项阅读题）的文本作答读写 */
+const redoAnswerOf = (id?: number) => (id === undefined ? '' : (redoAnswers.value[id] ?? ''))
+const setRedoAnswer = (v: string) => {
+  const q = currentRedoQuestion.value
+  if (q) redoAnswers.value[q.id] = v
+}
+
 const submitRedo = async () => {
   const q = currentRedoQuestion.value
   if (!q || !redoAnswers.value[q.id]) {
@@ -318,8 +325,8 @@ onMounted(async () => {
           </div>
         </div>
 
-        <!-- 非选项题的答案区 -->
-        <div v-if="w.questionType === 'FILL' || w.questionType === 'JUDGE'" class="wc-answer-row">
+        <!-- 非选项题的答案区（填空 / 判断 / 无选项阅读题，如摘要填空、句子补全） -->
+        <div v-if="!w.options?.length" class="wc-answer-row">
           <div class="answer-block wrong-block">
             <div class="answer-label">你的答案</div>
             <div class="answer-val" :class="{ correct: answerCorrect(w.userAnswer, w.standardAnswer) }">
@@ -391,6 +398,35 @@ onMounted(async () => {
               <span>{{ op.optionContent }}</span>
               <el-icon v-if="isOptionSelected(op.optionLabel)"><Check /></el-icon>
             </div>
+          </div>
+
+          <!-- 判断题：对 / 错 -->
+          <div v-else-if="currentRedoQuestion.questionType === 'JUDGE'" class="rq-options">
+            <div
+              class="rq-opt"
+              :class="{ selected: redoAnswerOf(currentRedoQuestion.id) === 'TRUE' }"
+              @click="setRedoAnswer('TRUE')"
+            >
+              <span class="rq-opt-key">✓</span><span>对</span>
+              <el-icon v-if="redoAnswerOf(currentRedoQuestion.id) === 'TRUE'"><Check /></el-icon>
+            </div>
+            <div
+              class="rq-opt"
+              :class="{ selected: redoAnswerOf(currentRedoQuestion.id) === 'FALSE' }"
+              @click="setRedoAnswer('FALSE')"
+            >
+              <span class="rq-opt-key">✗</span><span>错</span>
+              <el-icon v-if="redoAnswerOf(currentRedoQuestion.id) === 'FALSE'"><Check /></el-icon>
+            </div>
+          </div>
+
+          <!-- 填空 / 无选项阅读题（摘要填空、句子补全等）：文本作答 -->
+          <div v-else class="rq-blank">
+            <el-input
+              :model-value="redoAnswerOf(currentRedoQuestion.id)"
+              :placeholder="currentRedoQuestion.hintText ? `提示：${currentRedoQuestion.hintText}` : '输入答案（单词/短语）'"
+              @update:model-value="setRedoAnswer"
+            />
           </div>
         </div>
       </div>
@@ -510,6 +546,7 @@ onMounted(async () => {
 .rq-head { display: flex; gap: 8px; margin-bottom: 16px; }
 .rq-stem { font-size: 16px; line-height: 1.8; color: #303133; margin-bottom: 20px; white-space: pre-wrap; }
 .rq-options { display: flex; flex-direction: column; gap: 10px; }
+.rq-blank { margin-top: 12px; }
 .rq-opt {
   display: flex; align-items: center; gap: 10px;
   padding: 12px 16px; border-radius: 8px;

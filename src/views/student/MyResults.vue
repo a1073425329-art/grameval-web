@@ -352,11 +352,11 @@ onBeforeUnmount(() => {
           <el-form-item>
             <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
             <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'">
               <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
               {{ viewMode === 'card' ? '表格' : '卡片' }}
             </el-button>
-            <el-button type="primary" size="small" @click="$router.push('/student/ai-assistant')">
+            <el-button type="primary" @click="$router.push('/student/ai-assistant')">
               <el-icon><Cpu /></el-icon>AI成绩分析
             </el-button>
           </el-form-item>

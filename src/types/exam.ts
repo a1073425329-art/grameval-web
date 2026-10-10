@@ -102,6 +102,8 @@ export interface ExamQuestion {
   multiAnswer?: boolean
   /** 阅读子题型：DETAIL/MAIN_IDEA/INFERENCE/VOCABULARY/ATTITUDE */
   questionSubtype?: string
+  /** 括号提示词（FILL_HINT / 无选项阅读题的作答提示，如 "(run)"） */
+  hintText?: string
   /** 兼容旧字段 */
   passageTempId?: string
 }

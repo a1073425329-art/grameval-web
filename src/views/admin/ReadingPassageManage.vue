@@ -2,9 +2,10 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { List, Grid, Plus, Upload, MagicStick, Edit, Delete, Search } from '@element-plus/icons-vue'
+import { List, Grid, Plus, Upload, MagicStick, Edit, Delete, Search, Refresh, Reading } from '@element-plus/icons-vue'
 import {
   listReadingPassages,
+  getReadingPassageDetail,
   createReadingPassage,
   updateReadingPassage,
   deleteReadingPassage,
@@ -202,25 +203,34 @@ const openAiGenerate = () => {
   }, 100)
 }
 
-const openEdit = (row: ReadingPassage) => {
+const openEdit = async (row: ReadingPassage) => {
   editMode.value = 'edit'
   resetForm()
-  form.id = row.id
-  form.categoryId = row.categoryId
-  form.title = row.title ?? ''
-  form.content = row.content
-  form.translation = row.translation ?? ''
-  form.summary = row.summary ?? ''
-  form.knowledgePoints = row.knowledgePoints ? [...row.knowledgePoints] : []
-  form.keyVocabulary = (row.keyVocabulary ?? []).map((v) => ({ ...v }))
-  form.difficulty = row.difficulty
-  form.passageType = row.passageType ?? ''
-  form.topic = row.topic ?? ''
-  form.source = row.source ?? 'MANUAL'
-  form.status = (row.status ?? 1) as 0 | 1
-  form.isTemp = !!row.isTemp
-  form.aiPrompt = row.aiPrompt ?? ''
-  form.questions = (row.questions ?? []).map((q) => ({
+  // 列表接口不返回题目（只给 questionCount），必须拉详情补齐，否则弹窗永远显示「0 道题」
+  let full = row
+  try {
+    const res = await getReadingPassageDetail(row.id)
+    if (res.data) full = res.data
+  } catch {
+    /* 拉详情失败则回退用列表行 */
+  }
+  const r = full
+  form.id = r.id
+  form.categoryId = r.categoryId
+  form.title = r.title ?? ''
+  form.content = r.content
+  form.translation = r.translation ?? ''
+  form.summary = r.summary ?? ''
+  form.knowledgePoints = r.knowledgePoints ? [...r.knowledgePoints] : []
+  form.keyVocabulary = (r.keyVocabulary ?? []).map((v) => ({ ...v }))
+  form.difficulty = r.difficulty
+  form.passageType = r.passageType ?? ''
+  form.topic = r.topic ?? ''
+  form.source = r.source ?? 'MANUAL'
+  form.status = (r.status ?? 1) as 0 | 1
+  form.isTemp = !!r.isTemp
+  form.aiPrompt = r.aiPrompt ?? ''
+  form.questions = (r.questions ?? []).map((q) => ({
     id: q.id,
     stem: q.stem,
     standardAnswer: q.standardAnswer ?? '',
@@ -420,19 +430,31 @@ onMounted(async () => {
 
 <template>
   <div class="page">
+    <div class="page-header">
+      <div class="ph-left">
+        <div class="ph-icon"><el-icon :size="22"><Reading /></el-icon></div>
+        <div class="ph-text">
+          <h2 class="ph-title">阅读理解文章库</h2>
+          <p class="ph-sub">统一管理阅读文章、配套题目、重点词汇与中文翻译，支持批量导入与 AI 智能生成</p>
+        </div>
+      </div>
+      <div class="ph-right">
+        <el-tag type="primary" effect="light" round size="large">共 {{ total }} 篇文章</el-tag>
+      </div>
+    </div>
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
         <el-row :gutter="8">
-          <el-form-item label="关键词">
+          <el-form-item label="标题 / 正文">
             <el-input
               v-model="query.keyword"
-              placeholder="标题/内容关键词"
+              placeholder="输入标题或正文关键词"
               :maxlength="FormLimits.keyword.max"
               clearable
-              style="width: 180px"
+              style="width: 190px"
             />
           </el-form-item>
-          <el-form-item label="分类">
+          <el-form-item label="所属分类">
             <el-cascader
               v-model="query.categoryId"
               :options="categories"
@@ -445,37 +467,39 @@ onMounted(async () => {
               }"
               clearable
               placeholder="选择分类"
-              style="width: 160px"
+              style="width: 170px"
             />
           </el-form-item>
-          <el-form-item label="难度">
-            <el-select v-model="query.difficulty" clearable placeholder="全部" style="width: 100px">
+          <el-form-item label="难度等级">
+            <el-select v-model="query.difficulty" clearable placeholder="不限" style="width: 110px">
               <el-option v-for="op in difficultyOptions" :key="op.value" :label="op.label" :value="op.value" />
             </el-select>
           </el-form-item>
-          <el-form-item label="类型">
-            <el-select v-model="query.passageType" clearable placeholder="全部" style="width: 120px">
+          <el-form-item label="文章体裁">
+            <el-select v-model="query.passageType" clearable placeholder="不限" style="width: 130px">
               <el-option v-for="op in passageTypeOptions" :key="op.value" :label="op.label" :value="op.value" />
             </el-select>
           </el-form-item>
         </el-row>
         <el-row :gutter="8" style="margin-top: 8px">
-          <el-form-item label="主题">
-            <el-input v-model="query.topic" placeholder="主题标签" :maxlength="FormLimits.shortText.max" clearable style="width: 120px" />
+          <el-form-item label="主题标签">
+            <el-input v-model="query.topic" placeholder="如：科技、环保" :maxlength="FormLimits.shortText.max" clearable style="width: 130px" />
           </el-form-item>
-          <el-form-item label="来源">
-            <el-select v-model="query.source" clearable placeholder="全部" style="width: 110px">
+          <el-form-item label="数据来源">
+            <el-select v-model="query.source" clearable placeholder="不限" style="width: 120px">
               <el-option v-for="op in sourceOptions" :key="op.value" :label="op.label" :value="op.value" />
             </el-select>
           </el-form-item>
-          <el-form-item label="状态">
-            <el-select v-model="query.status" clearable placeholder="全部" style="width: 100px">
-              <el-option label="启用" :value="1" />
-              <el-option label="停用" :value="0" />
+          <el-form-item label="启用状态">
+            <el-select v-model="query.status" clearable placeholder="不限" style="width: 110px">
+              <el-option label="已启用" :value="1" />
+              <el-option label="已停用" :value="0" />
             </el-select>
           </el-form-item>
-          <el-form-item label="含临时">
-            <el-switch v-model="query.includeTemp" />
+          <el-form-item label="含临时稿">
+            <el-tooltip content="临时稿仅用于单次出题，不进入正式文章库" placement="top">
+              <el-switch v-model="query.includeTemp" />
+            </el-tooltip>
           </el-form-item>
           <el-form-item>
             <el-button type="primary" @click="search">
@@ -498,14 +522,16 @@ onMounted(async () => {
     <el-card shadow="never" v-loading="loading">
       <div class="toolbar">
         <el-button type="primary" @click="openCreate">
-          <el-icon><Plus /></el-icon>新增文章
+          <el-icon><Plus /></el-icon>新建文章
         </el-button>
         <el-button type="success" @click="openAiGenerate" :loading="aiGenerating">
-          <el-icon><MagicStick /></el-icon>AI 生成文章
+          <el-icon><MagicStick /></el-icon>AI 智能生成
         </el-button>
         <el-button type="primary" plain>
-          <el-icon><Upload /></el-icon>导入文章
+          <el-icon><Upload /></el-icon>批量导入
         </el-button>
+        <div class="toolbar-spacer" />
+        <span v-if="selected.length" class="sel-hint">已选 {{ selected.length }} 篇</span>
         <el-button type="success" plain :disabled="!selected.length" @click="batchToggle(1)">
           批量启用
         </el-button>
@@ -524,21 +550,24 @@ onMounted(async () => {
         style="width: 100%"
         @selection-change="onSelection"
       >
+        <template #empty>
+          <el-empty description="暂无文章，点击「新建文章」或「批量导入」开始添加" />
+        </template>
         <el-table-column type="selection" width="50" />
-        <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="title" label="标题" min-width="160" show-overflow-tooltip />
-        <el-table-column label="内容预览" min-width="260" show-overflow-tooltip>
+        <el-table-column type="index" label="序号" width="66" />
+        <el-table-column prop="title" label="标题" min-width="170" show-overflow-tooltip />
+        <el-table-column label="正文预览" min-width="280" show-overflow-tooltip>
           <template #default="{ row }">{{ row.content }}</template>
         </el-table-column>
-        <el-table-column label="难度" width="90">
+        <el-table-column label="难度" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="diffTagType(row.difficulty)" size="small">{{ diffLabel(row.difficulty) }}</el-tag>
+            <el-tag :type="diffTagType(row.difficulty)" size="small" effect="light">{{ diffLabel(row.difficulty) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="类型" width="100">
+        <el-table-column label="体裁" width="100">
           <template #default="{ row }">{{ typeLabel(row.passageType) }}</template>
         </el-table-column>
-        <el-table-column label="附加" width="110" align="center">
+        <el-table-column label="附加信息" width="120" align="center">
           <template #default="{ row }">
             <el-tooltip v-if="row.translation" content="含中文翻译"><el-tag size="small" type="success" effect="plain">译</el-tag></el-tooltip>
             <el-tooltip v-if="row.keyVocabulary?.length" :content="`${row.keyVocabulary.length} 条重点词汇`">
@@ -549,10 +578,12 @@ onMounted(async () => {
         <el-table-column label="来源" width="100">
           <template #default="{ row }">{{ sourceLabel(row.source) }}</template>
         </el-table-column>
-        <el-table-column label="题数" width="80" align="center">
-          <template #default="{ row }">{{ row.questionCount ?? 0 }}</template>
+        <el-table-column label="题目数" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag size="small" type="info" effect="plain">{{ row.questionCount ?? 0 }}</el-tag>
+          </template>
         </el-table-column>
-        <el-table-column label="字数" width="80" align="center">
+        <el-table-column label="词数" width="80" align="center">
           <template #default="{ row }">{{ row.wordCount ?? 0 }}</template>
         </el-table-column>
         <el-table-column label="状态" width="90">
@@ -869,6 +900,50 @@ onMounted(async () => {
   flex-direction: column;
   gap: 12px;
 }
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: 12px;
+  background: linear-gradient(120deg, #eef4ff 0%, #f5f0ff 100%);
+  border: 1px solid #e4ebf7;
+}
+.ph-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.ph-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: linear-gradient(135deg, #409eff, #7c5cff);
+  box-shadow: 0 6px 14px rgba(64, 158, 255, 0.28);
+  flex-shrink: 0;
+}
+.ph-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 700;
+  color: #1f2d3d;
+  letter-spacing: 0.5px;
+}
+.ph-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #7a8699;
+}
+.ph-right {
+  flex-shrink: 0;
+}
+
 .filter-card :deep(.el-card__body) {
   padding-bottom: 0;
 }
@@ -877,6 +952,15 @@ onMounted(async () => {
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
+  align-items: center;
+}
+.toolbar-spacer {
+  flex: 1;
+}
+.sel-hint {
+  font-size: 13px;
+  color: #409eff;
+  margin-right: 4px;
 }
 .pagination {
   display: flex;

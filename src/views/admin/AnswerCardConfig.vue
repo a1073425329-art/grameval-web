@@ -293,7 +293,7 @@ const rowClassName = ({ row }: { row: AnswerCard }) => row.isDefault ? 'default-
         <el-form-item>
           <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
           <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-          <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+          <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'">
             <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
             {{ viewMode === 'card' ? '表格' : '卡片' }}
           </el-button>
@@ -312,26 +312,26 @@ const rowClassName = ({ row }: { row: AnswerCard }) => row.isDefault ? 'default-
               <el-icon v-if="row.isDefault" color="#E6A23C" :size="16"><Star /></el-icon>
               <el-icon v-else color="#409EFF" :size="16"><Document /></el-icon>
               <span class="name-text">{{ row.cardName || '-' }}</span>
-              <el-tag v-if="row.isDefault" type="warning" size="small" effect="dark">默认</el-tag>
+              <el-tag v-if="row.isDefault" type="warning" effect="dark">默认</el-tag>
             </div>
           </template>
         </el-table-column>
         <el-table-column label="关联试卷" width="200" show-overflow-tooltip prop="paperId" sortable :sort-method="sortByPaper">
           <template #default="{ row }">
-            <el-tag :type="paperTagType(row)" size="small" effect="plain">
+            <el-tag :type="paperTagType(row)" effect="plain">
               {{ paperName(row) }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="默认" width="80" align="center" prop="isDefault" sortable :sort-method="sortByDefault">
           <template #default="{ row }">
-            <el-tag v-if="row.isDefault" type="warning" size="small">默认</el-tag>
-            <el-tag v-else type="info" size="small" effect="plain">-</el-tag>
+            <el-tag v-if="row.isDefault" type="warning">默认</el-tag>
+            <el-tag v-else type="info" effect="plain">-</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="排序方式" width="100" align="center">
           <template #default="{ row }">
-            <el-tag :type="orderColor(row.questionOrderConfig)" size="small">{{ orderLabel(row.questionOrderConfig) }}</el-tag>
+            <el-tag :type="orderColor(row.questionOrderConfig)">{{ orderLabel(row.questionOrderConfig) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="列数" width="80" align="center">
@@ -340,7 +340,7 @@ const rowClassName = ({ row }: { row: AnswerCard }) => row.isDefault ? 'default-
         <el-table-column label="题型顺序" min-width="180">
           <template #default="{ row }">
             <div class="type-chips">
-              <el-tag v-for="t in typeOrderLabels(row.questionOrderConfig)" :key="t" type="info" size="small" effect="plain">{{ t }}</el-tag>
+              <el-tag v-for="t in typeOrderLabels(row.questionOrderConfig)" :key="t" type="info" effect="plain">{{ t }}</el-tag>
               <span v-if="typeOrderLabels(row.questionOrderConfig).length === 0" class="text-muted">-</span>
             </div>
           </template>
@@ -348,7 +348,7 @@ const rowClassName = ({ row }: { row: AnswerCard }) => row.isDefault ? 'default-
         <el-table-column label="样式配置" min-width="200">
           <template #default="{ row }">
             <div class="style-chips">
-              <el-tag v-for="c in styleChips(row.styleConfig)" :key="c" type="success" size="small" effect="plain">{{ c }}</el-tag>
+              <el-tag v-for="c in styleChips(row.styleConfig)" :key="c" type="success" effect="plain">{{ c }}</el-tag>
               <span v-if="styleChips(row.styleConfig).length === 0" class="text-muted">-</span>
             </div>
           </template>
@@ -356,10 +356,10 @@ const rowClassName = ({ row }: { row: AnswerCard }) => row.isDefault ? 'default-
         <el-table-column prop="createTime" label="创建时间" width="170" sortable />
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="primary" link @click="openEdit(row)"><el-icon><Edit /></el-icon>编辑</el-button>
-            <el-button size="small" type="info" link @click="handleCopy(row)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
-            <el-button v-if="!row.isDefault" size="small" type="warning" link @click="handleSetDefault(row)"><el-icon><Star /></el-icon>设默认</el-button>
-            <el-button size="small" type="danger" link @click="handleDelete(row.id)"><el-icon><Delete /></el-icon>删除</el-button>
+            <el-button type="primary" link @click="openEdit(row)"><el-icon><Edit /></el-icon>编辑</el-button>
+            <el-button type="info" link @click="handleCopy(row)"><el-icon><DocumentCopy /></el-icon>复制</el-button>
+            <el-button v-if="!row.isDefault" type="warning" link @click="handleSetDefault(row)"><el-icon><Star /></el-icon>设默认</el-button>
+            <el-button type="danger" link @click="handleDelete(row.id)"><el-icon><Delete /></el-icon>删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -390,13 +390,13 @@ const rowClassName = ({ row }: { row: AnswerCard }) => row.isDefault ? 'default-
               </el-icon>
               <span class="card-title">{{ c.cardName || '未命名' }}</span>
             </div>
-            <el-tag v-if="c.isDefault" type="warning" size="small" effect="dark">默认</el-tag>
+            <el-tag v-if="c.isDefault" type="warning" effect="dark">默认</el-tag>
           </div>
 
           <!-- 关联试卷 -->
           <div class="card-paper">
             <el-icon><Files /></el-icon>
-            <el-tag :type="paperTagType(c)" size="small" effect="plain">{{ paperName(c) }}</el-tag>
+            <el-tag :type="paperTagType(c)" effect="plain">{{ paperName(c) }}</el-tag>
           </div>
 
           <!-- 题序配置 -->
@@ -406,9 +406,9 @@ const rowClassName = ({ row }: { row: AnswerCard }) => row.isDefault ? 'default-
               <span>题序配置</span>
             </div>
             <div class="section-body">
-              <el-tag :type="orderColor(c.questionOrderConfig)" size="small">{{ orderLabel(c.questionOrderConfig) }}</el-tag>
-              <el-tag type="info" size="small" effect="plain">{{ columnsLabel(c.questionOrderConfig) }}</el-tag>
-              <el-tag v-for="t in typeOrderLabels(c.questionOrderConfig)" :key="t" type="info" size="small" effect="plain">{{ t }}</el-tag>
+              <el-tag :type="orderColor(c.questionOrderConfig)">{{ orderLabel(c.questionOrderConfig) }}</el-tag>
+              <el-tag type="info" effect="plain">{{ columnsLabel(c.questionOrderConfig) }}</el-tag>
+              <el-tag v-for="t in typeOrderLabels(c.questionOrderConfig)" :key="t" type="info" effect="plain">{{ t }}</el-tag>
             </div>
           </div>
 
@@ -419,7 +419,7 @@ const rowClassName = ({ row }: { row: AnswerCard }) => row.isDefault ? 'default-
               <span>样式配置</span>
             </div>
             <div class="section-body">
-              <el-tag v-for="chip in styleChips(c.styleConfig)" :key="chip" type="success" size="small" effect="plain">{{ chip }}</el-tag>
+              <el-tag v-for="chip in styleChips(c.styleConfig)" :key="chip" type="success" effect="plain">{{ chip }}</el-tag>
               <span v-if="styleChips(c.styleConfig).length === 0" class="text-muted">默认样式</span>
             </div>
           </div>
@@ -428,10 +428,10 @@ const rowClassName = ({ row }: { row: AnswerCard }) => row.isDefault ? 'default-
           <div class="card-footer">
             <span class="footer-time">{{ c.createTime }}</span>
             <div class="footer-actions">
-              <el-button size="small" type="primary" link @click="openEdit(c)"><el-icon><Edit /></el-icon></el-button>
-              <el-button size="small" type="info" link @click="handleCopy(c)"><el-icon><DocumentCopy /></el-icon></el-button>
-              <el-button v-if="!c.isDefault" size="small" type="warning" link @click="handleSetDefault(c)"><el-icon><Star /></el-icon></el-button>
-              <el-button size="small" type="danger" link @click="handleDelete(c.id)"><el-icon><Delete /></el-icon></el-button>
+              <el-button type="primary" link @click="openEdit(c)"><el-icon><Edit /></el-icon></el-button>
+              <el-button type="info" link @click="handleCopy(c)"><el-icon><DocumentCopy /></el-icon></el-button>
+              <el-button v-if="!c.isDefault" type="warning" link @click="handleSetDefault(c)"><el-icon><Star /></el-icon></el-button>
+              <el-button type="danger" link @click="handleDelete(c.id)"><el-icon><Delete /></el-icon></el-button>
             </div>
           </div>
         </div>
@@ -715,7 +715,7 @@ const handleDelete = async (id: number) => {
           <template #default="{ row }">{{ row.paperId ? (papers.find(p => p.id === row.paperId)?.paperName ?? row.paperId) : '全局默认' }}</template>
         </el-table-column>
         <el-table-column label="默认" width="80">
-          <template #default="{ row }"><el-tag v-if="row.isDefault" type="success" size="small">默认</el-tag></template>
+          <template #default="{ row }"><el-tag v-if="row.isDefault" type="success">默认</el-tag></template>
         </el-table-column>
         <el-table-column label="题序配置" min-width="200">
           <template #default="{ row }"><code style="font-size:12px">{{ row.questionOrderConfig?.substring(0, 50) }}...</code></template>
@@ -725,8 +725,8 @@ const handleDelete = async (id: number) => {
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row.id)">删除</el-button>
+            <el-button type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button type="danger" @click="handleDelete(row.id)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

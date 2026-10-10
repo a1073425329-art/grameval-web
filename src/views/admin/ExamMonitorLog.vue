@@ -194,7 +194,7 @@ const handlePageChange = () => load()
         <el-form-item>
           <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
           <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-          <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+          <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'">
             <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
             {{ viewMode === 'card' ? '表格' : '卡片' }}
           </el-button>
@@ -221,12 +221,12 @@ const handlePageChange = () => load()
         </el-table-column>
         <el-table-column label="事件类型" width="130" prop="monitorType" sortable :sort-method="sortByType">
           <template #default="{ row }">
-            <el-tag size="small" effect="plain">{{ typeLabels[row.monitorType] ?? row.monitorType }}</el-tag>
+            <el-tag effect="plain">{{ typeLabels[row.monitorType] ?? row.monitorType }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="严重程度" width="110" align="center" prop="severity" sortable :sort-method="sortBySeverity">
           <template #default="{ row }">
-            <el-tag :type="severityTag(row.severity)" size="small">
+            <el-tag :type="severityTag(row.severity)">
               {{ severityLabels[row.severity] ?? row.severity }}
             </el-tag>
           </template>
@@ -238,14 +238,14 @@ const handlePageChange = () => load()
         </el-table-column>
         <el-table-column label="状态" width="100" align="center" prop="handled" sortable :sort-method="sortByHandled">
           <template #default="{ row }">
-            <el-tag :type="row.handled ? 'success' : 'danger'" size="small" effect="plain">
+            <el-tag :type="row.handled ? 'success' : 'danger'" effect="plain">
               {{ row.handled ? '已处理' : '待处理' }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="130" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="!row.handled" size="small" type="primary" link @click="handleEvent(row.id)">
+            <el-button v-if="!row.handled" type="primary" link @click="handleEvent(row.id)">
               <el-icon><Check /></el-icon>标记处理
             </el-button>
             <span v-else style="color:#67C23A;font-size:12px">
@@ -276,11 +276,11 @@ const handlePageChange = () => load()
         :style="{ '--accent': severityColor(e.severity) }"
       >
         <div class="card-head">
-          <el-tag :type="severityTag(e.severity)" size="small">
+          <el-tag :type="severityTag(e.severity)">
             {{ severityLabels[e.severity] ?? e.severity }}
           </el-tag>
-          <el-tag size="small" effect="plain">{{ typeLabels[e.monitorType] ?? e.monitorType }}</el-tag>
-          <el-tag :type="e.handled ? 'success' : 'danger'" size="small" effect="plain">
+          <el-tag effect="plain">{{ typeLabels[e.monitorType] ?? e.monitorType }}</el-tag>
+          <el-tag :type="e.handled ? 'success' : 'danger'" effect="plain">
             {{ e.handled ? '已处理' : '待处理' }}
           </el-tag>
         </div>
@@ -301,7 +301,7 @@ const handlePageChange = () => load()
           处理备注：{{ e.handleNote }}
         </div>
         <div class="card-actions">
-          <el-button v-if="!e.handled" size="small" type="primary" @click="handleEvent(e.id)">
+          <el-button v-if="!e.handled" type="primary" @click="handleEvent(e.id)">
             <el-icon><Check /></el-icon>标记处理
           </el-button>
           <span v-else class="handled-text">
@@ -519,16 +519,16 @@ const typeLabels: Record<string, string> = {
           <template #default="{ row }">{{ typeLabels[row.monitorType] ?? row.monitorType }}</template>
         </el-table-column>
         <el-table-column label="严重程度" width="100">
-          <template #default="{ row }"><el-tag :type="severityTag(row.severity)" size="small">{{ severityLabels[row.severity] }}</el-tag></template>
+          <template #default="{ row }"><el-tag :type="severityTag(row.severity)">{{ severityLabels[row.severity] }}</el-tag></template>
         </el-table-column>
         <el-table-column prop="detail" label="详情" min-width="150" show-overflow-tooltip />
         <el-table-column prop="eventTime" label="时间" width="160" />
         <el-table-column label="已处理" width="80">
-          <template #default="{ row }"><el-tag :type="row.handled ? 'success' : 'danger'" size="small">{{ row.handled ? '是' : '否' }}</el-tag></template>
+          <template #default="{ row }"><el-tag :type="row.handled ? 'success' : 'danger'">{{ row.handled ? '是' : '否' }}</el-tag></template>
         </el-table-column>
         <el-table-column label="操作" width="100" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="!row.handled" size="small" type="primary" @click="handleEvent(row.id)">标记处理</el-button>
+            <el-button v-if="!row.handled" type="primary" @click="handleEvent(row.id)">标记处理</el-button>
             <span v-else style="color:#999">已处理</span>
           </template>
         </el-table-column>

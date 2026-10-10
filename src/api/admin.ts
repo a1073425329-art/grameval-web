@@ -261,6 +261,9 @@ export interface AdminResultQuery extends PageQuery {
   paperName?: string | undefined
   minCorrectRate?: number | undefined
   maxCorrectRate?: number | undefined
+  /** [2026-10-04 补全] 考试时间范围（对齐论文 §4.2.5「按……考试时间查询成绩」） */
+  startTime?: string | undefined
+  endTime?: string | undefined
 }
 
 export const listAdminResults = (params: AdminResultQuery) =>

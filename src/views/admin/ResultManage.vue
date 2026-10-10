@@ -18,6 +18,9 @@ const query = reactive({
   paperName: '',
   minScore: undefined as number | undefined,
   maxScore: undefined as number | undefined,
+  // [2026-10-04 补全] 论文 §4.2.5：按「考试时间」查询
+  startTime: undefined as string | undefined,
+  endTime: undefined as string | undefined,
   isPass: undefined as boolean | undefined,
   minCorrectRate: undefined as number | undefined,
   maxCorrectRate: undefined as number | undefined,
@@ -42,6 +45,8 @@ const load = async () => {
       paperName: query.paperName || undefined,
       minScore: query.minScore,
       maxScore: query.maxScore,
+      startTime: query.startTime,
+      endTime: query.endTime,
       isPass: query.isPass,
       minCorrectRate: query.minCorrectRate,
       maxCorrectRate: query.maxCorrectRate,
@@ -54,6 +59,7 @@ const search = () => { query.pageNum = 1; load() }
 const reset = () => {
   query.userId = undefined; query.userName = ''; query.sessionId = undefined; query.paperId = undefined
   query.paperName = ''; query.minScore = undefined; query.maxScore = undefined; query.isPass = undefined
+  query.startTime = undefined; query.endTime = undefined
   query.minCorrectRate = undefined; query.maxCorrectRate = undefined; query.pageNum = 1
   load()
 }
@@ -261,6 +267,23 @@ onMounted(load)
             <el-input-number v-model="query.minScore" :min="0" :max="100" placeholder="最低" controls-position="right" style="width:100px" />
             <span style="margin:0 4px; color:#909399">~</span>
             <el-input-number v-model="query.maxScore" :min="0" :max="100" placeholder="最高" controls-position="right" style="width:100px" />
+          </el-form-item>
+          <el-form-item label="考试时间">
+            <el-date-picker
+              v-model="query.startTime"
+              type="datetime"
+              placeholder="开始时间"
+              value-format="YYYY-MM-DD HH:mm:ss"
+              style="width:180px"
+            />
+            <span style="margin:0 4px; color:#909399">~</span>
+            <el-date-picker
+              v-model="query.endTime"
+              type="datetime"
+              placeholder="结束时间"
+              value-format="YYYY-MM-DD HH:mm:ss"
+              style="width:180px"
+            />
           </el-form-item>
         </el-row>
         <el-row :gutter="8" style="margin-top: 8px;">

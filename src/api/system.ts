@@ -35,6 +35,37 @@ export interface AiOverview {
   qianwenConfigured?: boolean
   temperature?: number
   maxTokens?: number
+  /** 当前选中的厂商档案（多厂商链路） */
+  currentProfileId?: string
+  currentProfileVendor?: string
+  currentProfileModel?: string
+  currentProfileBaseUrl?: string
+}
+
+/** 厂商模型档案（多厂商链路的最小配置单元） */
+export interface AiVendorProfile {
+  id: string
+  vendor: string
+  protocol: 'openai' | 'ollama'
+  baseUrl: string
+  /** 脱敏后的 Key（前3***后3）；提交时原样回传表示「不修改」 */
+  apiKey: string
+  model: string
+  models: string[]
+  enabled: boolean
+  /** 后端标记：当前生效的档案 */
+  isCurrent?: boolean
+  /** 后端标记：ai.current_profile 指向的档案（含被停用的） */
+  isSelected?: boolean
+}
+
+/** 从上游拉取模型列表的结果 */
+export interface AiVendorModelsResult {
+  id: string
+  model: string
+  models: string[]
+  fromUpstream: boolean
+  message?: string
 }
 
 /** AI Provider 状态 */
@@ -158,6 +189,31 @@ export const aiMultiChat = (data: { provider?: string; messages: AiChatMessage[]
 /** 获取 AI 可用模型列表 */
 export const getAiModels = (provider?: string) =>
   request.get<ApiResponse<AiModel[]>>('/admin/ai-test/models', { params: provider ? { provider } : {} })
+
+// ==================== 厂商模型档案（多厂商） ====================
+
+/** 获取厂商档案列表（Key 已脱敏） */
+export const getAiVendorProfiles = () =>
+  request.get<ApiResponse<AiVendorProfile[]>>('/admin/ai-test/providers')
+
+/** 保存厂商档案列表（整体覆盖；Key 传脱敏值表示不修改） */
+export const saveAiVendorProfiles = (list: AiVendorProfile[]) =>
+  request.put<ApiResponse<AiVendorProfile[]>>('/admin/ai-test/providers', list)
+
+/** 设为当前使用的厂商档案（传 'none' 表示取消，回落到内置通路） */
+export const setCurrentAiVendor = (id: string) =>
+  request.post<ApiResponse<string>>(`/admin/ai-test/providers/${encodeURIComponent(id)}/current`)
+
+/** 删除厂商档案 */
+export const deleteAiVendor = (id: string) =>
+  request.delete<ApiResponse<AiVendorProfile[]>>(`/admin/ai-test/providers/${encodeURIComponent(id)}`)
+
+/** 从上游拉取厂商档案的模型列表 */
+export const fetchAiVendorModels = (id: string) =>
+  request.get<ApiResponse<AiVendorModelsResult>>(
+    `/admin/ai-test/providers/${encodeURIComponent(id)}/models`,
+    { timeout: 30_000 }
+  )
 
 // ==================== AI 相关 ====================
 

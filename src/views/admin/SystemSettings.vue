@@ -59,11 +59,154 @@
               <p>模型选择会同时影响学情分析、错题解析和智能出题。</p>
             </div>
             <div class="active-model-summary">
-              <span class="summary-label">当前编辑</span>
-              <strong>{{ activeProviderLabel }}</strong>
-              <span class="summary-model">{{ activeModelLabel }}</span>
+              <span class="summary-label">当前默认</span>
+              <strong>{{ currentVendorLabel }}</strong>
+              <span class="summary-model">{{ currentVendorModelLabel }}</span>
             </div>
           </div>
+
+          <!-- ============ [2026-10-16 新增] 多厂商模型档案管理 ============ -->
+          <div class="vendor-manager">
+            <div class="vendor-manager-head">
+              <div>
+                <div class="section-kicker">厂商档案</div>
+                <h3>多厂商模型管理</h3>
+                <p>
+                  一条档案 = 一个网关地址 + 一把 Key + 一个默认模型。选为「当前」后，
+                  学情分析 / 错题解析 / 智能出题全部走它；未启用档案时回落到下面的内置直连通路。
+                </p>
+              </div>
+              <div class="vendor-manager-actions">
+                <el-button type="primary" :icon="Plus" @click="openVendorDialog()">新增厂商</el-button>
+                <el-button :icon="Refresh" :loading="vendorLoading" @click="loadVendorProfiles">刷新</el-button>
+              </div>
+            </div>
+
+            <el-alert
+              v-if="!vendorLoading && !vendorProfiles.length"
+              type="info"
+              show-icon
+              :closable="false"
+              title="还没有厂商档案"
+              description="点「新增厂商」把网关地址与 API Key 填进来，保存后即可「设为当前」。"
+            />
+
+            <div class="vendor-grid">
+              <div
+                v-for="vendor in vendorProfiles"
+                :key="vendor.id"
+                class="vendor-card"
+                :class="{ 'is-current': vendor.isCurrent, 'is-off': !vendor.enabled }"
+              >
+                <div class="vendor-card-head">
+                  <div class="vendor-card-title">
+                    <strong>{{ vendor.vendor || vendor.id }}</strong>
+                    <el-tag v-if="vendor.isCurrent" type="success" size="small" effect="dark">当前使用</el-tag>
+                    <el-tag v-else-if="!vendor.enabled" type="info" size="small">已停用</el-tag>
+                  </div>
+                  <el-switch v-model="vendor.enabled" size="small" @change="handleToggleVendor" />
+                </div>
+
+                <div class="vendor-card-body">
+                  <div class="vendor-line">
+                    <span class="k">协议</span>
+                    <span class="v">{{ vendor.protocol === 'ollama' ? '本地 Ollama' : 'OpenAI 兼容' }}</span>
+                  </div>
+                  <div class="vendor-line">
+                    <span class="k">地址</span>
+                    <span class="v url">{{ vendor.baseUrl || '-' }}</span>
+                  </div>
+                  <div class="vendor-line">
+                    <span class="k">默认模型</span>
+                    <span class="v">{{ vendor.model || '-' }}</span>
+                  </div>
+                  <div class="vendor-line">
+                    <span class="k">API Key</span>
+                    <span class="v mono">{{ vendor.apiKey || '未配置' }}</span>
+                  </div>
+                  <div class="vendor-line">
+                    <span class="k">候选模型</span>
+                    <span class="v">{{ (vendor.models || []).length }} 个</span>
+                  </div>
+                </div>
+
+                <el-alert
+                  v-if="vendorTestResult[vendor.id]"
+                  class="vendor-test-alert"
+                  :type="vendorTestResult[vendor.id]?.success ? 'success' : 'error'"
+                  :title="vendorTestResult[vendor.id]?.message ?? ''"
+                  :description="`耗时 ${vendorTestResult[vendor.id]?.latencyMs ?? 0}ms`"
+                  show-icon
+                  :closable="false"
+                />
+
+                <div class="vendor-card-foot">
+                  <el-button
+                    size="small"
+                    type="primary"
+                    :disabled="vendor.isCurrent || !vendor.enabled"
+                    @click="handleSetCurrentVendor(vendor)"
+                  >
+                    {{ vendor.isCurrent ? '当前使用' : '设为当前' }}
+                  </el-button>
+                  <el-button size="small" :loading="vendorTestingId === vendor.id" @click="handleTestVendor(vendor.id)">
+                    测试连通
+                  </el-button>
+                  <el-button size="small" :loading="vendorPullingId === vendor.id" @click="handlePullVendorModels(vendor.id)">
+                    拉取模型
+                  </el-button>
+                  <el-button size="small" @click="openVendorDialog(vendor)">编辑</el-button>
+                  <el-button size="small" type="danger" plain @click="handleDeleteVendor(vendor)">删除</el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 厂商档案编辑弹窗 -->
+          <el-dialog
+            v-model="vendorDialogVisible"
+            :title="vendorDialogEditing ? '编辑厂商档案' : '新增厂商档案'"
+            width="580px"
+            append-to-body
+          >
+            <el-form :model="vendorForm" label-width="110px">
+              <el-form-item label="厂商名称">
+                <el-input v-model="vendorForm.vendor" placeholder="如：官方 DeepSeek / 中转站 GPT 组" />
+              </el-form-item>
+              <el-form-item label="协议">
+                <el-radio-group v-model="vendorForm.protocol">
+                  <el-radio value="openai">OpenAI 兼容</el-radio>
+                  <el-radio value="ollama">本地 Ollama</el-radio>
+                </el-radio-group>
+                <div class="form-tip">DeepSeek / 千问 / 小米 / 火山方舟 / 中转站都选「OpenAI 兼容」。</div>
+              </el-form-item>
+              <el-form-item label="网关地址">
+                <el-input v-model="vendorForm.baseUrl" placeholder="https://api.deepseek.com 或 https://xxx/v1" />
+              </el-form-item>
+              <el-form-item label="API Key">
+                <el-input
+                  v-model="vendorForm.apiKey"
+                  type="password"
+                  show-password
+                  placeholder="sk-...（编辑时保留脱敏值或留空 = 不修改）"
+                />
+              </el-form-item>
+              <el-form-item label="默认模型">
+                <el-select v-model="vendorForm.model" filterable allow-create default-first-option style="width: 100%" placeholder="填写或从候选里选">
+                  <el-option v-for="m in vendorForm.models" :key="m" :label="m" :value="m" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="候选模型">
+                <el-input v-model="vendorModelsText" type="textarea" :rows="4" placeholder="每行一个模型名，可用卡片上的「拉取模型」自动填充" />
+                <div class="form-tip">仅用于下拉候选；实际调用哪个由上面的「默认模型」决定。</div>
+              </el-form-item>
+            </el-form>
+            <template #footer>
+              <el-button @click="vendorDialogVisible = false">取消</el-button>
+              <el-button type="primary" :loading="vendorDialogSaving" @click="handleSaveVendor">保存</el-button>
+            </template>
+          </el-dialog>
+          <!-- ============ [新增结束] ============ -->
 
           <el-form :model="aiForm" label-width="150px" label-position="right" class="ai-config-form">
             <el-form-item label="智能体提供商">
@@ -885,7 +1028,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Setting,
   Tools,
@@ -894,6 +1037,7 @@ import {
   Search,
   VideoPlay,
   Cpu,
+  Plus,
 } from '@element-plus/icons-vue'
 import {
   getAiOverview,
@@ -907,11 +1051,17 @@ import {
   getAiModels,
   discoverEndpoints,
   runAllApiTests,
+  getAiVendorProfiles,
+  saveAiVendorProfiles,
+  setCurrentAiVendor,
+  deleteAiVendor,
+  fetchAiVendorModels,
   type AiOverview,
   type AiProviderStatus,
   type AiModel,
   type AiTestResult,
   type AiChatMessage,
+  type AiVendorProfile,
   type ApiEndpointInfo,
   type ApiTestSummary,
 } from '@/api/system'
@@ -930,6 +1080,200 @@ const testingProvider = ref<string | null>(null)
 const customTest = reactive({ provider: 'DEEPSEEK', apiKey: '', model: '' })
 const customTesting = ref(false)
 const customTestResult = ref<AiTestResult | null>(null)
+
+// ==================== [2026-10-16 新增] 多厂商模型档案 ====================
+const vendorProfiles = ref<AiVendorProfile[]>([])
+const vendorLoading = ref(false)
+const vendorDialogVisible = ref(false)
+const vendorDialogEditing = ref(false)
+const vendorDialogSaving = ref(false)
+const vendorTestingId = ref<string | null>(null)
+const vendorPullingId = ref<string | null>(null)
+const vendorTestResult = ref<Record<string, AiTestResult>>({})
+const vendorModelsText = ref('')
+const vendorForm = reactive<AiVendorProfile>({
+  id: '',
+  vendor: '',
+  protocol: 'openai',
+  baseUrl: '',
+  apiKey: '',
+  model: '',
+  models: [],
+  enabled: true,
+})
+
+/** 当前生效的厂商档案（后端标记 isCurrent） */
+const currentVendor = computed(() => vendorProfiles.value.find(v => v.isCurrent))
+
+const currentVendorLabel = computed(() => {
+  if (currentVendor.value) return currentVendor.value.vendor || currentVendor.value.id
+  return providerLabels[aiOverview.value.provider] || aiOverview.value.provider
+})
+
+const currentVendorModelLabel = computed(() => {
+  if (currentVendor.value) return currentVendor.value.model || '-'
+  return savedModelLabel.value
+})
+
+const loadVendorProfiles = async () => {
+  vendorLoading.value = true
+  try {
+    const res = await getAiVendorProfiles()
+    if (res.code === 200 && res.data) vendorProfiles.value = res.data
+  } catch (e) {
+    console.error('加载厂商档案失败', e)
+  } finally {
+    vendorLoading.value = false
+  }
+}
+
+const openVendorDialog = (vendor?: AiVendorProfile) => {
+  vendorDialogEditing.value = !!vendor
+  if (vendor) {
+    Object.assign(vendorForm, {
+      id: vendor.id,
+      vendor: vendor.vendor,
+      protocol: vendor.protocol || 'openai',
+      baseUrl: vendor.baseUrl,
+      apiKey: vendor.apiKey,
+      model: vendor.model,
+      models: [...(vendor.models || [])],
+      enabled: vendor.enabled !== false,
+    })
+    vendorModelsText.value = (vendor.models || []).join('\n')
+  } else {
+    Object.assign(vendorForm, {
+      id: '', vendor: '', protocol: 'openai', baseUrl: '', apiKey: '',
+      model: '', models: [], enabled: true,
+    })
+    vendorModelsText.value = ''
+  }
+  vendorDialogVisible.value = true
+}
+
+const parseVendorModels = () =>
+  vendorModelsText.value.split('\n').map(s => s.trim()).filter(Boolean)
+
+/** 把当前页面的档案列表整体提交（后端会保留脱敏 Key 对应的旧 Key） */
+const persistVendorProfiles = async (list: AiVendorProfile[]) => {
+  const res = await saveAiVendorProfiles(list)
+  if (res.code === 200) {
+    vendorProfiles.value = res.data || []
+    return true
+  }
+  ElMessage.error(res.message || '保存失败')
+  return false
+}
+
+const handleSaveVendor = async () => {
+  if (!vendorForm.vendor.trim()) { ElMessage.warning('请填写厂商名称'); return }
+  if (!vendorForm.baseUrl.trim()) { ElMessage.warning('请填写网关地址'); return }
+  if (!vendorForm.model.trim()) { ElMessage.warning('请填写默认模型'); return }
+  vendorDialogSaving.value = true
+  try {
+    const payload: AiVendorProfile = { ...vendorForm, models: parseVendorModels() }
+    const rest = vendorProfiles.value.filter(v => v.id !== payload.id)
+    const ok = await persistVendorProfiles([...rest, payload])
+    if (ok) {
+      vendorDialogVisible.value = false
+      ElMessage.success('厂商档案已保存')
+      await loadVendorProfiles()
+      await loadAiOverview()
+    }
+  } catch (e: any) {
+    ElMessage.error('保存失败：' + (e.message || '未知错误'))
+  } finally {
+    vendorDialogSaving.value = false
+  }
+}
+
+const handleSetCurrentVendor = async (vendor: AiVendorProfile) => {
+  try {
+    const res = await setCurrentAiVendor(vendor.id)
+    if (res.code === 200) {
+      ElMessage.success(res.message || '已切换当前模型')
+      await loadVendorProfiles()
+      await loadAiOverview()
+    } else {
+      ElMessage.error(res.message || '切换失败')
+    }
+  } catch (e: any) {
+    ElMessage.error('切换失败：' + (e.message || '未知错误'))
+  }
+}
+
+const handleTestVendor = async (id: string) => {
+  vendorTestingId.value = id
+  try {
+    const res = await testAiProvider(id)
+    vendorTestResult.value[id] = res.data
+  } catch (e: any) {
+    vendorTestResult.value[id] = {
+      success: false,
+      message: '请求失败：' + (e.message || '未知错误'),
+      latencyMs: 0,
+    }
+  } finally {
+    vendorTestingId.value = null
+  }
+}
+
+const handlePullVendorModels = async (id: string) => {
+  vendorPullingId.value = id
+  try {
+    const res = await fetchAiVendorModels(id)
+    if (res.code !== 200) {
+      ElMessage.error(res.message || '拉取失败')
+      return
+    }
+    const data = res.data
+    const merged = Array.from(
+      new Set([...(data.models || []), data.model].filter((m): m is string => !!m))
+    )
+    const list = vendorProfiles.value.map(v => (v.id === id ? { ...v, models: merged } : v))
+    await persistVendorProfiles(list)
+    if (data.fromUpstream) {
+      ElMessage.success(`已从上游拉取 ${merged.length} 个模型`)
+    } else {
+      ElMessage.warning(data.message || '上游未返回模型列表')
+    }
+  } catch (e: any) {
+    ElMessage.error('拉取失败：' + (e.message || '未知错误'))
+  } finally {
+    vendorPullingId.value = null
+  }
+}
+
+const handleToggleVendor = async () => {
+  try {
+    await persistVendorProfiles(vendorProfiles.value)
+    await loadAiOverview()
+  } catch (e: any) {
+    ElMessage.error('更新失败：' + (e.message || '未知错误'))
+  }
+}
+
+const handleDeleteVendor = (vendor: AiVendorProfile) => {
+  ElMessageBox.confirm(
+    `确定删除厂商档案「${vendor.vendor || vendor.id}」吗？若它正被使用，删除后将回落到内置通路。`,
+    '删除确认',
+    { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+  )
+    .then(async () => {
+      const res = await deleteAiVendor(vendor.id)
+      if (res.code === 200) {
+        vendorProfiles.value = res.data || []
+        delete vendorTestResult.value[vendor.id]
+        ElMessage.success('厂商档案已删除')
+        await loadAiOverview()
+      } else {
+        ElMessage.error(res.message || '删除失败')
+      }
+    })
+    .catch(() => { /* 用户取消 */ })
+}
+
+// ==================== [新增结束] ====================
 
 // AI 模型列表
 const availableModels = ref<AiModel[]>([])
@@ -996,7 +1340,8 @@ const aiForm = reactive({
   qianwenModel: 'qwen-max',
   ollamaBaseUrl: 'http://127.0.0.1:11434',
   ollamaModel: 'qwen3.5:9b',
-  difyBaseUrl: 'http://127.0.0.1:19002/v1',
+  // [2026-10-16] 19002 被历史遗留 portproxy 抢占，Dify 的 nginx 端口已改 19003（见 README §5.2）
+  difyBaseUrl: 'http://localhost:19003/v1',
   difyAnalyzeKey: '',
   difyGenerateKey: '',
   mockEnabled: true,
@@ -1149,7 +1494,8 @@ const providerTagType = computed(() => {
   return (map[aiOverview.value.provider] as any) || 'info'
 })
 
-const activeProviderLabel = computed(() => providerLabels[aiForm.provider] || aiForm.provider)
+// [2026-10-16 注释保留] 概览区已改用「当前厂商档案」currentVendorLabel，此计算属性暂无引用
+// const activeProviderLabel = computed(() => providerLabels[aiForm.provider] || aiForm.provider)
 
 const activeModelValue = computed(() => {
   if (aiForm.provider === 'QIANWEN') return aiForm.qianwenModel
@@ -1728,6 +2074,7 @@ const handleRunAllTests = async () => {
 
 onMounted(async () => {
   await loadAiOverview()
+  await loadVendorProfiles()
   await loadProviderStatus()
   await loadAvailableModels()
 })
@@ -1829,6 +2176,157 @@ onMounted(async () => {
   font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
   font-size: 12px;
 }
+
+/* ============ [2026-10-16 新增] 多厂商模型档案 样式 ============ */
+.vendor-manager {
+  padding: 18px 20px 20px;
+  margin-bottom: 18px;
+  border: 1px solid #dfe8f5;
+  border-radius: 8px;
+  background: #fbfdff;
+}
+
+.vendor-manager-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.vendor-manager-head h3 {
+  margin: 3px 0 4px;
+  color: #303133;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.vendor-manager-head p {
+  margin: 0;
+  max-width: 720px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.vendor-manager-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.vendor-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.vendor-card {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 12px;
+  border: 1px solid #e4ebf5;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(64, 158, 255, 0.06);
+  transition: box-shadow 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+.vendor-card:hover {
+  border-color: #c6dcf8;
+  box-shadow: 0 6px 16px rgba(64, 158, 255, 0.14);
+  transform: translateY(-2px);
+}
+
+.vendor-card.is-current {
+  border-color: #67c23a;
+  background: linear-gradient(180deg, #f6fff0 0%, #ffffff 60%);
+}
+
+.vendor-card.is-off {
+  opacity: 0.62;
+}
+
+.vendor-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px dashed #eaeff7;
+}
+
+.vendor-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.vendor-card-title strong {
+  overflow: hidden;
+  color: #303133;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px 0 4px;
+}
+
+.vendor-line {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12.5px;
+}
+
+.vendor-line .k {
+  flex-shrink: 0;
+  width: 62px;
+  color: #909399;
+}
+
+.vendor-line .v {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #303133;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vendor-line .v.url {
+  color: #606266;
+}
+
+.vendor-line .v.mono {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  color: #606266;
+}
+
+.vendor-test-alert {
+  margin: 6px 0 8px;
+}
+
+.vendor-card-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 10px;
+  margin-top: auto;
+  border-top: 1px dashed #eaeff7;
+}
+
+.vendor-card-foot .el-button + .el-button {
+  margin-left: 0;
+}
+/* ============ [新增结束] ============ */
 
 .provider-radio-group {
   display: flex;

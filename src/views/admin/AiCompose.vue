@@ -4,16 +4,20 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import CategoryMultiPicker from '@/components/CategoryMultiPicker.vue'
+// [2026-10-16 新增] 试卷满分档位字典（与后端 ALLOWED_TOTAL_SCORES 对齐）
+import { paperScoreDict } from '@/utils/dict'
 import { listUsers, listCategoryTree, listMyClasses, listClassStudents, type ClassGroup } from '@/api/admin'
 import { analyzeStudent, analyzeStudents, generatePreview, confirmPaper, getMyStudents, directGenerate } from '@/api/ai'
 import type { UserDetail } from '@/types/user'
 import type { Category } from '@/types/category'
-import type { Question } from '@/types/question'
+// [2026-10-16 对齐] preview.questions 为预览态 PreviewQuestion，不再引用落库后的 Question；旧引用注释保留
+// import type { Question } from '@/types/question'
 import type { QuestionType, Difficulty } from '@/types/common'
 import type {
   StudentAnalysis,
   GeneratePaperForm,
   GeneratePaperPreview,
+  PreviewQuestion,
 } from '@/types/ai'
 import type { BatchStudentAnalysis } from '@/api/ai'
 
@@ -160,49 +164,89 @@ const loadStudents = async () => {  try {
 const analysis = ref<StudentAnalysis | null>(null)
 const batchAnalysis = ref<BatchStudentAnalysis | null>(null)
 const analysisLoading = ref(false)
+
+/** 正确率 → 颜色：<60 红 / 60-75 橙 / 75-85 蓝 / ≥85 绿 */
+const accColor = (v?: number | null) => {
+  const n = v ?? 0
+  if (n < 60) return '#f56c6c'
+  if (n < 75) return '#e6a23c'
+  if (n < 85) return '#409eff'
+  return '#67c23a'
+}
 /** 老师可编辑的学情文本，独立于 analysis.analysis */
 const analysisDraft = ref('')
 
+/**
+ * 请求序号守卫（2026-10-16 修复）。
+ *
+ * 现象：连续勾选 3 名学生后，页面显示的却是"只选了 2 人"时的数据
+ * （实测：选了王小刚+赵小丽+孙小华，结果里只有后两人的 10 份成绩单、
+ *  有效作答 0 题，王小刚的 2045 条作答完全没进统计），教师据此会得出
+ * 完全错误的学情结论。
+ * 原因：watch 每勾一个学生就发一次请求，多个请求并发返回时**后发先至**，
+ * 晚返回的旧响应把新响应覆盖掉。
+ * 修法：① 每次请求领一个递增序号；② 响应回来时序号不是最新就丢弃；
+ *      ③ watch 侧再加 500ms 防抖，从源头减少并发请求。
+ */
+let analysisSeq = 0
+
 const fetchAnalysis = async () => {
   if (selectedStudentIds.value.length === 0) {
+    analysisSeq++            // 清空选择同样作废在途请求
     analysis.value = null
     batchAnalysis.value = null
     analysisDraft.value = ''
     return
   }
-  
+
+  // 用快照发请求：请求期间用户可能继续勾选，避免"请求体"与"判断条件"不一致
+  const ids = [...selectedStudentIds.value]
+  const seq = ++analysisSeq
   analysisLoading.value = true
   try {
-    if (selectedStudentIds.value.length === 1) {
+    if (ids.length === 1) {
       // 单选学生：使用单个分析接口
-      const singleId = selectedStudentIds.value[0]
-        if (singleId === undefined) return
-        const res = await analyzeStudent(singleId)
+      const singleId = ids[0]
+      if (singleId === undefined) return
+      const res = await analyzeStudent(singleId)
+      if (seq !== analysisSeq) return          // 已有更新的请求，丢弃本次结果
       analysis.value = res.data
       batchAnalysis.value = null
       analysisDraft.value = res.data.analysis || ''
     } else {
       // 多选学生：使用批量分析接口（整体分析）
-      const res = await analyzeStudents(selectedStudentIds.value)
+      const res = await analyzeStudents(ids)
+      if (seq !== analysisSeq) return
       batchAnalysis.value = res.data
       analysis.value = null
       // 使用整体分析文本作为分析草稿
       analysisDraft.value = res.data.overallAnalysis || ''
     }
   } catch {
+    if (seq !== analysisSeq) return
     analysis.value = null
     batchAnalysis.value = null
     analysisDraft.value = ''
   } finally {
-    analysisLoading.value = false
+    // 只有最新请求才有资格关掉 loading，否则旧请求返回会把新请求的转圈提前停掉
+    if (seq === analysisSeq) analysisLoading.value = false
   }
 }
 
-/* 选学生时自动分析 */
+/* 选学生时自动分析（500ms 防抖：连续勾选只发一次请求） */
 import { watch } from 'vue'
+let analysisTimer: ReturnType<typeof setTimeout> | null = null
 watch(selectedStudentIds, (ids) => {
-  if (ids.length > 0) fetchAnalysis()
-  else { analysis.value = null; analysisDraft.value = '' }
+  if (analysisTimer) clearTimeout(analysisTimer)
+  analysisTimer = setTimeout(() => {
+    if (ids.length > 0) fetchAnalysis()
+    else {
+      analysisSeq++
+      analysis.value = null
+      batchAnalysis.value = null
+      analysisDraft.value = ''
+    }
+  }, 500)
 })
 
 /* ============================================================ *
@@ -225,7 +269,11 @@ const form = reactive({
   hardPct: 20,
   withTrap: true,
   focusWeak: true,
-  questionCount: 25,
+  // [2026-10-16 改] 默认题量 25 → 100：默认出题太少，考试看不出效果（原值 25 保留备查）
+  questionCount: 100,
+  // [2026-10-16 新增] 试卷满分档位（标准档位，见 utils/dict.ts paperScoreDict）：
+  // 后端按「满分 ÷ 实际落库题量」精确分摊每题分值，卷面总分恒等于档位值（不会出现 101、110）
+  totalScore: 100,
   singleWeight: 50,
   multipleWeight: 15,
   readingWeight: 15,
@@ -313,6 +361,7 @@ const doCompose = async () => {
           withTrap: form.withTrap,
           focusWeak: form.focusWeak,
           questionCount: form.questionCount,
+          totalScore: form.totalScore,
           singleWeight: form.singleWeight,
           multipleWeight: form.multipleWeight,
           readingWeight: form.readingWeight,
@@ -388,6 +437,7 @@ const doDirectGenerate = async () => {
         withTrap: form.withTrap,
         focusWeak: form.focusWeak,
         questionCount: form.questionCount,
+        totalScore: form.totalScore,
         singleWeight: form.singleWeight,
         multipleWeight: form.multipleWeight,
         readingWeight: form.readingWeight,
@@ -493,14 +543,16 @@ const doDiscard = async () => {
  * ============================================================ */
 
 const typeLabel = (t: QuestionType) =>
-  ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
+  ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL: '填空', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
 
 const diffLabel = (d: Difficulty) =>
   ({ 1: '简单', 2: '中等', 3: '困难' } as Record<number, string>)[d] || String(d)
 
 const diffTagType = (d: Difficulty) => (d === 1 ? 'success' : d === 2 ? 'warning' : 'danger')
 
-const answerText = (q: Question) => q.standardAnswer || '-'
+// [2026-10-16 对齐] 预览题为 PreviewQuestion（无 id），旧签名 Question 注释保留
+// const answerText = (q: Question) => q.standardAnswer || '-'
+const answerText = (q: PreviewQuestion) => q.standardAnswer || '-'
 
 onMounted(async () => {
   await Promise.all([loadStudents(), loadCategories(), loadMyClasses()])
@@ -622,7 +674,90 @@ onMounted(async () => {
                   <span class="stat-label">平均正确率</span>
                 </div>
               </div>
-              
+
+              <!-- ===== 多维学情画像（2026-10-16 新增）===== -->
+              <div v-if="batchAnalysis.overview" class="multi-dim">
+                <!-- 成绩分布 -->
+                <div v-if="batchAnalysis.overview.maxScore != null" class="dim-block">
+                  <div class="dim-title"><el-icon><TrendCharts /></el-icon> 成绩分布</div>
+                  <div class="dim-grid">
+                    <span>最高分 <b>{{ batchAnalysis.overview.maxScore }}</b></span>
+                    <span>最低分 <b>{{ batchAnalysis.overview.minScore }}</b></span>
+                    <span>中位数 <b>{{ batchAnalysis.overview.medianScore }}</b></span>
+                    <span>标准差 <b>{{ batchAnalysis.overview.stdDevScore }}</b></span>
+                  </div>
+                  <div class="dim-grid">
+                    <span>及格率 <b :style="{ color: accColor(batchAnalysis.overview.passRate) }">{{ batchAnalysis.overview.passRate }}%</b></span>
+                    <span>优秀率 <b :style="{ color: accColor(batchAnalysis.overview.excellentRate) }">{{ batchAnalysis.overview.excellentRate }}%</b></span>
+                    <span>有效作答 <b>{{ batchAnalysis.overview.totalAnswers }}</b> 题</span>
+                    <span>整体正确率 <b :style="{ color: accColor(batchAnalysis.overview.classAccuracy) }">{{ batchAnalysis.overview.classAccuracy }}%</b></span>
+                    <span>已阅卷 <b>{{ batchAnalysis.overview.scoredExamCount }}</b> 份</span>
+                  </div>
+                </div>
+
+                <!-- 题型表现 -->
+                <div v-if="batchAnalysis.typeStats?.length" class="dim-block">
+                  <div class="dim-title"><el-icon><Histogram /></el-icon> 题型表现（弱 → 强）</div>
+                  <div v-for="t in batchAnalysis.typeStats" :key="t.type" class="bar-row">
+                    <span class="bar-label">{{ t.typeName }}</span>
+                    <div class="bar-track">
+                      <div class="bar-fill" :style="{ width: Math.max(2, t.accuracy) + '%', background: accColor(t.accuracy) }" />
+                    </div>
+                    <span class="bar-value">{{ t.accuracy }}% <i>({{ t.total }}题)</i></span>
+                  </div>
+                </div>
+
+                <!-- 难度表现 -->
+                <div v-if="batchAnalysis.difficultyStats?.length" class="dim-block">
+                  <div class="dim-title"><el-icon><Odometer /></el-icon> 难度表现</div>
+                  <div v-for="d in batchAnalysis.difficultyStats" :key="d.difficulty" class="bar-row">
+                    <span class="bar-label">{{ d.difficultyName }}</span>
+                    <div class="bar-track">
+                      <div class="bar-fill" :style="{ width: Math.max(2, d.accuracy) + '%', background: accColor(d.accuracy) }" />
+                    </div>
+                    <span class="bar-value">{{ d.accuracy }}% <i>({{ d.total }}题)</i></span>
+                  </div>
+                </div>
+
+                <!-- 薄弱知识点 -->
+                <div v-if="batchAnalysis.knowledgeStats?.length" class="dim-block">
+                  <div class="dim-title"><el-icon><Collection /></el-icon> 薄弱知识点 Top5</div>
+                  <div class="kp-list">
+                    <span
+                      v-for="k in batchAnalysis.knowledgeStats.slice(0, 5)"
+                      :key="k.name"
+                      class="kp-tag"
+                    >
+                      {{ k.name }} <i>错{{ k.wrongCount }}/{{ k.total }}</i>
+                    </span>
+                  </div>
+                </div>
+
+                <!-- 需重点关注 / 表现优秀 -->
+                <div v-if="batchAnalysis.focusStudents?.length" class="dim-block">
+                  <div class="dim-title"><el-icon><WarningFilled /></el-icon> 需重点关注</div>
+                  <div v-for="s in batchAnalysis.focusStudents" :key="s.studentId" class="focus-row">
+                    <span class="focus-name">{{ s.realName }}</span>
+                    <span class="focus-acc" :style="{ color: accColor(s.accuracy) }">{{ s.accuracy }}%</span>
+                    <span class="focus-reason">{{ s.reason }}</span>
+                  </div>
+                </div>
+                <div v-if="batchAnalysis.topStudents?.length" class="dim-block">
+                  <div class="dim-title"><el-icon><Trophy /></el-icon> 表现优秀</div>
+                  <div v-for="s in batchAnalysis.topStudents" :key="s.studentId" class="focus-row">
+                    <span class="focus-name">{{ s.realName }}</span>
+                    <span class="focus-acc" :style="{ color: accColor(s.accuracy) }">{{ s.accuracy }}%</span>
+                    <span class="focus-reason">{{ s.reason }}</span>
+                  </div>
+                </div>
+
+                <!-- 数据质量提示 -->
+                <div v-if="batchAnalysis.dataWarnings?.length" class="dim-block warn-block">
+                  <div class="dim-title"><el-icon><InfoFilled /></el-icon> 数据提示</div>
+                  <div v-for="(w, i) in batchAnalysis.dataWarnings" :key="i" class="warn-row">{{ w }}</div>
+                </div>
+              </div>
+
               <!-- 共同薄弱分类 -->
               <div v-if="batchAnalysis.commonWeakCategories?.length" class="common-weak-section">
                 <div class="common-weak-title">
@@ -680,7 +815,8 @@ onMounted(async () => {
               effect="light"
               class="weak-tag"
             >
-              {{ w.categoryName }} <span class="w-count">({{ w.wrongCount }}/{{ w.totalCount }} 错)</span>
+              <!-- [2026-10-16 对齐] 分母用后端实际字段 attemptCount（旧 totalCount 后端不返回，恒显示空） -->
+              {{ w.categoryName }} <span class="w-count">({{ w.wrongCount }}/{{ w.attemptCount }} 错)</span>
             </el-tag>
             <el-button size="small" link type="primary" @click="pickWeakCategories">
               一键加入语法选择
@@ -770,9 +906,25 @@ onMounted(async () => {
           </el-row>
           </template>
 
-          <el-form-item label="题量" prop="questionCount">
-            <el-slider v-model="form.questionCount" :min="20" :max="200" :step="5" show-input />
-          </el-form-item>
+          <!-- [2026-10-16 新增] 题量与试卷满分档位并排：满分必须是标准档位（100/120/150/710/9），
+               后端按「满分 ÷ 实际落库题量」精确分摊每题分值，卷面总分恒等于档位值 -->
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="题量" prop="questionCount">
+                <el-slider v-model="form.questionCount" :min="20" :max="200" :step="5" show-input />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="试卷满分" prop="totalScore">
+                <el-select v-model="form.totalScore" style="width: 100%">
+                  <el-option v-for="d in paperScoreDict" :key="d.value" :label="d.label" :value="Number(d.value)" />
+                </el-select>
+                <span class="switch-hint">
+                  每题约 {{ (form.totalScore / form.questionCount).toFixed(2) }} 分（卷面总分精确等于所选档位）
+                </span>
+              </el-form-item>
+            </el-col>
+          </el-row>
 
           <div class="compose-actions">
             <el-button
@@ -1190,6 +1342,151 @@ onMounted(async () => {
   margin-top: 16px;
   padding-top: 12px;
   border-top: 1px solid #d9ecff;
+}
+
+/* ===== 多维学情画像（2026-10-16 新增）===== */
+.multi-dim {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dim-block {
+  background: #fafbfc;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.dim-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 6px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dim-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+
+.dim-grid b {
+  color: #303133;
+}
+
+.bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 5px;
+  font-size: 12px;
+}
+
+.bar-label {
+  width: 52px;
+  color: #606266;
+  flex-shrink: 0;
+}
+
+.bar-track {
+  flex: 1;
+  height: 8px;
+  background: #ebeef5;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s;
+}
+
+.bar-value {
+  width: 78px;
+  text-align: right;
+  color: #303133;
+  flex-shrink: 0;
+}
+
+.bar-value i {
+  color: #c0c4cc;
+  font-style: normal;
+  font-size: 11px;
+}
+
+.kp-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.kp-tag {
+  background: #fef0f0;
+  color: #f56c6c;
+  border: 1px solid #fde2e2;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.kp-tag i {
+  color: #f89898;
+  font-style: normal;
+}
+
+.focus-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+  border-bottom: 1px dashed #f0f0f0;
+}
+
+.focus-row:last-child {
+  border-bottom: none;
+}
+
+.focus-name {
+  width: 64px;
+  color: #303133;
+  flex-shrink: 0;
+}
+
+.focus-acc {
+  width: 50px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.focus-reason {
+  flex: 1;
+  color: #909399;
+  font-size: 11px;
+}
+
+.warn-block {
+  background: #fdf6ec;
+  border-color: #faecd8;
+}
+
+.warn-block .dim-title {
+  color: #e6a23c;
+}
+
+.warn-row {
+  font-size: 11px;
+  color: #b88230;
+  line-height: 1.6;
 }
 
 .common-weak-title {

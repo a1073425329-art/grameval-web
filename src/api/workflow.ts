@@ -27,10 +27,12 @@ export const executeNode = (nodeId: string, inputs: Record<string, any>) =>
 
 /**
  * 执行完整工作流（单个学生）。
+ * @param totalScore [2026-10-16 新增] 试卷满分档位（100/120/150/710/9），
+ *                   后端按「满分 ÷ 实际题量」精确分摊每题分值
  */
-export const executeWorkflow = (userId: number, questionCount?: number) =>
+export const executeWorkflow = (userId: number, questionCount?: number, totalScore?: number) =>
   request.post<ApiResponse<WorkflowExecution>>('/admin/workflow/execute', null, {
-    params: { userId, questionCount },
+    params: { userId, questionCount, totalScore },
     timeout: 300_000,
   })
 

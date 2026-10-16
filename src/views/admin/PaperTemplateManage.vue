@@ -5,6 +5,8 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, generatePaperFromTemplate } from '@/api/paperTemplate'
 import type { PaperTemplate, PaperTemplateForm } from '@/types/paperTemplate'
 import { useRouter } from 'vue-router'
+// [2026-10-16 新增] 试卷满分档位字典（与后端 ALLOWED_TOTAL_SCORES 对齐）
+import { paperScoreDict } from '@/utils/dict'
 
 const router = useRouter()
 const tableData = ref<PaperTemplate[]>([])
@@ -27,10 +29,22 @@ onMounted(load)
 const dialogVisible = ref(false)
 const dialogTitle = ref('')
 const formRef = ref<FormInstance>()
+/**
+ * [2026-10-16 改] 默认出题量 0 → 100，默认题型配置覆盖全部 5 种题型（每题 1 分 → 满分 100）。
+ * 原默认值保留备查：questionConfig: '[]'，questionCount: 0
+ */
+const DEFAULT_QUESTION_CONFIG = JSON.stringify([
+  { type: 'SINGLE', count: 40, score: 1, difficulty: [1, 2] },
+  { type: 'MULTIPLE', count: 15, score: 1, difficulty: [2, 3] },
+  { type: 'JUDGE', count: 15, score: 1, difficulty: [1, 2] },
+  { type: 'FILL_HINT', count: 10, score: 1, difficulty: [2, 3] },
+  { type: 'READING', count: 20, score: 1, difficulty: [2] },
+])
+
 const form = reactive<PaperTemplateForm & { id: number }>({
-  id: 0, templateName: '', description: '', questionConfig: '[]',
+  id: 0, templateName: '', description: '', questionConfig: DEFAULT_QUESTION_CONFIG,
   difficultyDistribution: '', knowledgeRequirements: '', gradeLevel: '',
-  totalScore: 100, duration: 60, questionCount: 0, status: 1,
+  totalScore: 100, duration: 60, questionCount: 100, status: 1,
 })
 
 const rules: FormRules = {
@@ -40,7 +54,7 @@ const rules: FormRules = {
 
 const openCreate = () => {
   dialogTitle.value = '新建模板'
-  Object.assign(form, { id: 0, templateName: '', description: '', questionConfig: '[]', difficultyDistribution: '', knowledgeRequirements: '', gradeLevel: '', totalScore: 100, duration: 60, questionCount: 0, status: 1 })
+  Object.assign(form, { id: 0, templateName: '', description: '', questionConfig: DEFAULT_QUESTION_CONFIG, difficultyDistribution: '', knowledgeRequirements: '', gradeLevel: '', totalScore: 100, duration: 60, questionCount: 100, status: 1 })
   dialogVisible.value = true
 }
 
@@ -165,7 +179,17 @@ const statusMap: Record<number, string> = { 0: '停用', 1: '启用' }
         <el-form-item label="知识点要求"><el-input v-model="form.knowledgeRequirements" type="textarea" :rows="2" placeholder="[{&quot;tagId&quot;:1,&quot;tagName&quot;:&quot;一般现在时&quot;,&quot;count&quot;:3}]" /></el-form-item>
         <el-row :gutter="16">
           <el-col :span="8"><el-form-item label="适用年级"><el-input v-model="form.gradeLevel" /></el-form-item></el-col>
-          <el-col :span="8"><el-form-item label="总分"><el-input-number v-model="form.totalScore" :min="0" :max="500" /></el-form-item></el-col>
+          <el-col :span="8">
+            <el-form-item label="总分">
+              <!-- [2026-10-16 改] 原 el-input-number(min 0 / max 500) 可填 101、110 这类非标准总分，
+                   改为标准档位下拉（100/120/150/710/9），与 AI 出题、工作流出题口径一致。
+                   ---- 旧实现（保留注释备查）----
+                   <el-input-number v-model="form.totalScore" :min="0" :max="500" /> -->
+              <el-select v-model="form.totalScore" style="width: 100%">
+                <el-option v-for="d in paperScoreDict" :key="d.value" :label="d.label" :value="Number(d.value)" />
+              </el-select>
+            </el-form-item>
+          </el-col>
           <el-col :span="8"><el-form-item label="时长(分)"><el-input-number v-model="form.duration" :min="1" :max="300" /></el-form-item></el-col>
         </el-row>
         <el-row :gutter="16">

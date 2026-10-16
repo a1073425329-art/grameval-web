@@ -7,6 +7,8 @@ import { MiniMap } from '@vue-flow/minimap';
 import type { Connection as FlowConnection } from '@vue-flow/core'
 import { getWorkflowNodes, getWorkflowConnections, executeWorkflow, executeBatchWorkflow, getExecutionHistory, getExecutionDetail, executeNode } from '@/api/workflow'
 import { listUsers } from '@/api/admin'
+// [2026-10-16 新增] 试卷满分档位字典（与后端 ALLOWED_TOTAL_SCORES 对齐）
+import { paperScoreDict } from '@/utils/dict'
 import type { WorkflowNode, WorkflowConnection, WorkflowExecution } from '@/types/workflow'
 import type { UserDetail } from '@/types/user'
 import {
@@ -25,7 +27,11 @@ const workflowNodes = ref<WorkflowNode[]>([])
 const connections = ref<WorkflowConnection[]>([])
 const students = ref<UserDetail[]>([])
 const selectedStudentIds = ref<number[]>([])
-const questionCount = ref(30)
+// [2026-10-16 改] 默认题量 30 → 100：默认出题太少，考试看不出效果（原值 30 保留备查）
+const questionCount = ref(100)
+// [2026-10-16 新增] 试卷满分档位（标准档位，见 utils/dict.ts paperScoreDict）；
+// 后端按「满分 ÷ 实际题量」精确分摊每题分值，卷面总分恒等于档位值
+const totalScore = ref(100)
 const executing = ref(false)
 const executionResult = ref<WorkflowExecution | null>(null)
 const executionHistory = ref<WorkflowExecution[]>([])
@@ -189,7 +195,7 @@ const doExecute = async () => {
   try {
     const singleId = selectedStudentIds.value[0]
     const res = workflowMode.value === 'single' && singleId !== undefined
-      ? await executeWorkflow(singleId, questionCount.value)
+      ? await executeWorkflow(singleId, questionCount.value, totalScore.value)
       : await executeBatchWorkflow(selectedStudentIds.value, questionCount.value)
     executionResult.value = res.data; res.data.nodeResults?.forEach((r: any) => { nodeStatus.value[r.nodeId] = r.status === 'SUCCESS' ? 'success' : 'failed' })
     executionLogs.value.push({ time: new Date().toLocaleTimeString(), level: 'success', message: '🎉 完成！' }); ElMessage.success('工作流执行完成！'); loadHistory()
@@ -354,6 +360,14 @@ const execSuccessRate = computed(() => {
                   <div class="fg">
                     <label><el-icon><EditPen /></el-icon> 题量</label>
                     <el-slider v-model="questionCount" :min="10" :max="100" :step="5" show-input />
+                  </div>
+                  <!-- [2026-10-16 新增] 试卷满分档位（仅单学生执行会产出卷面总分；批量节点不组卷） -->
+                  <div v-if="workflowMode === 'single'" class="fg">
+                    <label><el-icon><Tickets /></el-icon> 试卷满分</label>
+                    <el-select v-model="totalScore" style="width:100%">
+                      <el-option v-for="d in paperScoreDict" :key="d.value" :label="d.label" :value="Number(d.value)" />
+                    </el-select>
+                    <div class="score-hint">每题约 {{ (totalScore / questionCount).toFixed(2) }} 分</div>
                   </div>
                   <div class="fg">
                     <label><el-icon><DataAnalysis /></el-icon> 难度分布</label>
@@ -593,6 +607,8 @@ $bg: #f0f2f5; $card: #fff; $brd: #e4e7ed; $txt: #303133; $sub: #909399; $pri: #4
 .diff-bars { display:flex; flex-direction:column; gap:4px; background:$bg; padding:8px; border-radius:4px; }
 .db-i { display:flex; align-items:center; gap:6px; font-size:11px; .db-l { width:55px; flex-shrink:0; color:$txt; } .db-t { flex:1; height:8px; background:#e4e7ed; border-radius:4px; overflow:hidden; } .db-f { height:100%; border-radius:4px; width:33%; opacity:.65; } }
 .model-empty { font-size:11px; color:$sub; }
+// [2026-10-16 新增] 满分档位下方「每题约 N 分」提示
+.score-hint { margin-top:4px; font-size:11px; color:$sub; }
 .exe-row { display:flex; justify-content:center; gap:10px; margin-top:12px; padding-top:10px; border-top:1px solid $brd; }
 .log-badge { margin-left:4px; }
 

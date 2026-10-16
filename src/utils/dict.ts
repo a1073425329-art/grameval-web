@@ -182,6 +182,21 @@ export const isCorrectDict: DictOption[] = [
   { value: 0, label: '错误' },
 ]
 
+// ========== 试卷满分档位相关 ==========
+// [2026-10-16 新增] 出题卷面满分必须是标准档位，对齐小初高 / 中考 / 高考 /
+// 大学英语四六级 / 托福 / 雅思，避免出现 101、110 这类非标准总分。
+// 与后端 AiGenerateParams.ALLOWED_TOTAL_SCORES 保持一致。
+export const paperScoreDict: DictOption[] = [
+  { value: 100, label: '100 分（小初高日常卷 / 考研英语 / 专四专八）' },
+  { value: 120, label: '120 分（中考英语部分省市 / 托福 iBT）' },
+  { value: 150, label: '150 分（高考英语）' },
+  { value: 710, label: '710 分（大学英语四六级 CET）' },
+  { value: 9, label: '9 分（雅思 IELTS）' },
+]
+
+/** 合法档位值列表（下拉 value 直接取该数组，避免与后端校验漂移） */
+export const paperScoreValues: number[] = paperScoreDict.map((d) => Number(d.value))
+
 // ========== 工具函数 ==========
 
 export const getLabel = (dict: DictOption[], value: string | number): string => {
@@ -206,3 +221,4 @@ export const getOperationTypeLabel = (value: string | number): string => getLabe
 export const getTargetTypeLabel = (value: string | number): string => getLabel(targetTypeDict, value)
 export const getGenderLabel = (value: string | number): string => getLabel(genderDict, value)
 export const getIsCorrectLabel = (value: string | number): string => getLabel(isCorrectDict, value)
+export const getPaperScoreLabel = (value: string | number): string => getLabel(paperScoreDict, value)

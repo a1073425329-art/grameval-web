@@ -40,6 +40,72 @@ export interface BatchStudentAnalysis {
   }>
   studentDetails: StudentAnalysis[]
   teachingSuggestions: string
+
+  // ===== 2026-10-16 新增：多维学情画像 =====
+  // 全部为可选，老后端不返回时前端自动隐藏对应区块（向后兼容）
+  overview?: ClassOverview | null
+  typeStats?: TypeStat[] | null
+  difficultyStats?: DifficultyStat[] | null
+  knowledgeStats?: KnowledgeStat[] | null
+  focusStudents?: FocusStudent[] | null
+  topStudents?: FocusStudent[] | null
+  dataWarnings?: string[] | null
+}
+
+/** 班级概览：分数分布与整体指标 */
+export interface ClassOverview {
+  maxScore?: number | null
+  minScore?: number | null
+  medianScore?: number | null
+  /** 分数标准差，反映班级分化程度 */
+  stdDevScore?: number | null
+  /** 及格率 %（≥60 分） */
+  passRate?: number | null
+  /** 优秀率 %（≥85 分） */
+  excellentRate?: number | null
+  totalAnswers?: number | null
+  totalCorrect?: number | null
+  classAccuracy?: number | null
+  /** 已阅卷的考试份数（成绩单条数，不是学生数） */
+  scoredExamCount?: number | null
+}
+
+/** 题型维度正确率 */
+export interface TypeStat {
+  type: string
+  typeName: string
+  total: number
+  correct: number
+  accuracy: number
+}
+
+/** 难度维度正确率 */
+export interface DifficultyStat {
+  difficulty: number
+  difficultyName: string
+  total: number
+  correct: number
+  accuracy: number
+}
+
+/** 知识点维度薄弱项 */
+export interface KnowledgeStat {
+  name: string
+  wrongCount: number
+  total: number
+  accuracy: number
+  affectedStudentCount: number
+}
+
+/** 学生个体摘要（重点关注 / 表现优秀） */
+export interface FocusStudent {
+  studentId: number
+  realName: string
+  accuracy: number
+  avgScore: number
+  examCount: number
+  weakestCategory?: string | null
+  reason: string
 }
 
 export const analyzeStudents = (targetUserIds: number[]) =>
@@ -165,6 +231,8 @@ export interface DirectGenerateParams {
   withTrap: boolean
   focusWeak: boolean
   questionCount: number
+  /** [2026-10-16 新增] 试卷满分（标准档位：100/120/150/710/9），随 body 传给后端 */
+  totalScore?: number
   singleWeight?: number
   multipleWeight?: number
   readingWeight?: number

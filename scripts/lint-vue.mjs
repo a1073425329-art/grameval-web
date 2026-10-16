@@ -20,7 +20,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { parse as parseSFC } from '@vue/compiler-sfc'
+// [2026-10-16 修复] 原来 import 的是 '@vue/compiler-sfc'。
+// 该包只是 vue 的**间接依赖**，pnpm 严格模式下不会提升到顶层 node_modules，
+// 于是脚本在 import 阶段就抛 ERR_MODULE_NOT_FOUND、整个 lint 层跑不起来。
+// 改为走 vue 自己导出的子路径 'vue/compiler-sfc'（vue 是直接依赖，pnpm 会正常链接），
+// 不新增依赖、不改 package.json。
+import { parse as parseSFC } from 'vue/compiler-sfc'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SRC = path.join(ROOT, 'src')

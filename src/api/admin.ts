@@ -65,7 +65,7 @@ export const resetUserPassword = (id: number, newPassword = '123456') =>
  * ============================================================ */
 
 export const listCategoryTree = () =>
-  request.get<ApiResponse<Category[]>>('/categories/tree')
+  request.get<ApiResponse<Category[]>>('/categories/tree', { params: { includeDisabled: true } })
 
 export const createCategory = (data: CategoryForm) =>
   request.post<ApiResponse<Category>>('/categories', data)

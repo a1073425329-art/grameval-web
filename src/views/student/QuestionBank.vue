@@ -12,6 +12,7 @@ import type { Difficulty, QuestionType } from '@/types/common'
  * 设计要点：
  *  1. 「查看答案」：列表行本身不携带答案（后端对学生隐藏），
  *     点开详情时调用 /questions/{id}/study-mode（UC02）补全答案+解析。
+ *     [2026-10-12 修 R1] 对齐论文表 2.4(:419)：学生须先作答本题（练习提交判定过）才能查看答案，未作答 403。
  *  2. 阅读理解（READING）按 passageId 分组成「一篇长文 + N 道小题」卡片，
  *     详情弹窗一次呈现：长文、中文翻译、重点词汇、整组小题与其答案标准。
  *  3. 填空题（FILL_HINT）：题干里的括号提示词会高亮展示。
@@ -210,7 +211,7 @@ const revealAnswer = async (q: Question) => {
     }
     revealedIds.value.add(q.id)
   } catch {
-    /* request.ts 已统一弹错 */
+    /* request.ts 已统一弹错；未作答 403（R1 修复）也由全局拦截器提示"请先作答"，这里静默即可 */
   } finally {
     revealingIds.value.delete(q.id)
   }

@@ -24,6 +24,24 @@ export const updateTemplate = (id: number, data: PaperTemplateForm) =>
 export const deleteTemplate = (id: number) =>
   request.delete<ApiResponse<void>>(`/paper-templates/${id}`)
 
+/** [2026-10-16 补齐] 生成前预检：统计模板各题型在题库的可抽数量 */
+export interface TemplateAvailabilityItem {
+  type: string
+  requested: number
+  available: number
+  ok: boolean
+}
+export interface TemplateAvailability {
+  templateName: string
+  allOk: boolean
+  totalRequested: number
+  totalAvailable: number
+  items: TemplateAvailabilityItem[]
+}
+
+export const checkTemplateAvailability = (id: number) =>
+  request.get<ApiResponse<TemplateAvailability>>(`/paper-templates/${id}/availability`)
+
 // [2026-09-26 前后端路由对齐核查] 后端 PaperTemplateController 只有
 //   POST /api/paper-templates/{id}/generate
 // 没有 /use 路由，调用必 404；且页面实际用的是下方 generatePaperFromTemplate。
@@ -33,4 +51,4 @@ export const deleteTemplate = (id: number) =>
 
 /** 根据模板自动生成试卷 */
 export const generatePaperFromTemplate = (id: number, paperName?: string) =>
-  request.post<ApiResponse<{ paperId: number; paperName: string; totalScore: number; questionCount: number; status: string }>>(`/paper-templates/${id}/generate`, null, { params: { paperName } })
+  request.post<ApiResponse<{ paperId: number; paperName: string; totalScore: number; questionCount: number; status: string; warnings?: string[] }>>(`/paper-templates/${id}/generate`, null, { params: { paperName } })

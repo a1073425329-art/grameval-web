@@ -2,11 +2,11 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, generatePaperFromTemplate } from '@/api/paperTemplate'
+import { listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate, generatePaperFromTemplate, checkTemplateAvailability } from '@/api/paperTemplate'
 import type { PaperTemplate, PaperTemplateForm } from '@/types/paperTemplate'
 import { useRouter } from 'vue-router'
 // [2026-10-16 新增] 试卷满分档位字典（与后端 ALLOWED_TOTAL_SCORES 对齐）
-import { paperScoreDict } from '@/utils/dict'
+import { paperScoreDict, getQuestionTypeLabel } from '@/utils/dict'
 
 const router = useRouter()
 const tableData = ref<PaperTemplate[]>([])
@@ -44,7 +44,9 @@ const DEFAULT_QUESTION_CONFIG = JSON.stringify([
 const form = reactive<PaperTemplateForm & { id: number }>({
   id: 0, templateName: '', description: '', questionConfig: DEFAULT_QUESTION_CONFIG,
   difficultyDistribution: '', knowledgeRequirements: '', gradeLevel: '',
-  totalScore: 100, duration: 60, questionCount: 100, status: 1,
+  // [2026-10-16 移除] 试卷模板不保存"答题时长"（论文 L702/L960/L966：时长归考试场次）。
+  // 旧写法保留备查：duration: 60,
+  totalScore: 100, questionCount: 100, status: 1,
 })
 
 const rules: FormRules = {
@@ -54,7 +56,8 @@ const rules: FormRules = {
 
 const openCreate = () => {
   dialogTitle.value = '新建模板'
-  Object.assign(form, { id: 0, templateName: '', description: '', questionConfig: DEFAULT_QUESTION_CONFIG, difficultyDistribution: '', knowledgeRequirements: '', gradeLevel: '', totalScore: 100, duration: 60, questionCount: 100, status: 1 })
+  // [2026-10-16 移除] 不再写入 duration（时长归考试场次）。旧写法保留备查：duration: 60,
+  Object.assign(form, { id: 0, templateName: '', description: '', questionConfig: DEFAULT_QUESTION_CONFIG, difficultyDistribution: '', knowledgeRequirements: '', gradeLevel: '', totalScore: 100, questionCount: 100, status: 1 })
   dialogVisible.value = true
 }
 
@@ -62,7 +65,8 @@ const openEdit = async (row: PaperTemplate) => {
   dialogTitle.value = '编辑模板'
   const res = await getTemplate(row.id)
   const d = res.data
-  Object.assign(form, { id: d.id, templateName: d.templateName, description: d.description ?? '', questionConfig: d.questionConfig, difficultyDistribution: d.difficultyDistribution ?? '', knowledgeRequirements: d.knowledgeRequirements ?? '', gradeLevel: d.gradeLevel ?? '', totalScore: d.totalScore, duration: d.duration ?? 60, questionCount: d.questionCount, status: d.status })
+  // [2026-10-16 移除] 不再读取/回填 duration（时长归考试场次）。旧写法保留备查：duration: d.duration ?? 60,
+  Object.assign(form, { id: d.id, templateName: d.templateName, description: d.description ?? '', questionConfig: d.questionConfig, difficultyDistribution: d.difficultyDistribution ?? '', knowledgeRequirements: d.knowledgeRequirements ?? '', gradeLevel: d.gradeLevel ?? '', totalScore: d.totalScore, questionCount: d.questionCount, status: d.status })
   dialogVisible.value = true
 }
 
@@ -87,16 +91,36 @@ const handleDelete = async (id: number) => {
 }
 
 const generating = ref(false)
+/**
+ * [2026-10-16 补齐] 生成前先调 /{id}/availability 预检题库可抽数量：
+ *   - 有缺口 → 用 warning 弹窗列明"某题型需 N 题、题库仅 M 题"，由用户决定是否继续；
+ *   - 无缺口 → 与原逻辑一样，普通确认弹窗。
+ *   ---- 旧实现（无预检，保留备查）----
+ *   await ElMessageBox.confirm(`将根据模板「${row.templateName}」自动从题库随机抽题生成试卷，确认生成？`, '确认生成试卷', { confirmButtonText: '确认生成', type: 'info' })
+ */
 const handleGenerate = async (row: PaperTemplate) => {
   try {
+    let shortage = ''
+    try {
+      const av = await checkTemplateAvailability(row.id)
+      const bad = (av.data?.items ?? []).filter((i) => !i.ok)
+      if (bad.length) {
+        shortage = bad.map((i) => `${getQuestionTypeLabel(i.type)}需${i.requested}题/题库仅${i.available}题`).join('；')
+      }
+    } catch { /* 预检失败不阻断，生成时后端仍会兜底 */ }
+
+    const baseMsg = `将根据模板「${row.templateName}」自动从题库随机抽题生成试卷，确认生成？`
     await ElMessageBox.confirm(
-      `将根据模板「${row.templateName}」自动从题库随机抽题生成试卷，确认生成？`,
-      '确认生成试卷',
-      { confirmButtonText: '确认生成', type: 'info' }
+      shortage ? `${baseMsg}\n⚠ 题库题目不足：${shortage}。不足部分将按实际数量生成，仍要继续吗？` : baseMsg,
+      shortage ? '题库题目不足' : '确认生成试卷',
+      { confirmButtonText: '确认生成', type: shortage ? 'warning' : 'info' }
     )
     generating.value = true
     const res = await generatePaperFromTemplate(row.id)
     ElMessage.success(`试卷「${res.data?.paperName}」已生成！共 ${res.data?.questionCount} 题，满分 ${res.data?.totalScore} 分`)
+    // [2026-10-16 补齐] 生成过程中的缺题提示（后端 warnings）
+    const warns = res.data?.warnings ?? []
+    if (warns.length) ElMessage.warning(warns.join('；'))
     router.push('/admin/papers')
   } catch { /* canceled or failed */ }
   finally { generating.value = false }
@@ -136,7 +160,8 @@ const statusMap: Record<number, string> = { 0: '停用', 1: '启用' }
         <el-table-column prop="gradeLevel" label="适用年级" width="100" />
         <el-table-column prop="totalScore" label="总分" width="80" />
         <el-table-column prop="questionCount" label="题目数" width="80" />
-        <el-table-column prop="duration" label="时长(分)" width="80" />
+        <!-- [2026-10-16 移除] 试卷模板不展示"时长"（论文 L702/L960/L966：时长归考试场次）。
+             旧写法保留备查：<el-table-column prop="duration" label="时长(分)" width="80" /> -->
         <el-table-column prop="usageCount" label="使用次数" width="80" />
         <el-table-column label="状态" width="80">
           <template #default="{ row }">{{ statusMap[row.status] }}</template>
@@ -178,8 +203,8 @@ const statusMap: Record<number, string> = { 0: '停用', 1: '启用' }
         <el-form-item label="难度分布"><el-input v-model="form.difficultyDistribution" placeholder="{&quot;easy&quot;:30,&quot;medium&quot;:50,&quot;hard&quot;:20}" /></el-form-item>
         <el-form-item label="知识点要求"><el-input v-model="form.knowledgeRequirements" type="textarea" :rows="2" placeholder="[{&quot;tagId&quot;:1,&quot;tagName&quot;:&quot;一般现在时&quot;,&quot;count&quot;:3}]" /></el-form-item>
         <el-row :gutter="16">
-          <el-col :span="8"><el-form-item label="适用年级"><el-input v-model="form.gradeLevel" /></el-form-item></el-col>
-          <el-col :span="8">
+          <el-col :span="12"><el-form-item label="适用年级"><el-input v-model="form.gradeLevel" /></el-form-item></el-col>
+          <el-col :span="12">
             <el-form-item label="总分">
               <!-- [2026-10-16 改] 原 el-input-number(min 0 / max 500) 可填 101、110 这类非标准总分，
                    改为标准档位下拉（100/120/150/710/9），与 AI 出题、工作流出题口径一致。
@@ -190,7 +215,9 @@ const statusMap: Record<number, string> = { 0: '停用', 1: '启用' }
               </el-select>
             </el-form-item>
           </el-col>
-          <el-col :span="8"><el-form-item label="时长(分)"><el-input-number v-model="form.duration" :min="1" :max="300" /></el-form-item></el-col>
+          <!-- [2026-10-16 移除] 试卷模板不录入"时长"（论文 L702/L960/L966：时长由考试场次设置）。
+               旧写法保留备查：
+               <el-col :span="8"><el-form-item label="时长(分)"><el-input-number v-model="form.duration" :min="1" :max="300" /></el-form-item></el-col> -->
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12"><el-form-item label="题目总数"><el-input-number v-model="form.questionCount" :min="0" /></el-form-item></el-col>

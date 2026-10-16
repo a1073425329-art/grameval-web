@@ -51,7 +51,7 @@ export interface GeneratePaperForm {
   /** 题量 20-200 */
   questionCount: number
   /**
-   * [2026-10-16 新增] 试卷满分（标准档位：100/120/150/710/9）
+   * [2026-10-16 新增] 试卷总分（100 或 150，1 题 1 分）
    * 后端按「满分 ÷ 实际落库题量」精确分摊每题分值，卷面总分恒等于档位值
    */
   totalScore?: number

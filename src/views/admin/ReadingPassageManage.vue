@@ -34,7 +34,7 @@ const query = reactive({
   status: undefined as number | undefined,
   includeTemp: false,
   pageNum: 1,
-  pageSize: 20,
+  pageSize: 50,
 })
 
 const list = ref<ReadingPassage[]>([])
@@ -674,7 +674,7 @@ onMounted(async () => {
           v-model:page-size="query.pageSize"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
-          :page-sizes="[10, 20, 50]"
+          :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
           @size-change="load"
           @current-change="load"
         />

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getCategoryTree, listQuestions, getQuestionStudyMode } from '@/api/student'
-import { readingSubtypeLabel } from '@/utils/dict'
+import { getCategoryTree, listQuestions, listReadingPassages, getQuestionStudyMode } from '@/api/student'
+import { readingSubtypeLabel, getJudgeOptionLabel } from '@/utils/dict'
 import type { Category } from '@/types/category'
 import type { Question } from '@/types/question'
+import type { ReadingPassage } from '@/types/reading'
 import type { Difficulty, QuestionType } from '@/types/common'
 
 /* ============================================================
@@ -18,6 +19,7 @@ import type { Difficulty, QuestionType } from '@/types/common'
  *  3. 填空题（FILL_HINT）：题干里的括号提示词会高亮展示。
  * ============================================================ */
 
+const unitKind = ref<'question' | 'reading'>('question')
 const query = reactive({
   categoryId: undefined as number | undefined,
   questionType: undefined as QuestionType | undefined,
@@ -29,6 +31,7 @@ const query = reactive({
 
 const categories = ref<Category[]>([])
 const list = ref<Question[]>([])
+const passageList = ref<ReadingPassage[]>([])
 const total = ref(0)
 const loading = ref(false)
 
@@ -37,7 +40,6 @@ const typeOptions: { label: string; value: QuestionType }[] = [
   { label: '多选题', value: 'MULTIPLE' },
   { label: '判断题', value: 'JUDGE' },
   { label: '填空题', value: 'FILL_HINT' },
-  { label: '阅读理解', value: 'READING' },
 ]
 
 const difficultyOptions: { label: string; value: Difficulty }[] = [
@@ -54,6 +56,20 @@ const diffTagType = (d?: Difficulty) => (d === 1 ? 'success' : d === 2 ? 'warnin
 const load = async () => {
   loading.value = true
   try {
+    if (unitKind.value === 'reading') {
+      const res = await listReadingPassages({
+        pageNum: query.pageNum,
+        pageSize: query.pageSize,
+        categoryId: query.categoryId,
+        difficulty: query.difficulty,
+        keyword: query.keyword || undefined,
+        includeQuestions: true,
+      })
+      passageList.value = res.data.records ?? []
+      list.value = []
+      total.value = res.data.total ?? 0
+      return
+    }
     const res = await listQuestions({
       pageNum: query.pageNum,
       pageSize: query.pageSize,
@@ -62,7 +78,8 @@ const load = async () => {
       difficulty: query.difficulty,
       keyword: query.keyword || undefined,
     })
-    list.value = res.data.records ?? []
+    list.value = (res.data.records ?? []).filter((question) => !question.passageId)
+    passageList.value = []
     total.value = res.data.total ?? 0
   } finally {
     loading.value = false
@@ -94,53 +111,31 @@ interface PassageGroup {
   keyVocabulary?: VocabularyItem[] | undefined
   difficulty?: Difficulty | undefined
   categoryName?: string | undefined
+  totalScore: number
   questions: Question[]
 }
 
 interface VocabularyItem { word: string; phonetic?: string; meaning: string }
-const parseVocab = (json?: string): VocabularyItem[] => {
-  if (!json) return []
-  try {
-    const arr = JSON.parse(json)
-    return Array.isArray(arr) ? arr.filter((v) => v && v.word) : []
-  } catch { return [] }
-}
 type FeedItem = NormalItem | PassageGroup
 
-/** 把后端按 passageId 排序的阅读题折叠成「一组一卡」；普通题保持原顺序 */
+/** 题库按题目单元展示：独立题走题目接口，阅读理解走文章聚合接口 */
 const feed = computed<FeedItem[]>(() => {
-  const out: FeedItem[] = []
-  const groupMap = new Map<number, PassageGroup>()
-  for (const q of list.value) {
-    if (q.questionType === 'READING' && q.passageId) {
-      const pid = q.passageId
-      let g = groupMap.get(pid)
-      if (!g) {
-        g = {
-          kind: 'passage',
-          passageId: pid,
-          title: q.passageTitle || '阅读短文',
-          content: q.passageContent || '',
-          wordCount: q.passageWordCount,
-          translation: q.passageTranslation,
-          keyVocabulary: parseVocab(q.passageKeyVocabulary),
-          difficulty: q.difficulty,
-          categoryName: q.categoryName,
-          questions: [],
-        }
-        groupMap.set(pid, g)
-        out.push(g)
-      }
-      g.questions.push(q)
-    } else {
-      out.push({ kind: 'normal', question: q })
-    }
+  if (unitKind.value === 'reading') {
+    return passageList.value.map((passage) => ({
+      kind: 'passage',
+      passageId: passage.id,
+      title: passage.title || '阅读短文',
+      content: passage.content || '',
+      wordCount: passage.wordCount,
+      translation: passage.translation,
+      keyVocabulary: passage.keyVocabulary,
+      difficulty: passage.difficulty,
+      categoryName: passage.categoryName,
+      totalScore: Number(passage.totalScore ?? 0),
+      questions: passage.questions ?? [],
+    }))
   }
-  // 组内按 passageQuestionOrder 排
-  for (const g of groupMap.values()) {
-    g.questions.sort((a, b) => (a.passageQuestionOrder ?? 0) - (b.passageQuestionOrder ?? 0))
-  }
-  return out
+  return list.value.map((question) => ({ kind: 'normal', question }))
 })
 
 /* ---------- 题干填空/括号提示高亮 ---------- */
@@ -167,6 +162,8 @@ const answerSet = (ans?: string): Set<string> =>
 
 /** 该小题是否为"填空作答型"（无选项 且 答案不是纯选项标签） */
 const isBlankStyleQuestion = (q: Question): boolean => {
+  // 判断题按论文口径不存选项，但前端作答组件是对/错二选一，不能当填空
+  if (q.questionType === 'JUDGE') return false
   if (q.options?.length) return false
   // 无选项：摘要填空/句子补全/简答/表格填空，或答案是真实单词而不是 A/B/C/D
   const subtypes = ['SUMMARY_CLOZE', 'SENTENCE_COMPLETION', 'SHORT_ANSWER', 'TABLE_COMPLETION']
@@ -175,6 +172,13 @@ const isBlankStyleQuestion = (q: Question): boolean => {
   if (!a) return true
   // 答案是 A/B/C/D（可能多选 "A,C"）→ 不是填空
   return !/^[A-D](\s*[,，]\s*[A-D])*$/i.test(a)
+}
+
+/** 展示答案：判断题映射为 对/错，其余原样 */
+const answerDisplay = (a?: string | null, t?: QuestionType) => {
+  if (!a) return '—'
+  if (t === 'JUDGE') return getJudgeOptionLabel(a)
+  return a
 }
 
 /* ---------- 详情弹窗（答案按需查看，对齐论文 UC02 表 2.4） ---------- */
@@ -296,6 +300,12 @@ const isPracticeCorrect = (q: Question): boolean => {
     <!-- 顶部筛选 -->
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
+        <el-form-item label="题目范围">
+          <el-radio-group v-model="unitKind" @change="search">
+            <el-radio-button value="question">独立题</el-radio-button>
+            <el-radio-button value="reading">阅读理解</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item label="语法专题">
           <el-cascader
             v-model="query.categoryId"
@@ -312,7 +322,7 @@ const isPracticeCorrect = (q: Question): boolean => {
             style="width: 220px"
           />
         </el-form-item>
-        <el-form-item label="题型">
+        <el-form-item v-if="unitKind === 'question'" label="题型">
           <el-select v-model="query.questionType" clearable placeholder="全部题型" style="width: 140px">
             <el-option v-for="op in typeOptions" :key="op.value" :label="op.label" :value="op.value" />
           </el-select>
@@ -352,6 +362,7 @@ const isPracticeCorrect = (q: Question): boolean => {
               <span class="passage-title">{{ item.title }}</span>
               <el-tag v-if="item.wordCount" size="small" type="info">约 {{ item.wordCount }} 词</el-tag>
               <el-tag size="small" type="warning">共 {{ item.questions.length }} 小题</el-tag>
+              <el-tag size="small" type="danger">本组 {{ item.totalScore }} 分</el-tag>
               <el-tag v-if="item.translation" size="small" type="success" effect="plain">含中文翻译</el-tag>
               <el-tag v-if="item.keyVocabulary?.length" size="small" type="warning" effect="plain">
                 词汇 ×{{ item.keyVocabulary.length }}
@@ -434,7 +445,7 @@ const isPracticeCorrect = (q: Question): boolean => {
           v-model:page-size="query.pageSize"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
-          :page-sizes="[10, 20, 30, 50]"
+          :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
           @size-change="load"
           @current-change="load"
         />
@@ -460,6 +471,7 @@ const isPracticeCorrect = (q: Question): boolean => {
                 约 {{ passageDetail.wordCount }} 词
               </el-tag>
               <el-tag size="small" type="warning" effect="plain">本组 {{ passageDetail.questions.length }} 题</el-tag>
+              <el-tag size="small" type="danger" effect="plain">总分 {{ passageDetail.totalScore }} 分</el-tag>
             </div>
             <div class="passage-body">{{ passageDetail.content }}</div>
 
@@ -593,7 +605,7 @@ const isPracticeCorrect = (q: Question): boolean => {
                   </el-tag>
                   <span class="practice-your">你的答案：<b>{{ practiceInputs[q.id] }}</b></span>
                 </template>
-                <span class="practice-std">标准答案：<b class="ok">{{ q.standardAnswer }}</b></span>
+                <span class="practice-std">标准答案：<b class="ok">{{ answerDisplay(q.standardAnswer, q.questionType) }}</b></span>
               </div>
             </div>
 
@@ -612,7 +624,7 @@ const isPracticeCorrect = (q: Question): boolean => {
             <template v-else-if="!isBlankStyleQuestion(q)">
               <div class="sub-answer-row">
                 <span class="ans-label">答案：</span>
-                <span class="ans-value">{{ q.standardAnswer || '—' }}</span>
+                <span class="ans-value">{{ answerDisplay(q.standardAnswer, q.questionType) }}</span>
                 <el-button link type="primary" size="small" @click="copyAnswer(q.standardAnswer)">复制</el-button>
               </div>
               <div v-if="q.analysis" class="sub-analysis">
@@ -688,7 +700,7 @@ const isPracticeCorrect = (q: Question): boolean => {
                 </el-tag>
                 <span class="practice-your">你的答案：<b>{{ practiceInputs[detail.id] }}</b></span>
               </template>
-              <span class="practice-std">标准答案：<b class="ok">{{ detail.standardAnswer }}</b></span>
+              <span class="practice-std">标准答案：<b class="ok">{{ answerDisplay(detail.standardAnswer, detail.questionType) }}</b></span>
             </div>
           </div>
 
@@ -709,7 +721,7 @@ const isPracticeCorrect = (q: Question): boolean => {
           <template v-if="isRevealed(detail.id)">
             <el-divider content-position="left">参考答案</el-divider>
             <div class="q-answer">
-              {{ detail.standardAnswer || '—' }}
+              {{ answerDisplay(detail.standardAnswer, detail.questionType) }}
               <el-button v-if="detail.standardAnswer" link type="primary" size="small" @click="copyAnswer(detail.standardAnswer)">复制</el-button>
             </div>
             <el-divider content-position="left">解析</el-divider>

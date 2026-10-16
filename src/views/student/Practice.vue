@@ -2,21 +2,22 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCategoryTree, getPracticeQuestions, submitPractice, listPractices, startPractice as openPracticeSession, answerInPractice, finishPractice, generateStudentQuestions } from '@/api/student'
 import type { Category } from '@/types/category'
-import type { Question, QuickPracticeResult, PracticeRecord } from '@/types/question'
+import type { QuickPracticeResult, PracticeRecord } from '@/types/question'
+import { flattenPracticeQuestionUnits, type PracticeQuestionItem } from '@/utils/questionUnits'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import PassageCard from '@/components/PassageCard.vue'
 // [2026-10-16] 复用既有的分类多选组件（带搜索/全选/分组折叠/计数），替代原先平铺 127 项的下拉
 import CategoryMultiPicker from '@/components/CategoryMultiPicker.vue'
-import { readingSubtypeLabel } from '@/utils/dict'
+import { readingSubtypeLabel, getJudgeOptionLabel } from '@/utils/dict'
 
 const authStore = useAuthStore()
 
 const categories = ref<Category[]>([])
 const activeCategoryId = ref<number | null>(null)
 
-const questions = ref<Question[]>([])
+const questions = ref<PracticeQuestionItem[]>([])
 const currentIndex = ref(0)
 const loading = ref(false)
 
@@ -25,39 +26,44 @@ const userAnswers = ref<Record<number, string | string[]>>({})
 /** 每道题的反馈；未提交则为空 */
 const feedbacks = ref<Record<number, QuickPracticeResult>>({})
 
-const current = computed<Question | undefined>(() => questions.value[currentIndex.value])
+const current = computed<PracticeQuestionItem | undefined>(() => questions.value[currentIndex.value])
 const currentFeedback = computed(() => current.value ? feedbacks.value[current.value.id] : undefined)
 
 /**
  * 同一篇短文的题排到相邻位置。阅读理解是「一文 N 题」，散开会让学生反复读同一段材料，
  * 文章卡也会在同一篇上出现多次。组内顺序沿用后端按 passage_question_order 排好的次序。
  */
-const groupByPassage = (list: Question[]): Question[] => {
-  const out: Question[] = []
+const groupByPassage = (list: PracticeQuestionItem[]): PracticeQuestionItem[] => {
+  const out: PracticeQuestionItem[] = []
   const taken = new Set<number>()
-  list.forEach((q) => {
-    const pid = q.passageId
-    if (pid == null) {
-      out.push(q)
+  list.forEach((question) => {
+    const passageId = question.passageId
+    if (passageId == null) {
+      out.push(question)
       return
     }
-    if (taken.has(pid)) return
-    taken.add(pid)
-    out.push(...list.filter((x) => x.passageId === pid))
+    if (taken.has(passageId)) return
+    taken.add(passageId)
+    out.push(...list.filter((candidate) => candidate.passageId === passageId))
   })
   return out
 }
 
-/** 文章卡只在所在组的第一题上方显示 */
-const isPassageHead = (idx: number) => {
-  const q = questions.value[idx]
-  if (!q?.passageId) return false
-  return questions.value.slice(0, idx).every((prev) => prev.passageId !== q.passageId)
-}
-
+/** 阅读理解：同篇子题作答时文章始终可见，并标出「本组第 X / Y 题」 */
 const passageGroupSize = (idx: number) => {
   const pid = questions.value[idx]?.passageId
   return pid == null ? 0 : questions.value.filter((q) => q.passageId === pid).length
+}
+
+const passageGroupIndex = (idx: number): number | undefined => {
+  const q = questions.value[idx]
+  const pid = q?.passageId
+  if (pid == null) return undefined
+  let n = 0
+  for (let i = 0; i <= idx; i++) {
+    if (questions.value[i]?.passageId === pid) n++
+  }
+  return n
 }
 
 /** 阅读子题型的中文名（细节题/主旨题/推断题…）；非阅读题为空串，模板据此隐藏标签 */
@@ -248,6 +254,20 @@ const toggleGroup = (id: number) => {
   expandedGroups.value = next
 }
 
+/**
+ * 一级专题的题量 = **本级直接挂载 + 全部子类**。
+ *
+ * [2026-10-16 口径修正] 后端 `CategoryVO.questionCount` 只统计**直接挂在该分类下**的题
+ * （`categoryMapper.countQuestions(id)`，与练习抽题 SQL `WHERE category_id = ?` 同口径）。
+ * 一级分类本身也能挂题（全库 3444 道挂在一级），所以直接显示它会让「时态」只显示 629，
+ * 而该专题实际有 629 + 2569 = 3192 道 —— 学生与评委会严重低估题库量。
+ *
+ * 注意：**不能改后端** —— 管理端 `CategoryManage.vue` 明确按「含本级 N 题」展示，
+ * 改后端会让那句话语义反转。故只在学生端显示层做合计。
+ */
+const topQuestionCount = (top: Category) =>
+  (top.questionCount ?? 0) + (top.children ?? []).reduce((sum, c) => sum + (c.questionCount ?? 0), 0)
+
 const startPractice = async (catId: number) => {
   activeCategoryId.value = catId
   loading.value = true
@@ -255,7 +275,7 @@ const startPractice = async (catId: number) => {
   await finishCurrentPractice()
   try {
     const res = await getPracticeQuestions(catId, 10)
-    questions.value = Array.isArray(res.data) ? groupByPassage(res.data) : []
+    questions.value = groupByPassage(flattenPracticeQuestionUnits(res.data ?? []))
     currentIndex.value = 0
     userAnswers.value = {}
     feedbacks.value = {}
@@ -283,6 +303,14 @@ const formatAnswer = (_t: QuestionType, v: unknown): string => {
   if (Array.isArray(v)) return v.filter(Boolean).join(',')
   if (v === null || v === undefined) return ''
   return String(v).trim()
+}
+
+/** 展示答案：判断题映射为 对/错 */
+const answerDisplay = (a: unknown, t?: QuestionType): string => {
+  if (a === null || a === undefined || a === '') return '—'
+  const str = Array.isArray(a) ? a.filter(Boolean).join(',') : String(a)
+  if (t === 'JUDGE') return getJudgeOptionLabel(str)
+  return str
 }
 
 const submit = async () => {
@@ -326,9 +354,11 @@ const finishPracticeSession = async () => {
 const next = () => { if (currentIndex.value < questions.value.length - 1) currentIndex.value++ }
 const prev = () => { if (currentIndex.value > 0) currentIndex.value-- }
 
-const answerText = (a: string | string[] | undefined) => {
+const answerText = (a: string | string[] | undefined, t?: QuestionType) => {
   if (a === undefined) return '-'
-  return Array.isArray(a) ? a.join(', ') : String(a)
+  const str = Array.isArray(a) ? a.join(', ') : String(a)
+  if (t === 'JUDGE') return getJudgeOptionLabel(str)
+  return str
 }
 
 onMounted(() => {
@@ -498,8 +528,8 @@ const submitAiGenerate = async () => {
               >
                 <ArrowDown />
               </el-icon>
-              <span class="cat-name">{{ top.categoryName }}</span>
-              <span v-if="top.questionCount" class="q-count">{{ top.questionCount }}</span>
+              <span class="cat-name" :title="top.categoryName">{{ top.categoryName }}</span>
+              <span v-if="topQuestionCount(top)" class="q-count">{{ topQuestionCount(top) }}</span>
             </div>
             <div v-show="isExpanded(top.id)" class="cat-children">
               <div
@@ -510,7 +540,9 @@ const submitAiGenerate = async () => {
                 @click="startPractice(sub.id)"
               >
                 <el-icon><Files /></el-icon>
-                <span class="cat-name">{{ sub.categoryName }}</span>
+                <!-- [2026-10-16] 加 title：全库最长分类名 22 字（wish 与 would rather 虚拟），
+                     240px 列表装不下必然省略；hover 可看全名，避免「一般现在时-第三...」这种认不出的截断。 -->
+                <span class="cat-name" :title="sub.categoryName">{{ sub.categoryName }}</span>
                 <span v-if="sub.questionCount" class="q-count">{{ sub.questionCount }}</span>
               </div>
             </div>
@@ -602,13 +634,15 @@ const submitAiGenerate = async () => {
           </div>
 
           <div class="q-content">
-            <!-- 阅读理解：同组第一题上方显示一次文章，组内其余题不再重复 -->
+            <!-- 阅读理解：同组每一题都保留文章，作答时可对照短文 -->
             <PassageCard
-              v-if="current.passageContent && isPassageHead(currentIndex)"
+              v-if="current.passageContent"
               :content="current.passageContent"
               :title="current.passageTitle"
               :word-count="current.passageWordCount"
               :group-total="passageGroupSize(currentIndex)"
+              :group-index="passageGroupIndex(currentIndex)"
+              :group-score="current.readingGroupScore"
             />
 
             <div v-if="subtypeLabel" class="q-subtype">
@@ -633,7 +667,7 @@ const submitAiGenerate = async () => {
 
             <!-- 文本作答：填空 / 无选项阅读题（摘要填空、句子补全等，答案形如 running） -->
             <div
-              v-if="current.questionType === 'FILL_HINT' || (current.options?.length ?? 0) === 0"
+              v-if="current.questionType !== 'JUDGE' && (current.questionType === 'FILL_HINT' || (current.options?.length ?? 0) === 0)"
               class="text-answer"
             >
               <div v-if="current.hintText" class="hint-line">
@@ -691,11 +725,11 @@ const submitAiGenerate = async () => {
               </div>
               <div class="fb-row">
                 <span class="fb-label">你的答案：</span>
-                <span>{{ answerText(userAnswers[current.id]) }}</span>
+                <span>{{ answerText(userAnswers[current.id], current.questionType) }}</span>
               </div>
               <div class="fb-row">
                 <span class="fb-label">正确答案：</span>
-                <span class="ok-text">{{ currentFeedback.standardAnswer }}</span>
+                <span class="ok-text">{{ answerDisplay(currentFeedback.standardAnswer, current.questionType) }}</span>
               </div>
               <div class="fb-row" v-if="currentFeedback.analysis">
                 <span class="fb-label">解析：</span>
@@ -821,7 +855,9 @@ const submitAiGenerate = async () => {
 }
 
 .left-panel {
-  width: 240px;
+  /* [2026-10-16] 240 → 280px：二级分类名最长 22 字，240px 下几乎全部省略；
+     280px 可多容纳 3 个字，配合 :title 悬停看全名。右侧练习区仍有余量。 */
+  width: 280px;
   background: #fff;
   border-radius: 6px;
   padding: 12px;

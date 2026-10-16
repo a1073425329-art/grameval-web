@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getResultDetail, getDimensionAnalysis } from '@/api/student'
 import type { ResultDetail as ResultDetailType } from '@/types/result'
+import { flattenAnswerUnits } from '@/utils/questionUnits'
 import type { DimensionAnalysis } from '@/types/stats'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { getJudgeOptionLabel } from '@/utils/dict'
@@ -21,6 +22,7 @@ const router = useRouter()
 
 const resultId = Number(route.params.id)
 const detail = ref<ResultDetailType | null>(null)
+const answerItems = computed(() => flattenAnswerUnits(detail.value?.answers ?? []))
 const dim = ref<DimensionAnalysis | null>(null)
 const loading = ref(false)
 const dimLoading = ref(false)
@@ -76,17 +78,13 @@ const typeLabel = (t: QuestionType) => ({ SINGLE: '单选', MULTIPLE: '多选', 
 
 /** 同一篇短文只在组首那题上方显示一次，回顾页不必把文章重复贴三遍 */
 const isPassageHead = (idx: number) => {
-  const list = detail.value?.answers ?? []
-  const a = list[idx]
-  if (!a?.passageId) return false
-  return list[idx - 1]?.passageId !== a.passageId
+  const list = answerItems.value
+  const answer = list[idx]
+  if (!answer?.passageId) return false
+  return list[idx - 1]?.passageId !== answer.passageId
 }
 
-const passageGroupSize = (idx: number) => {
-  const list = detail.value?.answers ?? []
-  const pid = list[idx]?.passageId
-  return pid == null ? 0 : list.filter((x) => x.passageId === pid).length
-}
+const passageGroupSize = (idx: number) => answerItems.value[idx]?.readingGroupSize ?? 0
 
 const difficultyLabel = (d: Difficulty) => {
   if (d === 1) return { text: '简单', color: '#67c23a' }
@@ -311,7 +309,7 @@ const dimDifficultyChartOption = computed(() => {
       </div>
 
       <div
-        v-for="(a, idx) in detail.answers"
+        v-for="(a, idx) in answerItems"
         :key="a.questionId"
         class="answer-card"
         :class="{ ok: a.isCorrect === 1, ng: a.isCorrect === 0 }"
@@ -348,6 +346,7 @@ const dimDifficultyChartOption = computed(() => {
           :title="a.passageTitle"
           :word-count="a.passageWordCount"
           :group-total="passageGroupSize(idx)"
+          :group-score="a.readingGroupScore"
         />
 
         <!-- 题干 -->

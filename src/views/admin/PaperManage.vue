@@ -11,12 +11,14 @@ import {
   updatePaperStatus,
   getPaperDetail,
   listAdminQuestions,
+  listReadingPassages,
   listCategoryTree,
   type AdminQuestionQuery,
 } from '@/api/admin'
 import { getQuestionDetail } from '@/api/student'
 import type { Paper, PaperForm } from '@/types/paper'
 import type { Question } from '@/types/question'
+import type { ReadingPassage } from '@/types/reading'
 import type { Category } from '@/types/category'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { useViewMode } from '@/composables/useViewMode'
@@ -81,13 +83,34 @@ const editMode = ref<'create' | 'edit'>('create')
 const baseFormRef = ref<FormInstance>()
 const submitting = ref(false)
 
-interface PickedQuestion {
+interface PickedSubQuestion {
   questionId: number
   stem: string
   questionType: QuestionType
   difficulty: Difficulty
   score: number
 }
+
+interface PickedQuestion {
+  unitType: 'QUESTION'
+  questionId: number
+  stem: string
+  questionType: QuestionType
+  difficulty: Difficulty
+  score: number
+}
+
+interface PickedPassage {
+  unitType: 'READING'
+  passageId: number
+  passageTitle: string
+  passageContent: string
+  passageWordCount?: number | undefined
+  difficulty: Difficulty
+  subQuestions: PickedSubQuestion[]
+}
+
+type PickedUnit = PickedQuestion | PickedPassage
 
 const paperForm = reactive({
   id: 0,
@@ -98,9 +121,29 @@ const paperForm = reactive({
   status: 0 as 0 | 1 | 2,
 })
 
-const picked = ref<PickedQuestion[]>([])
-const totalScore = computed(() => picked.value.reduce((s, q) => s + Number(q.score || 0), 0))
-const pickedIds = computed(() => new Set(picked.value.map((q) => q.questionId)))
+const picked = ref<PickedUnit[]>([])
+const totalScore = computed(() => picked.value.reduce((sum, unit) => {
+  if (unit.unitType === 'QUESTION') return sum + Number(unit.score || 0)
+  return sum + unit.subQuestions.reduce((groupSum, question) => groupSum + Number(question.score || 0), 0)
+}, 0))
+const pickedQuestionCount = computed(() => picked.value.reduce(
+  (sum, unit) => sum + (unit.unitType === 'QUESTION' ? 1 : unit.subQuestions.length),
+  0,
+))
+const scoreValues = computed(() => picked.value.flatMap((unit) =>
+  unit.unitType === 'QUESTION' ? [unit.score] : unit.subQuestions.map((question) => question.score),
+))
+const pickedIds = computed(() => new Set(picked.value.flatMap((unit) =>
+  unit.unitType === 'QUESTION'
+    ? [unit.questionId]
+    : unit.subQuestions.map((question) => question.questionId),
+)))
+const unitScore = (unit: PickedUnit) => unit.unitType === 'QUESTION'
+  ? Number(unit.score || 0)
+  : unit.subQuestions.reduce((sum, question) => sum + Number(question.score || 0), 0)
+const isPassagePicked = (passageId: number) => picked.value.some(
+  (unit) => unit.unitType === 'READING' && unit.passageId === passageId,
+)
 
 const baseRules: FormRules = {
   paperName: [{ required: true, message: '请输入试卷名称', trigger: 'blur' }],
@@ -130,23 +173,45 @@ const openEdit = async (row: Paper) => {
   dialogVisible.value = true
   try {
     const res = await getPaperDetail(row.id)
-    picked.value = (res.data.questions ?? []).map((pq) => ({
-      questionId: pq.questionId,
-      stem: pq.stem,
-      questionType: pq.questionType,
-      difficulty: pq.difficulty,
-      score: Number(pq.questionScore),
-    }))
+    picked.value = (res.data.questions ?? []).map((unit): PickedUnit => {
+      if (unit.unitType === 'READING') {
+        return {
+          unitType: 'READING',
+          passageId: unit.passageId ?? 0,
+          passageTitle: unit.passageTitle || unit.stem || '阅读理解',
+          passageContent: unit.passageContent || '',
+          passageWordCount: unit.passageWordCount ?? 0,
+          difficulty: unit.difficulty ?? 2,
+          subQuestions: (unit.subQuestions ?? []).map((question) => ({
+            questionId: question.questionId,
+            stem: question.stem,
+            questionType: question.questionType,
+            difficulty: question.difficulty,
+            score: Number(question.questionScore),
+          })),
+        }
+      }
+      return {
+        unitType: 'QUESTION',
+        questionId: unit.questionId ?? 0,
+        stem: unit.stem,
+        questionType: unit.questionType,
+        difficulty: unit.difficulty ?? 2,
+        score: Number(unit.questionScore),
+      }
+    })
   } catch { /* silent */ }
 }
 
 /* ---------------- 题库选择器 ---------------- */
 const bankVisible = ref(false)
+const bankKind = ref<'question' | 'reading'>('question')
 const bank = reactive<AdminQuestionQuery & { total: number }>({
   keyword: '', categoryId: undefined, questionType: undefined, difficulty: undefined,
-  pageNum: 1, pageSize: 8, total: 0,
+  pageNum: 1, pageSize: 50, total: 0,
 })
 const bankList = ref<Question[]>([])
+const passageBankList = ref<ReadingPassage[]>([])
 const bankLoading = ref(false)
 const categories = ref<Category[]>([])
 
@@ -155,7 +220,6 @@ const typeOptions: { label: string; value: QuestionType }[] = [
   { label: '多选题', value: 'MULTIPLE' },
   { label: '判断题', value: 'JUDGE' },
   { label: '填空题', value: 'FILL_HINT' },
-  { label: '阅读理解', value: 'READING' },
 ]
 const diffOptions: { label: string; value: Difficulty }[] = [
   { label: '简单', value: 1 },
@@ -170,6 +234,21 @@ const diffTagType = (d?: Difficulty) => (d === 1 ? 'success' : d === 2 ? 'warnin
 const loadBank = async () => {
   bankLoading.value = true
   try {
+    if (bankKind.value === 'reading') {
+      const res = await listReadingPassages({
+        pageNum: bank.pageNum,
+        pageSize: bank.pageSize,
+        keyword: bank.keyword || undefined,
+        categoryId: bank.categoryId,
+        difficulty: bank.difficulty,
+        status: 1,
+        includeQuestions: true,
+      })
+      passageBankList.value = res.data.records ?? []
+      bankList.value = []
+      bank.total = res.data.total ?? 0
+      return
+    }
     const res = await listAdminQuestions({
       pageNum: bank.pageNum, pageSize: bank.pageSize,
       keyword: bank.keyword || undefined,
@@ -178,7 +257,8 @@ const loadBank = async () => {
       difficulty: bank.difficulty,
       status: 1,
     })
-    bankList.value = res.data.records ?? []
+    bankList.value = (res.data.records ?? []).filter((question) => !question.passageId)
+    passageBankList.value = []
     bank.total = res.data.total ?? 0
   } finally { bankLoading.value = false }
 }
@@ -194,9 +274,42 @@ const bankReset = () => {
   bank.pageNum = 1; loadBank()
 }
 
+const addPassage = (passage: ReadingPassage) => {
+  if (picked.value.some((unit) => unit.unitType === 'READING' && unit.passageId === passage.id)) {
+    ElMessage.info('已选择过这篇阅读理解')
+    return
+  }
+  const questions = passage.questions ?? []
+  if (!questions.length) {
+    ElMessage.warning('这篇文章没有启用子题，暂时不能加入试卷')
+    return
+  }
+  picked.value.push({
+    unitType: 'READING',
+    passageId: passage.id,
+    passageTitle: passage.title || '阅读理解',
+    passageContent: passage.content,
+    passageWordCount: passage.wordCount,
+    difficulty: passage.difficulty,
+    subQuestions: questions.map((question) => ({
+      questionId: question.id,
+      stem: question.stem,
+      questionType: question.questionType,
+      difficulty: question.difficulty,
+      score: question.defaultScore ?? 2,
+    })),
+  })
+  ElMessage.success(`已加入阅读题组：${passage.title || '阅读理解'}（${questions.length} 道小题）`)
+}
+
 const addQuestion = (q: Question) => {
+  if (q.passageId) {
+    ElMessage.warning('阅读理解子题不能单独加入，请切换到阅读理解题组')
+    return
+  }
   if (pickedIds.value.has(q.id)) { ElMessage.info('已选择过'); return }
   picked.value.push({
+    unitType: 'QUESTION',
     questionId: q.id,
     stem: q.stem,
     questionType: q.questionType,
@@ -205,8 +318,16 @@ const addQuestion = (q: Question) => {
   })
   ElMessage.success(`已加入：${q.stem.slice(0, 20)}${q.stem.length > 20 ? '...' : ''}`)
 }
-const removePicked = (id: number) => {
-  picked.value = picked.value.filter((q) => q.questionId !== id)
+const removePicked = (unit: PickedUnit) => {
+  picked.value = picked.value.filter((candidate) => {
+    if (candidate.unitType === 'QUESTION' && unit.unitType === 'QUESTION') {
+      return candidate.questionId !== unit.questionId
+    }
+    if (candidate.unitType === 'READING' && unit.unitType === 'READING') {
+      return candidate.passageId !== unit.passageId
+    }
+    return true
+  })
 }
 
 /* ---------------- Steps ---------------- */
@@ -218,7 +339,10 @@ const nextStep = async () => {
   }
   if (step.value === 1) {
     if (!picked.value.length) { ElMessage.warning('请至少选一道题'); return }
-    if (picked.value.some((q) => !q.score || q.score <= 0)) { ElMessage.warning('每题必须设置分值'); return }
+    if (scoreValues.value.some((score) => !score || score <= 0)) {
+      ElMessage.warning('每题必须设置分值')
+      return
+    }
     step.value = 2
     return
   }
@@ -228,17 +352,27 @@ const prevStep = () => { if (step.value > 0) step.value-- }
 /* ---------------- 保存 ---------------- */
 const submit = async () => {
   submitting.value = true
+  let questionOrder = 1
+  const questionUnits: PaperForm['questionUnits'] = picked.value.map((unit) => {
+    if (unit.unitType === 'QUESTION') {
+      return { questionId: unit.questionId, questionScore: unit.score, questionOrder: questionOrder++ }
+    }
+    return {
+      passageId: unit.passageId,
+      questions: unit.subQuestions.map((question) => ({
+        questionId: question.questionId,
+        questionScore: question.score,
+        questionOrder: questionOrder++,
+      })),
+    }
+  })
   const payload: PaperForm = {
     paperName: paperForm.paperName,
     description: paperForm.description,
     passScore: paperForm.passScore,
     shuffleQuestions: paperForm.shuffleQuestions,
     status: paperForm.status,
-    questions: picked.value.map((q, i) => ({
-      questionId: q.questionId,
-      questionScore: q.score,
-      questionOrder: i + 1,
-    })),
+    questionUnits,
   }
   try {
     if (editMode.value === 'create') {
@@ -256,9 +390,7 @@ const submit = async () => {
 /* ---------------- 查看试卷(含答案与解析, 论文 4.2.2 管理员预览) ---------------- */
 const viewVisible = ref(false)
 const viewPaper = ref<Paper | null>(null)
-const viewQuestions = ref<Array<{
-  questionId: number; stem: string; questionType: QuestionType; difficulty: Difficulty; score: number
-}>>([])
+const viewQuestions = ref<PickedUnit[]>([])
 const viewAnswers = ref<Record<number, { standardAnswer?: string; analysis?: string; options?: Array<{ optionLabel: string; optionContent: string }> }>>({})
 const viewLoading = ref(false)
 
@@ -270,13 +402,33 @@ const openView = async (row: Paper) => {
   viewLoading.value = true
   try {
     const res = await getPaperDetail(row.id)
-    viewQuestions.value = (res.data.questions ?? []).map((pq) => ({
-      questionId: pq.questionId,
-      stem: pq.stem,
-      questionType: pq.questionType,
-      difficulty: pq.difficulty,
-      score: Number(pq.questionScore),
-    }))
+    viewQuestions.value = (res.data.questions ?? []).map((unit): PickedUnit => {
+      if (unit.unitType === 'READING') {
+        return {
+          unitType: 'READING',
+          passageId: unit.passageId ?? 0,
+          passageTitle: unit.passageTitle || unit.stem || '阅读理解',
+          passageContent: unit.passageContent || '',
+          passageWordCount: unit.passageWordCount,
+          difficulty: unit.difficulty ?? 2,
+          subQuestions: (unit.subQuestions ?? []).map((question) => ({
+            questionId: question.questionId,
+            stem: question.stem,
+            questionType: question.questionType,
+            difficulty: question.difficulty,
+            score: Number(question.questionScore),
+          })),
+        }
+      }
+      return {
+        unitType: 'QUESTION',
+        questionId: unit.questionId ?? 0,
+        stem: unit.stem,
+        questionType: unit.questionType,
+        difficulty: unit.difficulty ?? 2,
+        score: Number(unit.questionScore),
+      }
+    })
   } catch { /* silent */ } finally { viewLoading.value = false }
 }
 
@@ -483,7 +635,7 @@ onMounted(async () => {
           v-model:page-size="query.pageSize"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
-          :page-sizes="[20, 50, 100]"
+          :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
           @size-change="load"
           @current-change="load"
         />
@@ -532,31 +684,46 @@ onMounted(async () => {
         <div v-else-if="step === 1">
           <div class="step2-header">
             <div>
-              已选 <b>{{ picked.length }}</b> 题，总分 <b style="color:#409eff">{{ totalScore }}</b>
+              已选 <b>{{ pickedQuestionCount }}</b> 道题（{{ picked.length }} 个单元），总分 <b style="color:#409eff">{{ totalScore }}</b>
             </div>
             <el-button type="primary" @click="openBank">
               <el-icon><Plus /></el-icon>从题库选题
             </el-button>
           </div>
           <el-table :data="picked" style="width:100%; margin-top:12px" empty-text="尚未选题，请点击右上角">
-            <el-table-column type="index" label="题号" width="70" />
-            <el-table-column prop="stem" label="题干" min-width="360" show-overflow-tooltip />
+            <el-table-column type="index" label="单元" width="70" />
+            <el-table-column label="题目单元" min-width="420">
+              <template #default="{ row }">
+                <template v-if="row.unitType === 'READING'">
+                  <div class="picked-passage">
+                    <strong>阅读理解 · {{ row.passageTitle }}</strong>
+                    <div class="picked-passage-content">{{ row.passageContent }}</div>
+                    <div v-for="(question, qi) in row.subQuestions" :key="question.questionId" class="picked-sub-question">
+                      <span>{{ qi + 1 }}. {{ question.stem }}</span>
+                      <el-input-number v-model="question.score" :min="0.5" :max="100" :step="0.5" size="small" />
+                    </div>
+                  </div>
+                </template>
+                <span v-else>{{ row.stem }}</span>
+              </template>
+            </el-table-column>
             <el-table-column label="题型" width="100">
-              <template #default="{ row }">{{ typeLabel(row.questionType) }}</template>
+              <template #default="{ row }">{{ row.unitType === 'READING' ? '阅读理解' : typeLabel(row.questionType) }}</template>
             </el-table-column>
             <el-table-column label="难度" width="80">
               <template #default="{ row }">
                 <el-tag :type="diffTagType(row.difficulty)" size="small">{{ diffLabel(row.difficulty) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="分值" width="140">
+            <el-table-column label="单元总分" width="150" align="center">
               <template #default="{ row }">
-                <el-input-number v-model="row.score" :min="0.5" :max="100" :step="0.5" size="small" />
+                <el-input-number v-if="row.unitType === 'QUESTION'" v-model="row.score" :min="0.5" :max="100" :step="0.5" size="small" />
+                <span v-else>{{ unitScore(row) }} 分 · {{ row.subQuestions.length }} 小题</span>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="80" align="center">
+            <el-table-column label="操作" width="95" align="center">
               <template #default="{ row }">
-                <el-button link type="danger" size="small" @click="removePicked(row.questionId)">移除</el-button>
+                <el-button link type="danger" size="small" @click="removePicked(row)">移除单元</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -566,7 +733,7 @@ onMounted(async () => {
         <div v-else-if="step === 2" class="step3">
           <el-descriptions :column="2" border>
             <el-descriptions-item label="试卷名称">{{ paperForm.paperName }}</el-descriptions-item>
-            <el-descriptions-item label="题量">{{ picked.length }}</el-descriptions-item>
+            <el-descriptions-item label="题量">{{ pickedQuestionCount }}</el-descriptions-item>
             <el-descriptions-item label="总分">{{ totalScore }}</el-descriptions-item>
             <el-descriptions-item label="及格分">{{ paperForm.passScore ?? '-' }}</el-descriptions-item>
             <el-descriptions-item label="随机乱序">{{ paperForm.shuffleQuestions ? '是' : '否' }}</el-descriptions-item>
@@ -576,11 +743,27 @@ onMounted(async () => {
           <h4 style="margin-top:16px">题目列表</h4>
           <el-table :data="picked" style="width:100%">
             <el-table-column type="index" label="#" width="60" />
-            <el-table-column prop="stem" label="题干" show-overflow-tooltip />
-            <el-table-column label="题型" width="100">
-              <template #default="{ row }">{{ typeLabel(row.questionType) }}</template>
+            <el-table-column label="题目单元" min-width="420">
+              <template #default="{ row }">
+                <template v-if="row.unitType === 'READING'">
+                  <div class="picked-passage">
+                    <strong>阅读理解 · {{ row.passageTitle }}</strong>
+                    <div class="picked-passage-content">{{ row.passageContent }}</div>
+                    <div v-for="(question, qi) in row.subQuestions" :key="question.questionId" class="picked-sub-question">
+                      <span>{{ qi + 1 }}. {{ question.stem }}</span>
+                      <span>{{ question.score }} 分</span>
+                    </div>
+                  </div>
+                </template>
+                <span v-else>{{ row.stem }}</span>
+              </template>
             </el-table-column>
-            <el-table-column prop="score" label="分值" width="80" align="center" />
+            <el-table-column label="题型" width="100">
+              <template #default="{ row }">{{ row.unitType === 'READING' ? '阅读理解' : typeLabel(row.questionType) }}</template>
+            </el-table-column>
+            <el-table-column label="单元总分" width="100" align="center">
+              <template #default="{ row }">{{ unitScore(row) }}</template>
+            </el-table-column>
           </el-table>
         </div>
       </div>
@@ -595,8 +778,14 @@ onMounted(async () => {
     <!-- 题库选择器 -->
     <el-dialog v-model="bankVisible" title="从题库选题" width="1000px" top="4vh" append-to-body>
       <el-form :inline="true" :model="bank">
+        <el-form-item label="题目范围">
+          <el-radio-group v-model="bankKind" @change="bank.pageNum = 1; loadBank()">
+            <el-radio-button value="question">独立题</el-radio-button>
+            <el-radio-button value="reading">阅读理解</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
         <el-form-item>
-          <el-input v-model="bank.keyword" placeholder="题干关键词" clearable style="width:180px" />
+          <el-input v-model="bank.keyword" :placeholder="bankKind === 'reading' ? '文章关键词' : '题干关键词'" clearable style="width:180px" />
         </el-form-item>
         <el-form-item>
           <el-cascader
@@ -606,7 +795,7 @@ onMounted(async () => {
             clearable placeholder="分类" style="width:180px"
           />
         </el-form-item>
-        <el-form-item>
+        <el-form-item v-if="bankKind === 'question'">
           <el-select v-model="bank.questionType" clearable placeholder="题型" style="width:120px">
             <el-option v-for="op in typeOptions" :key="op.value" :label="op.label" :value="op.value" />
           </el-select>
@@ -622,7 +811,7 @@ onMounted(async () => {
         </el-form-item>
       </el-form>
 
-      <el-table :data="bankList" v-loading="bankLoading" style="width:100%">
+      <el-table v-if="bankKind === 'question'" :data="bankList" v-loading="bankLoading" style="width:100%">
         <el-table-column type="index" label="#" width="50" />
         <el-table-column prop="stem" label="题干" min-width="300" show-overflow-tooltip />
         <el-table-column prop="categoryName" label="分类" width="120" />
@@ -636,13 +825,33 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="操作" width="100" align="center">
           <template #default="{ row }">
-            <el-button
-              size="small"
-              type="primary"
-              :disabled="pickedIds.has(row.id)"
-              @click="addQuestion(row)"
-            >
+            <el-button size="small" type="primary" :disabled="pickedIds.has(row.id)" @click="addQuestion(row)">
               {{ pickedIds.has(row.id) ? '已加入' : '加入' }}
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-table v-else :data="passageBankList" v-loading="bankLoading" style="width:100%">
+        <el-table-column type="index" label="#" width="50" />
+        <el-table-column label="阅读文章" min-width="300">
+          <template #default="{ row }">
+            <div class="passage-choice-title">{{ row.title || '阅读短文' }}</div>
+            <div class="passage-choice-content">{{ row.content }}</div>
+            <div v-for="(question, qi) in (row.questions ?? []).slice(0, 3)" :key="question.id" class="passage-choice-question">
+              {{ qi + 1 }}. {{ question.stem }}
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="categoryName" label="分类" width="120" />
+        <el-table-column label="小题数" width="85" align="center">
+          <template #default="{ row }">{{ row.questions?.length ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column prop="totalScore" label="总分" width="80" align="center" />
+        <el-table-column label="操作" width="100" align="center">
+          <template #default="{ row }">
+            <el-button size="small" type="primary" :disabled="isPassagePicked(row.id)" @click="addPassage(row)">
+              {{ isPassagePicked(row.id) ? '已加入' : '加入整组' }}
             </el-button>
           </template>
         </el-table-column>
@@ -658,7 +867,7 @@ onMounted(async () => {
       </div>
       <template #footer>
         <div style="display:flex; justify-content:space-between; align-items:center; width:100%">
-          <span>已选 {{ picked.length }} 题，总分 {{ totalScore }}</span>
+          <span>已选 {{ pickedQuestionCount }} 道题（{{ picked.length }} 个单元），总分 {{ totalScore }}</span>
           <el-button type="primary" @click="bankVisible = false">完成</el-button>
         </div>
       </template>
@@ -674,27 +883,55 @@ onMounted(async () => {
       </el-descriptions>
       <div v-loading="viewLoading">
         <el-empty v-if="!viewLoading && viewQuestions.length === 0" description="卷内无题目" />
-        <div v-for="(q, idx) in viewQuestions" :key="q.questionId" class="view-q">
-          <div class="view-q-head">
-            <span class="q-no">{{ idx + 1 }}.</span>
-            <el-tag size="small" style="margin-right:6px">{{ typeLabel(q.questionType) }}</el-tag>
-            <el-tag size="small" :type="diffTagType(q.difficulty)" style="margin-right:6px">{{ diffLabel(q.difficulty) }}</el-tag>
-            <span class="q-score">{{ q.score }} 分</span>
-            <el-button link type="primary" size="small" style="margin-left:auto" @click="loadAnswer(q.questionId)">
-              {{ viewAnswers[q.questionId] ? '隐藏答案' : '查看答案与解析' }}
-            </el-button>
-          </div>
-          <div class="q-stem">{{ q.stem }}</div>
-          <div v-if="viewAnswers[q.questionId]" class="q-answer">
-            <template v-for="o in (viewAnswers[q.questionId]?.options ?? [])" :key="o.optionLabel">
-              <div class="q-opt" :class="{ 'q-opt-right': o.optionLabel === viewAnswers[q.questionId]?.standardAnswer }">
-                <b>{{ o.optionLabel }}.</b> {{ o.optionContent }}
-                <el-tag v-if="o.optionLabel === viewAnswers[q.questionId]?.standardAnswer" type="success" size="small" style="margin-left:6px">正确答案</el-tag>
+        <div v-for="(unit, idx) in viewQuestions" :key="unit.unitType === 'READING' ? `p-${unit.passageId}` : `q-${unit.questionId}`" class="view-q">
+          <template v-if="unit.unitType === 'READING'">
+            <div class="view-q-head">
+              <span class="q-no">{{ idx + 1 }}.</span>
+              <el-tag size="small" type="warning">阅读理解</el-tag>
+              <span class="q-score">{{ unitScore(unit) }} 分 · {{ unit.subQuestions.length }} 小题</span>
+            </div>
+            <h4>{{ unit.passageTitle }}</h4>
+            <div class="q-stem">{{ unit.passageContent }}</div>
+            <div v-for="(question, qi) in unit.subQuestions" :key="question.questionId" class="view-sub-question">
+              <div class="view-q-head">
+                <span class="q-no">{{ qi + 1 }}.</span>
+                <el-tag size="small">{{ typeLabel(question.questionType) }}</el-tag>
+                <span class="q-score">{{ question.score }} 分</span>
+                <el-button link type="primary" size="small" style="margin-left:auto" @click="loadAnswer(question.questionId)">
+                  {{ viewAnswers[question.questionId] ? '隐藏答案' : '查看答案与解析' }}
+                </el-button>
               </div>
-            </template>
-            <div class="q-ana"><b>标准答案：{{ viewAnswers[q.questionId]?.standardAnswer }}</b></div>
-            <div class="q-ana">解析：{{ viewAnswers[q.questionId]?.analysis || '(无解析)' }}</div>
-          </div>
+              <div class="q-stem">{{ question.stem }}</div>
+              <div v-if="viewAnswers[question.questionId]" class="q-answer">
+                <div v-for="option in (viewAnswers[question.questionId]?.options ?? [])" :key="option.optionLabel" class="q-opt">
+                  <b>{{ option.optionLabel }}.</b> {{ option.optionContent }}
+                </div>
+                <div class="q-ana"><b>标准答案：{{ viewAnswers[question.questionId]?.standardAnswer }}</b></div>
+                <div class="q-ana">解析：{{ viewAnswers[question.questionId]?.analysis || '(无解析)' }}</div>
+              </div>
+            </div>
+          </template>
+          <template v-else>
+            <div class="view-q-head">
+              <span class="q-no">{{ idx + 1 }}.</span>
+              <el-tag size="small">{{ typeLabel(unit.questionType) }}</el-tag>
+              <el-tag size="small" :type="diffTagType(unit.difficulty)" style="margin-right:6px">{{ diffLabel(unit.difficulty) }}</el-tag>
+              <span class="q-score">{{ unit.score }} 分</span>
+              <el-button link type="primary" size="small" style="margin-left:auto" @click="loadAnswer(unit.questionId)">
+                {{ viewAnswers[unit.questionId] ? '隐藏答案' : '查看答案与解析' }}
+              </el-button>
+            </div>
+            <div class="q-stem">{{ unit.stem }}</div>
+            <div v-if="viewAnswers[unit.questionId]" class="q-answer">
+              <template v-for="option in (viewAnswers[unit.questionId]?.options ?? [])" :key="option.optionLabel">
+                <div class="q-opt" :class="{ 'q-opt-right': option.optionLabel === viewAnswers[unit.questionId]?.standardAnswer }">
+                  <b>{{ option.optionLabel }}.</b> {{ option.optionContent }}
+                </div>
+              </template>
+              <div class="q-ana"><b>标准答案：{{ viewAnswers[unit.questionId]?.standardAnswer }}</b></div>
+              <div class="q-ana">解析：{{ viewAnswers[unit.questionId]?.analysis || '(无解析)' }}</div>
+            </div>
+          </template>
         </div>
       </div>
       <template #footer>
@@ -810,4 +1047,26 @@ onMounted(async () => {
   display: flex;
   gap: 6px;
 }
+.picked-passage { display: grid; gap: 8px; min-width: 0; }
+.picked-passage-content,
+.passage-choice-content {
+  color: #606266;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.picked-sub-question {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-top: 1px solid #ebeef5;
+  padding-top: 6px;
+}
+.passage-choice-title { font-weight: 600; margin-bottom: 4px; }
+.passage-choice-question { color: #606266; margin-top: 4px; font-size: 12px; }
+.view-sub-question { border-top: 1px solid #ebeef5; padding-top: 8px; margin-top: 8px; }
+
 </style>

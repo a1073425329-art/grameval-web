@@ -4,8 +4,8 @@ import { computed } from 'vue'
 /**
  * 阅读理解文章卡。
  *
- * 一篇文章挂多道题，因此这张卡只在**同组第一题**上方出现一次（由父组件决定何时渲染），
- * 组内还有几题共用这篇，用 groupTotal 说明。
+ * 一篇文章挂多道子题，作答时文章必须始终可见（不能只在组首出现一次）。
+ * 父组件对同组每一题都渲染本卡；groupIndex/groupTotal 标出「本组第 X / Y 题」。
  */
 const props = defineProps<{
   content: string
@@ -14,9 +14,19 @@ const props = defineProps<{
   wordCount?: number | undefined
   /** 共用这篇文章的题目数，大于 1 时提示组规模 */
   groupTotal?: number | undefined
+  /** 阅读题组总分 */
+  groupScore?: number | undefined
+  /** 本题在组内的序号（1-based）；与 groupTotal 同时给出时显示位置 */
+  groupIndex?: number | undefined
 }>()
 
 const showGroupTag = computed(() => (props.groupTotal ?? 0) > 1)
+const groupPos = computed(() => {
+  const i = props.groupIndex
+  const t = props.groupTotal
+  if (i == null || t == null || t <= 1) return ''
+  return `本组第 ${i} / ${t} 题`
+})
 </script>
 
 <template>
@@ -28,9 +38,13 @@ const showGroupTag = computed(() => (props.groupTotal ?? 0) > 1)
       <el-tag v-if="showGroupTag" size="small" type="warning" effect="plain">
         本组共 {{ groupTotal }} 题
       </el-tag>
+      <el-tag v-if="groupScore != null" size="small" type="success" effect="plain">
+        本组 {{ groupScore }} 分
+      </el-tag>
+      <el-tag v-if="groupPos" size="small" type="success" effect="plain">{{ groupPos }}</el-tag>
     </div>
     <div class="passage-body">{{ content }}</div>
-    <div class="passage-tip">请先阅读短文，再结合短文内容完成下方题目</div>
+    <div class="passage-tip">{{ groupPos ? '对照上方短文作答本题' : '请先阅读短文，再结合短文内容完成下方题目' }}</div>
   </div>
 </template>
 
@@ -73,8 +87,8 @@ const showGroupTag = computed(() => (props.groupTotal ?? 0) > 1)
   color: #1f2d3d;
 }
 .passage-body {
-  font-size: var(--passage-font-size, 15px);
-  line-height: 2;
+  font-size: var(--passage-font-size, 17px);
+  line-height: 2.05;
   color: #303133;
   text-align: justify;
   white-space: pre-wrap;

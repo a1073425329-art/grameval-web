@@ -5,7 +5,8 @@ import { List, Grid, Cpu } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { getMyResults, getMySummary, getResultDetail } from '@/api/student'
 import type { ResultSummary, ExamResultItem, ResultDetail } from '@/types/result'
-import type { AnswerDetail } from '@/types/exam'
+import type { AnswerDetail, AnswerUnit } from '@/types/exam'
+import { flattenAnswerUnits } from '@/utils/questionUnits'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { useViewMode } from '@/composables/useViewMode'
 import { useAuthStore } from '@/stores/auth'
@@ -174,7 +175,7 @@ const loadDetail = async (row: ExamResultItem) => {
     const res = await getResultDetail(key)
     expandedDetails.value = { ...expandedDetails.value, [key]: res.data }
     await nextTick()
-    renderDistChart(key, res.data.answers)
+    renderDistChart(key, flattenAnswerUnits(res.data.answers ?? []))
   } catch {
     ElMessage.error('明细加载失败')
   } finally {
@@ -201,7 +202,7 @@ const toggleCardDetail = (row: ExamResultItem) => {
  * ============================================================ */
 const distCharts = new Map<number, ECharts>()
 
-const renderDistChart = (key: number, answers: AnswerDetail[] = []) => {
+const renderDistChart = (key: number, answers: AnswerUnit[] | AnswerDetail[] = []) => {
   const el = document.getElementById(`dist-chart-${key}`)
   if (!el || !answers.length) return
   let chart = distCharts.get(key)
@@ -255,7 +256,7 @@ const exportDetail = async (row: ExamResultItem) => {
     }
   }
   const head = ['题号', '题型', '难度', '题干', '你的答案', '正确答案', '得分', '满分', '对错', '解析']
-  const rows = (detail.answers || []).map((a, i) => [
+  const rows = flattenAnswerUnits(detail.answers || []).map((a, i) => [
     i + 1,
     typeLabel(a.questionType),
     difficultyLabel(a.difficulty).text,
@@ -399,7 +400,7 @@ onBeforeUnmount(() => {
                   <div class="ed-title">
                     <el-icon><Document /></el-icon> 逐题明细
                   </div>
-                  <el-table :data="expandedDetails[row.examId ?? row.id]?.answers ?? []" size="small" border stripe>
+                  <el-table :data="flattenAnswerUnits(expandedDetails[row.examId ?? row.id]?.answers ?? [])" size="small" border stripe>
                     <el-table-column type="index" label="#" width="44" />
                     <el-table-column label="题型" width="80">
                       <template #default="{ row: a }">{{ typeLabel(a.questionType) }}</template>
@@ -533,7 +534,7 @@ onBeforeUnmount(() => {
                 <div class="ed-title" style="margin-top:10px"><el-icon><Document /></el-icon> 逐题概览</div>
                 <div class="qa-list">
                   <div
-                    v-for="(a, i) in expandedDetails[item.examId ?? item.id]?.answers ?? []"
+                    v-for="(a, i) in flattenAnswerUnits(expandedDetails[item.examId ?? item.id]?.answers ?? [])"
                     :key="a.questionId"
                     class="qa-item"
                     :class="{ ok: a.isCorrect === 1, ng: a.isCorrect === 0 }"
@@ -566,7 +567,7 @@ onBeforeUnmount(() => {
           v-model:page-size="query.pageSize"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
-          :page-sizes="[20, 50, 100]"
+          :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
           @size-change="load"
           @current-change="load"
         />

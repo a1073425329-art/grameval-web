@@ -71,10 +71,33 @@ export interface ExamPaperView {
   remainingSeconds: number
   resumeCount: number
   answeredCount: number
-  questions: ExamQuestion[]
+  /** 普通题数 + 阅读组内子题数 */
+  questionCount: number
+  /** 顶层独立题和阅读文章组的数量 */
+  unitCount: number
+  questions: ExamQuestionUnit[]
 }
 
 /** 考试中的试题（隐藏 standardAnswer） */
+export interface ExamQuestionUnit {
+  unitType: 'QUESTION' | 'READING'
+  questionId?: number
+  questionType: QuestionType
+  stem?: string
+  difficulty?: Difficulty
+  /** 独立题分值或整篇阅读题组总分 */
+  questionScore: number
+  questionOrder: number
+  options?: ExamQuestion['options']
+  userAnswer?: string
+  passageId?: number
+  passageTitle?: string
+  passageContent?: string
+  passageWordCount?: number
+  subQuestionCount?: number
+  subQuestions?: ExamQuestion[]
+}
+
 export interface ExamQuestion {
   questionId: number
   questionType: QuestionType
@@ -90,22 +113,12 @@ export interface ExamQuestion {
   }>
   /** 学生已保存的答案（断点续答回填） */
   userAnswer?: string
-  /** 阅读理解特有：文章 ID（前端可据此聚合渲染） */
-  passageId?: number
-  /** 阅读文章标题（后端随题目下发，供「先读文后答题」卡片渲染） */
-  passageTitle?: string
-  /** 阅读文章正文 */
-  passageContent?: string
-  /** 阅读文章英文词数 */
-  passageWordCount?: number
-  /** 需要对多个作答位（多选、或多空阅读题）—— 决定渲染单选框还是复选框 */
+  /** 需要对多个作答位（多选、或多空阅读题） */
   multiAnswer?: boolean
   /** 阅读子题型：DETAIL/MAIN_IDEA/INFERENCE/VOCABULARY/ATTITUDE */
   questionSubtype?: string
-  /** 括号提示词（FILL_HINT / 无选项阅读题的作答提示，如 "(run)"） */
+  /** 括号提示词（无选项阅读题的作答提示） */
   hintText?: string
-  /** 兼容旧字段 */
-  passageTempId?: string
 }
 
 /** 保存答案 —— POST /exams/{examId}/answers */
@@ -143,7 +156,7 @@ export interface ExamRecord {
   scorePercentage?: number
   correctCount?: number
   wrongCount?: number
-  answers?: AnswerDetail[]
+  answers?: AnswerUnit[]
   sessionName?: string
   paperName?: string
   username?: string
@@ -152,6 +165,20 @@ export interface ExamRecord {
 }
 
 /** 逐题答题明细 */
+export interface AnswerUnit extends Partial<AnswerDetail> {
+  unitType: 'QUESTION' | 'READING'
+  questionId?: number
+  questionType: QuestionType
+  passageId?: number
+  passageTitle?: string
+  passageContent?: string
+  passageWordCount?: number
+  subQuestionCount?: number
+  correctCount?: number
+  wrongCount?: number
+  subQuestions?: AnswerDetail[]
+}
+
 export interface AnswerDetail {
   questionId: number
   stem: string
@@ -167,11 +194,6 @@ export interface AnswerDetail {
   isCorrect?: 0 | 1 | null
   obtainedScore?: number
   analysis?: string
-  /** 阅读理解：所属文章（成绩回顾要带上当时读的那篇） */
-  passageId?: number
-  passageTitle?: string
-  passageContent?: string
-  passageWordCount?: number
   difficulty?: Difficulty
   questionScore?: number
   questionOrder?: number

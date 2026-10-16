@@ -98,7 +98,7 @@ describe('考试列表页 (ExamList.vue)', () => {
     w.unmount()
   })
 
-  it('已参加 Tab 显示"已提交"和"继续答题"两种状态', async () => {
+  it('已参加 Tab 显示"已提交"和"续考"两种状态', async () => {
     const w = mountIt()
     await flushPromises()
 
@@ -114,9 +114,9 @@ describe('考试列表页 (ExamList.vue)', () => {
     expect(w.text()).toContain('已提交')
     expect(w.text()).toContain('85.50')
 
-    // 第二张已考卡片: 未提交, 按钮是"继续答题"
+    // 第二张已考卡片: 未提交, 按钮是"续考"
     expect(w.text()).toContain('进行中的考试(已参加但未提交)')
-    expect(w.text()).toContain('继续答题')
+    expect(w.text()).toContain('续考')
 
     w.unmount()
   })

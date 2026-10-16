@@ -27,6 +27,7 @@ export interface ReadingPassage {
   /** 文章级知识点标签 */
   knowledgePoints?: string[]
   questionCount?: number
+  totalScore?: number
   usageCount?: number
   status?: 0 | 1
   isTemp?: boolean
@@ -36,6 +37,12 @@ export interface ReadingPassage {
   createTime?: string
   updateTime?: string
   questions?: Question[]
+}
+
+export interface QuestionUnit {
+  unitType: 'QUESTION' | 'READING'
+  question?: Question
+  passage?: ReadingPassage
 }
 
 export interface ReadingPassageForm {

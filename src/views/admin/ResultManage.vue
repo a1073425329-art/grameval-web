@@ -5,6 +5,7 @@ import { List, Grid, Cpu, Refresh } from '@element-plus/icons-vue'
 import { listAdminResults, exportResults, regradeResult } from '@/api/admin'
 import { getResultDetail } from '@/api/student'
 import type { ExamResultItem, ResultDetail } from '@/types/result'
+import { flattenAnswerUnits } from '@/utils/questionUnits'
 import type { QuestionType } from '@/types/common'
 import { useViewMode } from '@/composables/useViewMode'
 
@@ -447,7 +448,7 @@ onMounted(load)
           v-model:page-size="query.pageSize"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
-          :page-sizes="[20, 50, 100]"
+          :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
           @size-change="load"
           @current-change="load"
         />
@@ -492,7 +493,7 @@ onMounted(load)
           <h4 style="margin: 16px 0 8px">逐题明细</h4>
           <div class="answers">
             <div
-              v-for="(a, idx) in detail.answers"
+              v-for="(a, idx) in flattenAnswerUnits(detail.answers)"
               :key="a.questionId"
               class="answer-item"
               :class="{ ok: a.isCorrect === 1, ng: a.isCorrect === 0 }"

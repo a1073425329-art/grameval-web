@@ -1,5 +1,5 @@
 import type { QuestionType, Difficulty } from './common'
-import type { AnswerDetail } from './exam'
+import type { AnswerUnit } from './exam'
 
 /** 学生成绩汇总 —— StudentScoreSummaryVO */
 export interface ResultSummary {
@@ -63,7 +63,7 @@ export interface ResultDetail {
   paperTotalScore?: number
   correctCount: number
   wrongCount: number
-  answers: AnswerDetail[]
+  answers: AnswerUnit[]
 }
 
 /**
@@ -93,6 +93,20 @@ export interface WrongBookItem {
   passageTitle?: string
   passageContent?: string
   passageWordCount?: number
+  questionScore?: number
+  passageQuestionOrder?: number
+}
+
+export interface WrongBookUnit {
+  unitType: 'QUESTION' | 'READING'
+  question?: WrongBookItem
+  passageId?: number
+  passageTitle?: string
+  passageContent?: string
+  passageWordCount?: number
+  subQuestionCount?: number
+  totalScore?: number
+  subQuestions?: WrongBookItem[]
 }
 
 /** 错题本查询参数（请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明） */

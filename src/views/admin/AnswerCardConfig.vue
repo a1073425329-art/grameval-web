@@ -24,7 +24,7 @@ const papers = ref<{ id: number; paperName: string }[]>([])
 
 const query = reactive({
   pageNum: 1,
-  pageSize: 20,
+  pageSize: 50,
   paperId: undefined as number | undefined,
   cardName: '',
   isDefault: undefined as boolean | undefined,
@@ -368,7 +368,7 @@ const rowClassName = ({ row }: { row: AnswerCard }) => row.isDefault ? 'default-
         v-model:current-page="query.pageNum"
         v-model:page-size="query.pageSize"
         :total="total"
-        :page-sizes="[20, 50, 100]"
+        :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
         layout="total, sizes, prev, pager, next, jumper"
         @change="handlePageChange"
         style="margin-top:16px;justify-content:flex-end"

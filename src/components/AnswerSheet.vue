@@ -23,7 +23,8 @@ const emit = defineEmits<{
   (e: 'filter', type: string): void
 }>()
 
-const filterTypes = [
+/** 全部可选题型（仅展示本卷实际出现的） */
+const ALL_FILTER_TYPES = [
   { value: 'SINGLE', label: '单选' },
   { value: 'MULTIPLE', label: '多选' },
   { value: 'JUDGE', label: '判断' },
@@ -41,24 +42,28 @@ const markedSet = computed<Set<number>>(() =>
 
 /** [2026-10-16 对齐] FILL（无提示填空）与 FILL_HINT（带括号提示填空）同属「填空」，
  *  答题卡按题型筛选时统一归口到 FILL_HINT，避免手写 FILL 题筛不出来。
- *  旧实现：filteredOut = props.filterType && type !== props.filterType
  */
 const normType = (t: string) => (t === 'FILL' ? 'FILL_HINT' : t)
 
+/** 本卷实际出现的题型 → 只展示这些页签（没有的题型不显示） */
+const filterTypes = computed(() => {
+  const present = new Set((props.questionTypes ?? []).map(normType).filter(Boolean))
+  return ALL_FILTER_TYPES.filter((ft) => present.has(ft.value))
+})
+
+/** 筛选后仅保留匹配题号，其余不渲染（过滤而非置灰） */
 const items = computed(() => {
   return Array.from({ length: props.total }, (_v, i) => {
     const idx = i + 1
     const type = props.questionTypes?.[i] || ''
-    const filteredOut = props.filterType && normType(type) !== props.filterType
     return {
       index: idx,
       active: idx === props.current,
       answered: answeredSet.value.has(idx),
       marked: markedSet.value.has(idx),
-      filteredOut,
       type,
     }
-  })
+  }).filter((it) => !props.filterType || normType(it.type) === props.filterType)
 })
 
 const answeredCount = computed(() => answeredSet.value.size)
@@ -91,7 +96,7 @@ const jump = (idx: number) => emit('jump', idx)
         v-for="it in items"
         :key="it.index"
         class="cell"
-        :class="{ active: it.active, answered: it.answered, marked: it.marked, filtered: it.filteredOut }"
+        :class="{ active: it.active, answered: it.answered, marked: it.marked }"
         @click="jump(it.index)"
       >
         <span class="num">{{ it.index }}</span>
@@ -201,11 +206,6 @@ const jump = (idx: number) => emit('jump', idx)
 
 .cell.active.marked {
   & .flag { background: #fff; color: #409eff; }
-}
-
-.cell.filtered {
-  opacity: 0.3;
-  pointer-events: none;
 }
 
 .legend {

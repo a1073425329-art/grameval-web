@@ -64,8 +64,10 @@ export const resetUserPassword = (id: number, newPassword = '123456') =>
  *  2. 语法分类 /categories
  * ============================================================ */
 
-export const listCategoryTree = () =>
-  request.get<ApiResponse<Category[]>>('/categories/tree', { params: { includeDisabled: true } })
+export const listCategoryTree = (includeDisabled = false) =>
+  request.get<ApiResponse<Category[]>>('/categories/tree', {
+    params: includeDisabled ? { includeDisabled: true } : undefined,
+  })
 
 export const createCategory = (data: CategoryForm) =>
   request.post<ApiResponse<Category>>('/categories', data)
@@ -349,6 +351,7 @@ export interface ReadingPassageQuery extends PageQuery {
   source?: string | undefined
   status?: number | undefined
   includeTemp?: boolean | undefined
+  includeQuestions?: boolean | undefined
 }
 
 export const listReadingPassages = (params: ReadingPassageQuery) =>
@@ -360,7 +363,7 @@ export const getReadingPassageDetail = (id: number, includeQuestions = true) =>
   })
 
 export const getPassageQuestions = (id: number) =>
-  request.get<ApiResponse<Question[]>>(`/reading-passages/${id}/questions`)
+  request.get<ApiResponse<ReadingPassage>>(`/reading-passages/${id}/questions`)
 
 export const createReadingPassage = (data: ReadingPassageForm) =>
   request.post<ApiResponse<ReadingPassage>>('/reading-passages', data)

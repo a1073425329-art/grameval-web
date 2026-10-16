@@ -44,6 +44,9 @@ const isOngoing = (e: AvailableExam) => {
   return now.value >= s && now.value <= t
 }
 
+/** 有未完成答卷（意外退出/断点）→ 列表按钮显示「续考」 */
+const isResume = (e: AvailableExam) => e.submitStatus === 0 && e.examRecordId != null
+
 const statusInfo = (e: AvailableExam) => {
   const s = Date.parse(e.startTime)
   const t = Date.parse(e.endTime)
@@ -69,10 +72,13 @@ const entering = ref<number | null>(null)
 const enterExam = async (e: AvailableExam) => {
   if (!isOngoing(e)) return
   try {
+    const resume = isResume(e)
     await ElMessageBox.confirm(
-      `即将进入《${e.sessionName}》，考试时长 ${e.duration} 分钟。进入后倒计时会开始，请提前准备好网络与安静环境。`,
-      '进入考试',
-      { confirmButtonText: '进入', cancelButtonText: '取消', type: 'warning' }
+      resume
+        ? `《${e.sessionName}》有未完成答卷，将从上次进度继续（剩余时间接着算）。确认续考？`
+        : `即将进入《${e.sessionName}》，考试时长 ${e.duration} 分钟。进入后倒计时会开始，请提前准备好网络与安静环境。`,
+      resume ? '续考' : '进入考试',
+      { confirmButtonText: resume ? '续考' : '进入', cancelButtonText: '取消', type: 'warning' }
     )
   } catch { return }
 
@@ -132,9 +138,10 @@ const attendedCount = computed(() => attendedExams.value.length)
 
           <el-row :gutter="16">
             <el-col v-for="e in availableExams" :key="e.id" :span="8" style="margin-bottom: 16px">
-              <div class="exam-card" :class="{ 'is-live': isOngoing(e) }">
+              <div class="exam-card" :class="{ 'is-live': isOngoing(e), 'is-resume': isResume(e) }">
                 <div class="card-head">
                   <h4 class="exam-name">{{ e.sessionName }}</h4>
+                  <el-tag v-if="isResume(e)" type="warning" size="small">未完成</el-tag>
                   <el-tag :type="statusInfo(e).type" size="small">{{ statusInfo(e).text }}</el-tag>
                 </div>
                 <div class="card-body">
@@ -152,7 +159,7 @@ const attendedCount = computed(() => attendedExams.value.length)
                     style="width: 100%"
                     @click="enterExam(e)"
                   >
-                    {{ isOngoing(e) ? '进入考试' : statusInfo(e).text }}
+                    {{ isResume(e) ? '续考' : isOngoing(e) ? '进入考试' : statusInfo(e).text }}
                   </el-button>
                 </div>
               </div>
@@ -194,7 +201,7 @@ const attendedCount = computed(() => attendedExams.value.length)
                     style="width: 100%"
                     @click="viewResult(e)"
                   >
-                    {{ e.submitStatus === 0 ? '继续答题' : '查看成绩详情' }}
+                    {{ e.submitStatus === 0 ? '续考' : '查看成绩详情' }}
                   </el-button>
                 </div>
               </div>
@@ -221,6 +228,7 @@ const attendedCount = computed(() => attendedExams.value.length)
 
   &:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); transform: translateY(-2px); }
   &.is-live { border-color: #67c23a; }
+  &.is-resume { border-color: #e6a23c; box-shadow: 0 0 0 1px rgba(230,162,60,0.25); }
   &.is-attended { border-color: #e4e7ed; background: #fafcff; }
 }
 .card-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }

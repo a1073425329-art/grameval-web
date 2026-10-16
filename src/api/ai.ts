@@ -231,7 +231,7 @@ export interface DirectGenerateParams {
   withTrap: boolean
   focusWeak: boolean
   questionCount: number
-  /** [2026-10-16 新增] 试卷满分（标准档位：100/120/150/710/9），随 body 传给后端 */
+  /** [2026-10-16 新增] 试卷总分（100 或 150，1 题 1 分），随 body 传给后端 */
   totalScore?: number
   singleWeight?: number
   multipleWeight?: number
@@ -239,6 +239,7 @@ export interface DirectGenerateParams {
   judgeWeight?: number
   fillWeight?: number
   analysisText?: string
+  notes?: string
   paperName: string
   sessionName?: string
   startTime?: string

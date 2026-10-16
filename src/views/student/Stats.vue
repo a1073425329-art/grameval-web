@@ -55,8 +55,8 @@ const includeMap: Record<string, string | undefined> = {
 //   try {
 //     const [s, r, p] = await Promise.allSettled([
 //       getStudentStatistics(userId.value, includeMap[currentModule.value]),
-//       getMyResults({ pageNum: 1, pageSize: 20 }),
-//       listPractices({ pageNum: 1, pageSize: 10 }),
+//       getMyResults({ pageNum: 1, pageSize: 50 }),
+//       listPractices({ pageNum: 1, pageSize: 50 }),
 //     ])
 //     if (s.status === 'fulfilled') stats.value = s.value.data
 //     if (r.status === 'fulfilled') recentResults.value = r.value.data?.records ?? ([] as any)

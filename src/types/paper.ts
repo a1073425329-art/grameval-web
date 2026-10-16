@@ -4,13 +4,28 @@ import type { QuestionType, Difficulty } from './common'
  * 试卷试题关联 —— 对齐后端 PaperQuestionVO
  * 后端返回的是扁平结构（题干+题型+难度直接展开在 pq 上）
  */
-export interface PaperQuestionVO {
+export interface PaperSubQuestionVO {
   questionId: number
   stem: string
   questionType: QuestionType
   difficulty: Difficulty
   questionScore: number
   questionOrder: number
+}
+
+export interface PaperQuestionVO {
+  unitType: 'QUESTION' | 'READING'
+  questionId?: number
+  stem: string
+  questionType: QuestionType
+  difficulty?: Difficulty
+  questionScore: number
+  questionOrder: number
+  passageId?: number
+  passageTitle?: string
+  passageContent?: string
+  passageWordCount?: number
+  subQuestions?: PaperSubQuestionVO[]
 }
 
 /** 试卷 —— 对齐后端 PaperVO */
@@ -39,15 +54,22 @@ export interface Paper {
 
 /** 试卷创建/更新请求 —— 对齐后端 PaperRequest
  * （请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明） */
+export interface PaperQuestionUnitForm {
+  questionId?: number
+  questionScore?: number
+  passageId?: number
+  questions?: Array<{
+    questionId: number
+    questionScore: number
+    questionOrder?: number
+  }>
+}
+
 export interface PaperForm {
   paperName: string
   description?: string | undefined
   passScore?: number | undefined
   shuffleQuestions?: boolean | undefined
   status?: 0 | 1 | 2 | undefined
-  questions: Array<{
-    questionId: number
-    questionScore: number
-    questionOrder: number
-  }>
+  questionUnits: PaperQuestionUnitForm[]
 }

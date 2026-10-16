@@ -11,7 +11,7 @@ const categories = ref<Category[]>([]);
 // 查询条件
 const queryForm = ref<StudyNoteQuery>({
  pageNum: 1,
- pageSize: 10,
+ pageSize: 50,
 });
 const keyword = ref('');
 const selectedType = ref('');
@@ -308,7 +308,7 @@ defineExpose({ dialogVisible, isAdding, isEditing, editingNote, form, openAddMod
         v-model:current-page="queryForm.pageNum"
         v-model:page-size="queryForm.pageSize"
         :total="total"
-        :page-sizes="[10, 20, 50]"
+        :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="loadNotes"
         @current-change="handlePageChange"

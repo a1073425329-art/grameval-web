@@ -446,7 +446,7 @@ onMounted(() => { load(); loadPickers() })
 
       <div class="pagination">
         <el-pagination v-model:current-page="query.pageNum" v-model:page-size="query.pageSize" :total="total"
-          layout="total, sizes, prev, pager, next, jumper" :page-sizes="[20,50,100]" @size-change="load" @current-change="load" />
+          layout="total, sizes, prev, pager, next, jumper" :page-sizes="[10, 20, 50, 100, 200, 500, 1000]" @size-change="load" @current-change="load" />
       </div>
     </el-card>
 

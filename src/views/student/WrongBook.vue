@@ -2,8 +2,8 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getWrongBook, getCategoryTree, getRedoQuestions, submitPractice } from '@/api/student'
-import type { WrongBookItem } from '@/types/result'
-import type { Question } from '@/types/question'
+import type { WrongBookItem, WrongBookUnit } from '@/types/result'
+import { flattenPracticeQuestionUnits, type PracticeQuestionItem } from '@/utils/questionUnits'
 import type { Category } from '@/types/category'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { getJudgeOptionLabel } from '@/utils/dict'
@@ -19,7 +19,7 @@ const query = reactive({
   pageSize: 50,
 })
 
-const list = ref<WrongBookItem[]>([])
+const list = ref<WrongBookUnit[]>([])
 const total = ref(0)
 const loading = ref(false)
 const categories = ref<Category[]>([])
@@ -62,6 +62,8 @@ const onFilterChange = () => { query.pageNum = 1; load() }
 
 const sourceTag = (s: string) => (s === 'EXAM' ? 'danger' : 'warning')
 const sourceLabel = (s: string) => (s === 'EXAM' ? '考试错题' : '练习错题')
+const unitQuestions = (unit: WrongBookUnit): WrongBookItem[] =>
+  unit.unitType === 'READING' ? unit.subQuestions ?? [] : unit.question ? [unit.question] : []
 
 const answerText = (a?: string | null, type?: QuestionType) => {
   if (!a) return '（未作答）'
@@ -82,7 +84,7 @@ const toggleAnalysis = (idx: number) => {
 
 // ====== 错题重做 ======
 const redoModal = ref(false)
-const redoQuestions = ref<Question[]>([])
+const redoQuestions = ref<PracticeQuestionItem[]>([])
 const redoCurrentIndex = ref(0)
 const redoAnswers = ref<Record<number, string>>({})
 const redoSubmitting = ref(false)
@@ -99,7 +101,7 @@ const startRedo = async () => {
   redoSubmitting.value = true
   try {
     const res = await getRedoQuestions({ categoryId: query.categoryId, count: 10 })
-    redoQuestions.value = res.data ?? []
+    redoQuestions.value = flattenPracticeQuestionUnits(res.data ?? [])
     if (!redoQuestions.value.length) {
       ElMessage.info('当前没有可重做的错题')
       return
@@ -252,7 +254,7 @@ onMounted(async () => {
       </div>
 
       <div class="filter-summary">
-        共 <b>{{ total }}</b> 道错题<span v-if="list.length"> · 当前第 {{ (query.pageNum - 1) * query.pageSize + 1 }} - {{ Math.min(query.pageNum * query.pageSize, total) }} 题</span>
+      共 <b>{{ total }}</b> 个错题单元<span v-if="list.length"> · 当前第 {{ (query.pageNum - 1) * query.pageSize + 1 }} - {{ Math.min(query.pageNum * query.pageSize, total) }} 项</span>
         <div class="filter-actions">
           <el-button type="primary" @click="startRedo" :loading="redoSubmitting">
             <el-icon><Refresh /></el-icon> 开始重做
@@ -268,78 +270,68 @@ onMounted(async () => {
     <div v-loading="loading" class="wrong-list">
       <el-empty v-if="!loading && !list.length" description="🎉 恭喜！暂无错题" :image-size="120" />
 
-      <div
-        v-for="(w, idx) in list"
-        :key="`${w.questionId}-${w.source}`"
-        class="wrong-card"
-      >
-        <!-- 题头 -->
+      <div v-for="(unit, idx) in list" :key="unit.unitType === 'READING' ? `p-${unit.passageId}` : `q-${unit.question?.questionId}`" class="wrong-card">
         <div class="wc-head">
           <div class="wc-tags">
             <span class="wc-idx">#{{ (query.pageNum - 1) * query.pageSize + idx + 1 }}</span>
-            <el-tag :type="sourceTag(w.source)" size="small" effect="dark">{{ sourceLabel(w.source) }}</el-tag>
-            <el-tag size="small">{{ typeLabel(w.questionType) }}</el-tag>
-            <el-tag :type="diffTagType(w.difficulty)" size="small">{{ diffLabel(w.difficulty) }}</el-tag>
-            <el-tag type="info" size="small">{{ w.categoryName }}</el-tag>
+            <el-tag v-if="unit.unitType === 'READING'" size="small" type="success">阅读理解</el-tag>
+            <el-tag v-else-if="unit.question" :type="sourceTag(unit.question.source)" size="small" effect="dark">{{ sourceLabel(unit.question.source) }}</el-tag>
+            <el-tag v-if="unit.unitType === 'READING'" size="small" type="warning" effect="plain">{{ unit.subQuestionCount }} 道错题 · {{ unit.totalScore ?? 0 }} 分</el-tag>
+            <el-tag v-if="unit.question" size="small">{{ typeLabel(unit.question.questionType) }}</el-tag>
+            <el-tag v-if="unit.question" :type="diffTagType(unit.question.difficulty)" size="small">{{ diffLabel(unit.question.difficulty) }}</el-tag>
+            <el-tag v-if="unit.question" type="info" size="small">{{ unit.question.categoryName }}</el-tag>
           </div>
-          <span class="wc-time">首次错误：{{ w.firstWrongTime?.slice(0, 16) }}</span>
+          <span v-if="unit.question" class="wc-time">首次错误：{{ unit.question.firstWrongTime?.slice(0, 16) }}</span>
         </div>
 
-        <!-- 阅读理解：复盘必须带上当时的文章，否则题干里的 "According to the passage" 无从对照 -->
         <PassageCard
-          v-if="w.passageContent"
-          :content="w.passageContent"
-          :title="w.passageTitle"
-          :word-count="w.passageWordCount"
+          v-if="unit.unitType === 'READING' && unit.passageContent"
+          :content="unit.passageContent"
+          :title="unit.passageTitle"
+          :word-count="unit.passageWordCount"
+          :group-total="unit.subQuestionCount"
+          :group-score="unit.totalScore"
         />
 
-        <!-- 题干 -->
-        <div class="wc-stem">{{ w.stem }}</div>
-
-        <!-- 选项 -->
-        <div v-if="w.options?.length" class="wc-options">
-          <div
-            v-for="op in w.options"
-            :key="op.optionLabel"
-            class="wc-opt"
-            :class="{
-              'opt-correct': op.optionLabel === w.standardAnswer,
-              'opt-wrong': op.optionLabel === w.userAnswer && w.userAnswer !== w.standardAnswer,
-            }"
-          >
-            <span class="opt-key">{{ op.optionLabel }}.</span>
-            <span>{{ op.optionContent }}</span>
-            <el-tag v-if="op.optionLabel === w.standardAnswer" size="small" type="success" effect="plain" class="opt-tag">✓</el-tag>
-            <el-tag v-if="op.optionLabel === w.userAnswer && w.userAnswer !== w.standardAnswer" size="small" type="danger" effect="plain" class="opt-tag">✗ 你的答案</el-tag>
-          </div>
-        </div>
-
-        <!-- 非选项题的答案区（填空 / 判断 / 无选项阅读题，如摘要填空、句子补全） -->
-        <div v-if="!w.options?.length" class="wc-answer-row">
-          <div class="answer-block wrong-block">
-            <div class="answer-label">你的答案</div>
-            <div class="answer-val" :class="{ correct: answerCorrect(w.userAnswer, w.standardAnswer) }">
-              {{ answerText(w.userAnswer, w.questionType) }}
+        <div v-for="w in unitQuestions(unit)" :key="w.questionId" class="wrong-subquestion">
+          <div class="wc-subhead">
+            <strong>{{ w.stem }}</strong>
+            <div class="wc-tags">
+              <el-tag :type="sourceTag(w.source)" size="small" effect="dark">{{ sourceLabel(w.source) }}</el-tag>
+              <el-tag v-if="unit.unitType === 'READING'" size="small" type="info">{{ w.categoryName }}</el-tag>
+              <el-tag v-if="unit.unitType === 'READING'" size="small" type="warning" effect="plain">首次错误：{{ w.firstWrongTime?.slice(0, 16) }}</el-tag>
             </div>
           </div>
-          <div class="answer-block correct-block">
-            <div class="answer-label">正确答案</div>
-            <div class="answer-val correct">{{ answerText(w.standardAnswer, w.questionType) }}</div>
+
+          <div v-if="w.options?.length" class="wc-options">
+            <div v-for="op in w.options" :key="op.optionLabel" class="wc-opt" :class="{
+              'opt-correct': op.optionLabel === w.standardAnswer,
+              'opt-wrong': op.optionLabel === w.userAnswer && w.userAnswer !== w.standardAnswer,
+            }">
+              <span class="opt-key">{{ op.optionLabel }}.</span>
+              <span>{{ op.optionContent }}</span>
+              <el-tag v-if="op.optionLabel === w.standardAnswer" size="small" type="success" effect="plain" class="opt-tag">✓</el-tag>
+              <el-tag v-if="op.optionLabel === w.userAnswer && w.userAnswer !== w.standardAnswer" size="small" type="danger" effect="plain" class="opt-tag">✗ 你的答案</el-tag>
+            </div>
           </div>
-        </div>
 
-        <!-- 解析（可展开） -->
-        <div v-if="w.analysis" class="wc-analysis-toggle" @click="toggleAnalysis(idx)">
-          <el-icon><component :is="expandedAnalysis.has(idx) ? 'ArrowUp' : 'ArrowDown'" /></el-icon>
-          <span>题目解析</span>
-        </div>
-        <div v-if="w.analysis && expandedAnalysis.has(idx)" class="wc-analysis">
-          {{ w.analysis }}
-        </div>
+          <div v-if="!w.options?.length" class="wc-answer-row">
+            <div class="answer-block wrong-block">
+              <div class="answer-label">你的答案</div>
+              <div class="answer-val" :class="{ correct: answerCorrect(w.userAnswer, w.standardAnswer) }">{{ answerText(w.userAnswer, w.questionType) }}</div>
+            </div>
+            <div class="answer-block correct-block">
+              <div class="answer-label">正确答案</div>
+              <div class="answer-val correct">{{ answerText(w.standardAnswer, w.questionType) }}</div>
+            </div>
+          </div>
 
-        <!-- 来源信息 -->
-        <div v-if="w.sourceName" class="wc-source">
-          <el-icon><Link /></el-icon> 来源：{{ w.sourceName }}
+          <div v-if="w.analysis" class="wc-analysis-toggle" @click="toggleAnalysis(w.questionId)">
+            <el-icon><component :is="expandedAnalysis.has(w.questionId) ? 'ArrowUp' : 'ArrowDown'" /></el-icon>
+            <span>题目解析</span>
+          </div>
+          <div v-if="w.analysis && expandedAnalysis.has(w.questionId)" class="wc-analysis">{{ w.analysis }}</div>
+          <div v-if="w.sourceName" class="wc-source"><el-icon><Link /></el-icon> 来源：{{ w.sourceName }}</div>
         </div>
       </div>
     </div>
@@ -351,7 +343,7 @@ onMounted(async () => {
         v-model:page-size="query.pageSize"
         :total="total"
         layout="total, sizes, prev, pager, next, jumper"
-        :page-sizes="[20, 50, 100]"
+        :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
         @size-change="load"
         @current-change="load"
         background
@@ -374,6 +366,15 @@ onMounted(async () => {
             <el-tag :type="diffTagType(currentRedoQuestion.difficulty)" size="small">{{ diffLabel(currentRedoQuestion.difficulty) }}</el-tag>
             <el-tag type="info" size="small">{{ currentRedoQuestion.categoryName }}</el-tag>
           </div>
+          <PassageCard
+            v-if="currentRedoQuestion.passageContent"
+            :content="currentRedoQuestion.passageContent"
+            :title="currentRedoQuestion.passageTitle"
+            :word-count="currentRedoQuestion.passageWordCount"
+            :group-total="currentRedoQuestion.readingGroupSize"
+            :group-score="currentRedoQuestion.readingGroupScore"
+            :group-index="currentRedoQuestion.readingGroupIndex"
+          />
           <div class="rq-stem">{{ currentRedoQuestion.stem }}</div>
           <div v-if="currentRedoQuestion.options?.length" class="rq-options">
             <div
@@ -470,6 +471,10 @@ onMounted(async () => {
   transition: box-shadow 0.15s;
   &:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
 }
+.wrong-subquestion + .wrong-subquestion { margin-top: 18px; padding-top: 18px; border-top: 1px solid #ebeef5; }
+.wc-subhead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.wc-subhead strong { min-width: 0; flex: 1; line-height: 1.6; font-weight: 600; color: #303133; }
+.wc-subhead .wc-tags { justify-content: flex-end; }
 
 .wc-head {
   display: flex; align-items: center; justify-content: space-between;

@@ -1,6 +1,7 @@
 import request from '@/utils/request'
 import type { ApiResponse, PageQuery, PageResult, QuestionType, Difficulty } from '@/types/common'
 import type { Category } from '@/types/category'
+import type { QuestionUnit, ReadingPassage } from '@/types/reading'
 import type {
   Question,
   QuickPracticeForm,
@@ -18,7 +19,7 @@ import type {
   ResultSummary,
   ExamResultItem,
   ResultDetail,
-  WrongBookItem,
+  WrongBookUnit,
   WrongBookQuery,
 } from '@/types/result'
 import type {
@@ -62,6 +63,17 @@ export interface QuestionListQuery extends PageQuery {
 export const listQuestions = (params: QuestionListQuery) =>
   request.get<ApiResponse<PageResult<Question>>>('/questions', { params })
 
+export interface StudentReadingPassageQuery extends PageQuery {
+  keyword?: string | undefined
+  categoryId?: number | undefined
+  difficulty?: Difficulty | undefined
+  includeQuestions?: boolean | undefined
+}
+
+/** 阅读理解题组分页：顶层记录是一篇文章，子题和总分嵌套在文章下 */
+export const listReadingPassages = (params: StudentReadingPassageQuery) =>
+  request.get<ApiResponse<PageResult<ReadingPassage>>>('/reading-passages', { params })
+
 /** 题目详情（管理员含答案，学生不含） */
 export const getQuestionDetail = (id: number) =>
   request.get<ApiResponse<Question>>(`/questions/${id}`)
@@ -76,7 +88,7 @@ export const getQuestionStudyMode = (id: number) =>
 
 /** 按分类随机取题（默认 10 道，不含答案） */
 export const getPracticeQuestions = (categoryId: number, count = 10) =>
-  request.get<ApiResponse<Question[]>>('/practices/questions', {
+  request.get<ApiResponse<QuestionUnit[]>>('/practices/questions', {
     params: { categoryId, count },
   })
 
@@ -212,11 +224,11 @@ export const getResultDetail = (resultId: number) =>
 
 /** 错题本（合并考试+练习错题，按题目去重） */
 export const getWrongBook = (params?: WrongBookQuery) =>
-  request.get<ApiResponse<PageResult<WrongBookItem>>>('/results/wrong-book', { params })
+  request.get<ApiResponse<PageResult<WrongBookUnit>>>('/results/wrong-book', { params })
 
 /** 错题重做题目列表（不含答案） */
 export const getRedoQuestions = (params?: { categoryId?: number | undefined; count?: number | undefined }) =>
-  request.get<ApiResponse<Question[]>>('/results/wrong-book/redo', { params })
+  request.get<ApiResponse<QuestionUnit[]>>('/results/wrong-book/redo', { params })
 
 /* ============================================================ *
  *  6. 学生个人多维度统计

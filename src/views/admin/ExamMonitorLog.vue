@@ -20,7 +20,7 @@ const examRecords = ref<ExamRecord[]>([])
 
 const query = reactive({
   pageNum: 1,
-  pageSize: 20,
+  pageSize: 50,
   examId: undefined as number | undefined,
   severity: undefined as number | undefined,
   handled: undefined as boolean | undefined,
@@ -259,7 +259,7 @@ const handlePageChange = () => load()
         v-model:current-page="query.pageNum"
         v-model:page-size="query.pageSize"
         :total="total"
-        :page-sizes="[20, 50, 100]"
+        :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
         layout="total, sizes, prev, pager, next, jumper"
         @change="handlePageChange"
         style="margin-top:16px;justify-content:flex-end"
@@ -443,7 +443,7 @@ const events = ref<ExamMonitorEvent[]>([])
 const loading = ref(false)
 const total = ref(0)
 const stats = ref<Record<string, number>>({})
-const query = reactive({ pageNum: 1, pageSize: 20, examId: undefined as number | undefined, severity: undefined as number | undefined, handled: undefined as boolean | undefined })
+const query = reactive({ pageNum: 1, pageSize: 50, examId: undefined as number | undefined, severity: undefined as number | undefined, handled: undefined as boolean | undefined })
 
 const load = async () => {
   loading.value = true
@@ -536,7 +536,7 @@ const typeLabels: Record<string, string> = {
 
       <el-pagination
         v-model:current-page="query.pageNum" v-model:page-size="query.pageSize"
-        :total="total" :page-sizes="[20, 50, 100]" layout="total, sizes, prev, pager, next"
+        :total="total" :page-sizes="[10, 20, 50, 100, 200, 500, 1000]" layout="total, sizes, prev, pager, next"
         @change="load" style="margin-top:16px;justify-content:flex-end"
       />
     </el-card>

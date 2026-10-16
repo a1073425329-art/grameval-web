@@ -44,7 +44,10 @@ const groups = computed(() => {
       const kids = kw && !topHit ? children.filter((c) => c.categoryName.toLowerCase().includes(kw)) : children
       if (kw && !topHit && !kids.length) return null
       const allIds = [top.id, ...children.map((c) => c.id)]
-      return { top, children: kids, allIds }
+      // [2026-10-16 口径修正] 组题量 = 一级直接挂载 + 全部子类。后端 questionCount 只算直接挂载，
+      // 直接显示会让「时态」只显示 629（实际 629 + 2569 = 3192），与练习页 topQuestionCount 保持一致。
+      const totalQ = (top.questionCount ?? 0) + children.reduce((s, c) => s + (c.questionCount ?? 0), 0)
+      return { top, children: kids, allIds, totalQ }
     })
     .filter((g): g is NonNullable<typeof g> => g !== null)
 })
@@ -139,7 +142,7 @@ const isOpen = (id: number) => !!keyword.value.trim() || !collapsed.value.includ
           </el-checkbox>
           <span class="group-meta">
             {{ g.allIds.filter((i) => selected.has(i)).length }}/{{ g.allIds.length }}
-            <em v-if="g.top.questionCount">· {{ g.top.questionCount }} 题</em>
+            <em v-if="g.totalQ">· {{ g.totalQ }} 题</em>
           </span>
         </div>
         <div v-show="isOpen(g.top.id)" class="group-body">

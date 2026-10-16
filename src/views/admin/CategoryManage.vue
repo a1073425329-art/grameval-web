@@ -12,6 +12,9 @@ const loading = ref(false)
 
 /** 搜索关键字（对一级与二级同时生效） */
 const keyword = ref('')
+// [2026-10-16 改造] 原 `showDisabled = ref(false)` 勾选框改为状态 tabs：
+// 停用分类不再与启用分类混排，而是单独一个视图，避免日常维护时被 13 个空壳分类干扰。
+const statusTab = ref<'enabled' | 'disabled'>('enabled')
 
 /* ---------------- 分组卡片墙数据 ---------------- */
 
@@ -34,30 +37,42 @@ const match = (c: Category, kw: string) =>
 
 const groups = computed<Group[]>(() => {
   const kw = keyword.value.trim().toLowerCase()
+  // [2026-10-16 改造] 原为「显示已停用分类」勾选框：勾选后停用项混在启用项里一起展示，
+  // 30 个分类（17 启用 + 13 停用）平铺，分不清哪些还在用。现改为 tabs 按状态分离视图 ——
+  // 「启用中」只看在用分类（日常维护），「已停用」单独一屏（便于恢复或清理）。
+  const wantDisabled = statusTab.value === 'disabled'
   return tree.value
+    .filter((root) => (wantDisabled ? root.status === 0 : root.status !== 0))
     .map((root, i) => {
-      const kids = root.children ?? []
-      // 根命中 → 展示全部子级；根不命中 → 只展示命中的子级；都没有则整组过滤掉
+      const kids = (root.children ?? []).filter((child) =>
+        wantDisabled ? child.status === 0 : child.status !== 0
+      )
+      // 根命中 → 展示全部可见子级；根不命中 → 只展示命中的子级；都没有则整组过滤掉
       const rootHit = match(root, kw)
-      const children = rootHit ? kids : kids.filter((c) => match(c, kw))
+      const children = rootHit ? kids : kids.filter((child) => match(child, kw))
       if (kw && !rootHit && !children.length) return null
-      const total = (root.questionCount ?? 0) + kids.reduce((s, c) => s + (c.questionCount ?? 0), 0)
+      const total = (root.questionCount ?? 0) + kids.reduce((sum, child) => sum + (child.questionCount ?? 0), 0)
       return { root, children, total, color: PALETTE[i % PALETTE.length] } as Group
     })
-    .filter((g): g is Group => g !== null)
+    .filter((group): group is Group => group !== null)
 })
 
 /** 统计概览 */
 const stats = computed(() => {
-  const roots = tree.value
-  const kids = roots.flatMap((r) => r.children ?? [])
-  const all = [...roots, ...kids]
+  const allRoots = tree.value
+  const all = allRoots.flatMap((root) => [root, ...(root.children ?? [])])
+  const isVisible = (category: Category) =>
+    statusTab.value === 'disabled' ? category.status === 0 : category.status !== 0
+  const roots = allRoots.filter(isVisible)
+  const kids = roots.flatMap((root) => (root.children ?? []).filter(isVisible))
+  const visible = [...roots, ...kids]
   return {
-    total: all.length,
+    total: visible.length,
     roots: roots.length,
     seconds: kids.length,
-    totalQuestions: all.reduce((s, c) => s + (c.questionCount ?? 0), 0),
-    disabled: all.filter((c) => c.status === 0).length,
+    totalQuestions: visible.reduce((sum, category) => sum + (category.questionCount ?? 0), 0),
+    enabled: all.filter((category) => category.status === 1).length,
+    disabled: all.filter((category) => category.status === 0).length,
   }
 })
 
@@ -71,7 +86,7 @@ const qPercent = (c?: Category) => Math.round((((c?.questionCount ?? 0) / maxQue
 const load = async () => {
   loading.value = true
   try {
-    const res = await listCategoryTree()
+    const res = await listCategoryTree(true)
     tree.value = Array.isArray(res.data) ? res.data : []
   } finally {
     loading.value = false
@@ -182,6 +197,26 @@ onMounted(load)
           </el-button>
         </div>
       </div>
+
+      <!-- [2026-10-16 改造] 状态 tabs：启用中 / 已停用 分开视图（原为勾选框，停用项会混排） -->
+      <el-tabs v-model="statusTab" class="status-tabs">
+        <el-tab-pane name="enabled">
+          <template #label>
+            <span class="tab-label">
+              启用中
+              <el-tag size="small" type="success" effect="plain">{{ stats.enabled }}</el-tag>
+            </span>
+          </template>
+        </el-tab-pane>
+        <el-tab-pane name="disabled">
+          <template #label>
+            <span class="tab-label">
+              已停用
+              <el-tag size="small" type="danger" effect="plain">{{ stats.disabled }}</el-tag>
+            </span>
+          </template>
+        </el-tab-pane>
+      </el-tabs>
 
       <!-- 统计概览 -->
       <div class="stat-row" v-loading="loading">
@@ -322,6 +357,17 @@ onMounted(load)
 }
 .toolbar-right { display: flex; align-items: center; gap: 12px; }
 .title { margin: 0; font-size: 16px; font-weight: 600; }
+
+/* [2026-10-16] 状态 tabs：启用中 / 已停用 分离视图 */
+.status-tabs {
+  margin-bottom: 4px;
+  :deep(.el-tabs__header) { margin-bottom: 12px; }
+}
+.tab-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 
 /* 统计条 */
 .stat-row {

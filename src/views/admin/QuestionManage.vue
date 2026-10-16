@@ -89,7 +89,6 @@ const typeTabOptions: { label: string; value: string }[] = [
   { label: '多选题', value: 'MULTIPLE' },
   { label: '判断题', value: 'JUDGE' },
   { label: '填空题', value: 'FILL_HINT' },
-  { label: '阅读理解', value: 'READING' },
 ]
 const typeTab = ref<string>('ALL')
 const onTypeTabChange = (name: string | number) => {
@@ -456,7 +455,7 @@ const loadPassages = async () => {
       keyword: passageSearchKw.value || undefined,
       difficulty: readingForm.difficulty,
       pageNum: passagePage,
-      pageSize: 20,
+      pageSize: 50,
       status: 1,
     })
     passageList.value = res.data.records ?? []
@@ -1862,7 +1861,7 @@ onMounted(async () => {
           v-model:page-size="query.pageSize"
           :total="total"
           layout="total, sizes, prev, pager, next, jumper"
-          :page-sizes="[20, 50, 100]"
+          :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
           @size-change="load"
           @current-change="load"
         />

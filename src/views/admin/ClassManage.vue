@@ -20,7 +20,7 @@ const stats = ref<Record<string, number>>({})
 
 const query = reactive({
   pageNum: 1,
-  pageSize: 20,
+  pageSize: 50,
   className: '',
   schoolName: '',
   grade: '',
@@ -258,7 +258,7 @@ const handlePageChange = () => load()
         v-model:current-page="query.pageNum"
         v-model:page-size="query.pageSize"
         :total="total"
-        :page-sizes="[20, 50, 100]"
+        :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
         layout="total, sizes, prev, pager, next, jumper"
         @change="handlePageChange"
         style="margin-top:16px;justify-content:flex-end"
@@ -579,7 +579,7 @@ import { FormLimits } from '@/utils/formLimits'
 const classes = ref<ClassGroup[]>([])
 const loading = ref(false)
 const total = ref(0)
-const query = reactive({ pageNum: 1, pageSize: 20 })
+const query = reactive({ pageNum: 1, pageSize: 50 })
 
 const load = async () => {
   loading.value = true
@@ -680,7 +680,7 @@ const removeStudent = async (classId: number, studentId: number) => {
       </el-table>
       <el-pagination
         v-model:current-page="query.pageNum" v-model:page-size="query.pageSize"
-        :total="total" :page-sizes="[20, 50]" layout="total, sizes, prev, pager, next"
+        :total="total" :page-sizes="[10, 20, 50, 100, 200, 500, 1000]" layout="total, sizes, prev, pager, next"
         @change="load" style="margin-top:16px;justify-content:flex-end"
       />
     </el-card>

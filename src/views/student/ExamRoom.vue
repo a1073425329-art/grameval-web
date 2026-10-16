@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -9,11 +9,13 @@ import {
   submitExam,
 } from '@/api/student'
 import type { ExamPaperView, ExamQuestion } from '@/types/exam'
+import { flattenExamQuestionUnits, type ExamQuestionItem } from '@/utils/questionUnits'
 import type { QuestionType } from '@/types/common'
 import Countdown from '@/components/Countdown.vue'
 import AnswerSheet from '@/components/AnswerSheet.vue'
 import PassageCard from '@/components/PassageCard.vue'
 import { readingSubtypeLabel } from '@/utils/dict'
+
 import { useExamWebSocket } from '@/composables/useExamWebSocket'
 
 const route = useRoute()
@@ -41,17 +43,14 @@ const {
 } = useExamWebSocket()
 
 const paperView = ref<ExamPaperView | null>(null)
-const questions = computed<ExamQuestion[]>(() => paperView.value?.questions ?? [])
+const questions = computed(() => flattenExamQuestionUnits(paperView.value?.questions ?? []))
 const loading = ref(true)
 const submitting = ref(false)
 const submitted = ref(false)
 
 /** 当前题号 1-based */
 const currentIdx = ref(1)
-const current = computed<ExamQuestion | undefined>(() => questions.value[currentIdx.value - 1])
-
-/** 阅读子题型的中文名；非阅读题为空串，模板据此隐藏标签 */
-const subtypeLabel = computed(() => readingSubtypeLabel(current.value?.questionSubtype))
+const current = computed<ExamQuestionItem | undefined>(() => questions.value[currentIdx.value - 1])
 
 /** 学生答案 map，key = questionId（值都是 string 或 string[]，提交前 join） */
 const answers = reactive<Record<number, string | string[]>>({})
@@ -96,22 +95,80 @@ const isMultiAnswer = (q: ExamQuestion) =>
  * 因此渲染以「答案形态」为准：无选项 → 文本框。
  */
 const isTextAnswer = (q: ExamQuestion) =>
-  q.questionType === 'FILL_HINT' || (q.options?.length ?? 0) === 0
+  q.questionType !== 'JUDGE' &&
+  (q.questionType === 'FILL_HINT' || (q.options?.length ?? 0) === 0)
 
 /**
- * 文章卡只在本组第一题上方出现。考试题目顺序由 questionOrder 决定、不能重排，
- * 所以这里按"前一题是否同一篇"判断（组卷成组抽取保证同篇相邻）。
+ * 左侧连续试卷结构：阅读理解「整篇短文 + 全部子题」成块展示，不拆成一题一屏。
+ * 右侧题号只做锚点跳转 + 高亮。
  */
-const isPassageHead = (idx: number) => {
-  const q = questions.value[idx]
-  if (!q?.passageId) return false
-  return questions.value[idx - 1]?.passageId !== q.passageId
+interface PaperQRef {
+  q: ExamQuestionItem
+  /** 1-based 全卷题号 */
+  index: number
+}
+interface ReadingBlock {
+  kind: 'reading'
+  key: string
+  passageId: number
+  title?: string | undefined
+  content: string
+  wordCount?: number | undefined
+  groupScore?: number | undefined
+  items: PaperQRef[]
+}
+interface SingleBlock {
+  kind: 'single'
+  key: string
+  item: PaperQRef
+}
+type PaperBlock = ReadingBlock | SingleBlock
+
+const paperBlocks = computed<PaperBlock[]>(() => {
+  const blocks: PaperBlock[] = []
+  const readingMap = new Map<number, ReadingBlock>()
+  questions.value.forEach((q, i) => {
+    const ref: PaperQRef = { q, index: i + 1 }
+    const pid = q.passageId
+    if (pid != null) {
+      let block = readingMap.get(pid)
+      if (!block) {
+        block = {
+          kind: 'reading',
+          key: `r-${pid}`,
+          passageId: pid,
+          title: q.passageTitle,
+          content: q.passageContent ?? '',
+          wordCount: q.passageWordCount,
+          groupScore: q.readingGroupScore,
+          items: [],
+        }
+        readingMap.set(pid, block)
+        blocks.push(block)
+      }
+      block.items.push(ref)
+      return
+    }
+    blocks.push({ kind: 'single', key: `q-${ref.index}`, item: ref })
+  })
+  return blocks
+})
+
+/** 去掉阅读卡的组内第 X 题角标——整组一起展示时不需要 */
+const passageWordCountOf = (content: string, declared?: number) => {
+  const real = content.trim() ? content.trim().split(/\s+/).length : 0
+  // word_count 有的库写成字符数，优先用正文实测词数
+  return real || declared || 0
 }
 
-const passageGroupSize = (idx: number) => {
-  const pid = questions.value[idx]?.passageId
-  return pid == null ? 0 : questions.value.filter((q) => q.passageId === pid).length
-}
+/** 当前题所属的阅读整组（文章 + 全部子题）；普通题为 null */
+const currentReadingBlock = computed<ReadingBlock | null>(() => {
+  const pid = current.value?.passageId
+  if (pid == null) return null
+  return (
+    paperBlocks.value.find((b): b is ReadingBlock => b.kind === 'reading' && b.passageId === pid) ?? null
+  )
+})
 
 const buildAnswerFrom = (q: ExamQuestion) => {
   const v = q.userAnswer
@@ -126,14 +183,14 @@ const buildAnswerFrom = (q: ExamQuestion) => {
 
 const applyPaperView = (view: ExamPaperView) => {
   paperView.value = view
-  view.questions
+  questions.value
     .slice()
     .sort((a, b) => (a.questionOrder ?? 0) - (b.questionOrder ?? 0))
     .forEach((q) => {
       answers[q.questionId] = buildAnswerFrom(q)
     })
   remainingSeconds.value = view.remainingSeconds ?? 0
-  currentIdx.value = Math.max(1, Math.min(currentIdx.value, view.questions.length))
+  currentIdx.value = Math.max(1, Math.min(currentIdx.value, questions.value.length))
 }
 
 const load = async () => {
@@ -176,9 +233,8 @@ const formatAnswer = (_t: QuestionType, v: string | string[] | undefined): strin
 
 /* ---------------- 单题保存 ---------------- */
 let saveTimer: number | null = null
-const saveCurrent = async () => {
-  if (!current.value) return
-  const q = current.value
+const saveQuestion = async (q?: ExamQuestionItem) => {
+  if (!q?.questionId) return
   const a = answers[q.questionId]
   const formatted = formatAnswer(q.questionType, a)
   if (!formatted) return
@@ -197,6 +253,7 @@ const saveCurrent = async () => {
     flashSaved() // 新增：答案暂存视觉反馈
   } catch { /* silent */ }
 }
+const saveCurrent = () => saveQuestion(current.value)
 
 /** 30s 自动保存所有变更题 */
 const autoSaveAll = async () => {
@@ -337,23 +394,42 @@ onBeforeRouteLeave(async (to) => {
 })
 
 /* ---------------- 交互 ---------------- */
+/** 锚点高亮：点答题卡题号后短暂高亮对应题块 */
+const highlightIdx = ref(0)
+let highlightTimer: number | null = null
+
+/**
+ * 题号锚点：阅读组内滚到子题；普通题直接切到该题。
+ * 阅读是「上文章 + 下子题」双栏，文章在独立区域，不会盖住题目。
+ */
 const jumpTo = (idx: number) => {
   saveCurrent()
   currentIdx.value = idx
+  highlightIdx.value = idx
+  if (highlightTimer !== null) clearTimeout(highlightTimer)
+  highlightTimer = window.setTimeout(() => {
+    if (highlightIdx.value === idx) highlightIdx.value = 0
+  }, 1800)
+  void nextTick(() => {
+    const el = document.getElementById(`q-${idx}`)
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  })
 }
-const goPrev = () => { if (currentIdx.value > 1) { saveCurrent(); currentIdx.value-- } }
-const goNext = () => { if (currentIdx.value < questions.value.length) { saveCurrent(); currentIdx.value++ } }
+const goPrev = () => { if (currentIdx.value > 1) jumpTo(currentIdx.value - 1) }
+const goNext = () => { if (currentIdx.value < questions.value.length) jumpTo(currentIdx.value + 1) }
 
 let debTimer: number | null = null
-const onAnswerChange = () => {
+const onAnswerChange = (q?: ExamQuestionItem) => {
   if (debTimer !== null) clearTimeout(debTimer)
-  debTimer = window.setTimeout(saveCurrent, 800)
+  const target = q ?? current.value
+  debTimer = window.setTimeout(() => saveQuestion(target), 800)
 }
 
 const typeLabel = (t: QuestionType) =>
   ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL: '填空', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
 
-const fontSize = ref<'small' | 'medium' | 'large'>('medium')
+/** 默认「中」已加大；答题区留白充足，默认大字更不易疲劳 */
+const fontSize = ref<'small' | 'medium' | 'large'>('large')
 const fontSizes = [
   { value: 'small', label: '小' },
   { value: 'medium', label: '中' },
@@ -361,12 +437,12 @@ const fontSizes = [
 ] as const
 
 const markedSet = reactive(new Set<number>())
-const toggleMark = () => {
-  if (!currentIdx.value) return
-  if (markedSet.has(currentIdx.value)) {
-    markedSet.delete(currentIdx.value)
+const toggleMark = (idx: number = currentIdx.value) => {
+  if (!idx) return
+  if (markedSet.has(idx)) {
+    markedSet.delete(idx)
   } else {
-    markedSet.add(currentIdx.value)
+    markedSet.add(idx)
   }
 }
 
@@ -505,107 +581,171 @@ const confirmSubmit = () => {
     </div>
 
     <div class="body">
-      <!-- 主答题区 -->
+      <!-- 主答题区：普通题一题一屏；阅读理解=上文章+下全部子题（整组） -->
       <div class="main">
-        <template v-if="current">
+        <div class="main-sticky">
           <div class="q-head">
             <span class="q-idx">第 {{ currentIdx }} 题 / 共 {{ questions.length }} 题</span>
             <div class="q-meta">
-              <el-tag size="small">{{ typeLabel(current.questionType) }}</el-tag>
-              <el-tag size="small" type="info">{{ current.questionScore }} 分</el-tag>
-              <el-button 
-                size="small" 
+              <el-button
+                size="small"
                 :type="markedSet.has(currentIdx) ? 'warning' : 'default'"
-                @click="toggleMark"
+                @click="toggleMark()"
                 class="mark-btn"
               >
                 <el-icon><StarFilled /></el-icon>
                 {{ markedSet.has(currentIdx) ? '已标记' : '标记' }}
               </el-button>
+              <el-button size="small" :disabled="currentIdx === 1" @click="goPrev">
+                <el-icon><ArrowLeft /></el-icon>上一题
+              </el-button>
+              <el-button size="small" type="primary" :disabled="currentIdx === questions.length" @click="goNext">
+                下一题<el-icon><ArrowRight /></el-icon>
+              </el-button>
             </div>
           </div>
-
-          <!-- 新增：答案暂存视觉反馈（绿色对勾动画） -->
           <transition name="saved-pop">
             <div v-if="savedFlash" class="saved-flash">
               <el-icon><CircleCheck /></el-icon>
               <span>答案已暂存</span>
             </div>
           </transition>
+        </div>
 
-          <!-- 阅读理解：同组第一题上方显示一次文章，组内其余题不再重复 -->
-          <PassageCard
-            v-if="current.passageContent && isPassageHead(currentIdx - 1)"
-            :content="current.passageContent"
-            :title="current.passageTitle"
-            :word-count="current.passageWordCount"
-            :group-total="passageGroupSize(currentIdx - 1)"
-          />
-
-          <div v-if="subtypeLabel" class="q-subtype">
-            <el-tag size="small" type="success" effect="plain">{{ subtypeLabel }}</el-tag>
-          </div>
-
-          <div class="q-stem">{{ currentIdx }}. {{ current.stem }}</div>
-
-          <!-- 文本作答：填空 / 无选项阅读题（摘要填空、句子补全等，答案形如 running） -->
-          <div v-if="isTextAnswer(current)" class="text-answer">
-            <div v-if="current.hintText" class="hint-line">
-              <el-tag size="small" type="warning" effect="plain">提示</el-tag>
-              <span>{{ current.hintText }}</span>
-            </div>
-            <el-input
-              v-model="answers[current.questionId] as string"
-              :placeholder="current.hintText ? '请填入括号内单词的正确形式' : '请输入答案（单词/短语）'"
-              style="max-width: 500px; margin-top: 12px"
-              @change="onAnswerChange"
+        <!-- 阅读理解：一篇文章 + 本组全部子题，上下分栏（文章不遮题） -->
+        <div v-if="currentReadingBlock" class="reading-pane">
+          <div class="reading-passage">
+            <PassageCard
+              :content="currentReadingBlock.content"
+              :title="currentReadingBlock.title"
+              :word-count="passageWordCountOf(currentReadingBlock.content, currentReadingBlock.wordCount)"
+              :group-total="currentReadingBlock.items.length"
+              :group-score="currentReadingBlock.groupScore"
             />
           </div>
+          <div class="reading-questions">
+            <article
+              v-for="item in currentReadingBlock.items"
+              :id="`q-${item.index}`"
+              :key="item.q.questionId"
+              class="q-block"
+              :class="{ active: currentIdx === item.index, highlighted: highlightIdx === item.index, answered: hasAnswer(item.q.questionId) }"
+              @click="currentIdx = item.index"
+            >
+              <div class="q-block-head">
+                <span class="q-no">{{ item.index }}.</span>
+                <el-tag v-if="item.q.questionSubtype && readingSubtypeLabel(item.q.questionSubtype)" size="small" type="success" effect="plain">
+                  {{ readingSubtypeLabel(item.q.questionSubtype) }}
+                </el-tag>
+                <el-tag size="small" type="info" effect="plain">{{ item.q.questionScore ?? item.q.readingGroupScore }} 分</el-tag>
+                <button type="button" class="mark-mini" :class="{ on: markedSet.has(item.index) }" @click.stop="toggleMark(item.index)">
+                  <el-icon><StarFilled /></el-icon>
+                </button>
+              </div>
+              <div class="q-stem">{{ item.q.stem }}</div>
 
-          <!-- 单选 / 阅读（单空） -->
-          <el-radio-group
-            v-else-if="(current.questionType === 'SINGLE' || current.questionType === 'READING') && !isMultiAnswer(current)"
-            v-model="answers[current.questionId]"
-            class="opt-list"
-            @change="onAnswerChange"
-          >
-            <el-radio v-for="op in current.options" :key="op.optionLabel" :value="op.optionLabel" class="opt-row">
-              <span class="opt-key">{{ op.optionLabel }}.</span> {{ op.optionContent }}
-            </el-radio>
-          </el-radio-group>
-
-          <!-- 多选 / 阅读（多空） -->
-          <el-checkbox-group
-            v-else-if="isMultiAnswer(current)"
-            v-model="answers[current.questionId] as string[]"
-            class="opt-list"
-            @change="onAnswerChange"
-          >
-            <el-checkbox v-for="op in current.options" :key="op.optionLabel" :value="op.optionLabel" class="opt-row">
-              <span class="opt-key">{{ op.optionLabel }}.</span> {{ op.optionContent }}
-            </el-checkbox>
-          </el-checkbox-group>
-
-          <!-- 判断 -->
-          <el-radio-group
-            v-else-if="current.questionType === 'JUDGE'"
-            v-model="answers[current.questionId]"
-            class="opt-list"
-            @change="onAnswerChange"
-          >
-            <el-radio value="TRUE" class="opt-row">对</el-radio>
-            <el-radio value="FALSE" class="opt-row">错</el-radio>
-          </el-radio-group>
-
-          <div class="footer">
-            <el-button :disabled="currentIdx === 1" @click="goPrev">
-              <el-icon><ArrowLeft /></el-icon>上一题
-            </el-button>
-            <el-button type="primary" :disabled="currentIdx === questions.length" @click="goNext">
-              下一题<el-icon><ArrowRight /></el-icon>
-            </el-button>
+              <div v-if="isTextAnswer(item.q)" class="text-answer">
+                <div v-if="item.q.hintText" class="hint-line">
+                  <el-tag size="small" type="warning" effect="plain">提示</el-tag>
+                  <span>{{ item.q.hintText }}</span>
+                </div>
+                <el-input
+                  v-model="answers[item.q.questionId] as string"
+                  :placeholder="item.q.hintText ? '请填入括号内单词的正确形式' : '请输入答案（单词/短语）'"
+                  class="answer-input"
+                  @change="onAnswerChange(item.q)"
+                />
+              </div>
+              <el-radio-group
+                v-else-if="(item.q.questionType === 'SINGLE' || item.q.questionType === 'READING') && !isMultiAnswer(item.q)"
+                v-model="answers[item.q.questionId]"
+                class="opt-list"
+                @change="onAnswerChange(item.q)"
+              >
+                <el-radio v-for="op in item.q.options" :key="op.optionLabel" :value="op.optionLabel" class="opt-row">
+                  <span class="opt-key">{{ op.optionLabel }}.</span> {{ op.optionContent }}
+                </el-radio>
+              </el-radio-group>
+              <el-checkbox-group
+                v-else-if="isMultiAnswer(item.q)"
+                v-model="answers[item.q.questionId] as string[]"
+                class="opt-list"
+                @change="onAnswerChange(item.q)"
+              >
+                <el-checkbox v-for="op in item.q.options" :key="op.optionLabel" :value="op.optionLabel" class="opt-row">
+                  <span class="opt-key">{{ op.optionLabel }}.</span> {{ op.optionContent }}
+                </el-checkbox>
+              </el-checkbox-group>
+              <el-radio-group
+                v-else-if="item.q.questionType === 'JUDGE'"
+                v-model="answers[item.q.questionId]"
+                class="opt-list"
+                @change="onAnswerChange(item.q)"
+              >
+                <el-radio value="TRUE" class="opt-row">对</el-radio>
+                <el-radio value="FALSE" class="opt-row">错</el-radio>
+              </el-radio-group>
+            </article>
           </div>
-        </template>
+        </div>
+
+        <!-- 普通题：一题一屏（滚动/上下题切换） -->
+        <div v-else-if="current" class="single-pane">
+          <article
+            :id="`q-${currentIdx}`"
+            class="q-block standalone"
+            :class="{ active: true, highlighted: highlightIdx === currentIdx, answered: hasAnswer(current.questionId) }"
+          >
+            <div class="q-block-head">
+              <span class="q-no">{{ currentIdx }}.</span>
+              <el-tag size="small">{{ typeLabel(current.questionType) }}</el-tag>
+              <el-tag size="small" type="info" effect="plain">{{ current.questionScore }} 分</el-tag>
+            </div>
+            <div class="q-stem">{{ current.stem }}</div>
+
+            <div v-if="isTextAnswer(current)" class="text-answer">
+              <div v-if="current.hintText" class="hint-line">
+                <el-tag size="small" type="warning" effect="plain">提示</el-tag>
+                <span>{{ current.hintText }}</span>
+              </div>
+              <el-input
+                v-model="answers[current.questionId] as string"
+                :placeholder="current.hintText ? '请填入括号内单词的正确形式' : '请输入答案（单词/短语）'"
+                class="answer-input"
+                @change="onAnswerChange(current)"
+              />
+            </div>
+            <el-radio-group
+              v-else-if="(current.questionType === 'SINGLE' || current.questionType === 'READING') && !isMultiAnswer(current)"
+              v-model="answers[current.questionId]"
+              class="opt-list"
+              @change="onAnswerChange(current)"
+            >
+              <el-radio v-for="op in current.options" :key="op.optionLabel" :value="op.optionLabel" class="opt-row">
+                <span class="opt-key">{{ op.optionLabel }}.</span> {{ op.optionContent }}
+              </el-radio>
+            </el-radio-group>
+            <el-checkbox-group
+              v-else-if="isMultiAnswer(current)"
+              v-model="answers[current.questionId] as string[]"
+              class="opt-list"
+              @change="onAnswerChange(current)"
+            >
+              <el-checkbox v-for="op in current.options" :key="op.optionLabel" :value="op.optionLabel" class="opt-row">
+                <span class="opt-key">{{ op.optionLabel }}.</span> {{ op.optionContent }}
+              </el-checkbox>
+            </el-checkbox-group>
+            <el-radio-group
+              v-else-if="current.questionType === 'JUDGE'"
+              v-model="answers[current.questionId]"
+              class="opt-list"
+              @change="onAnswerChange(current)"
+            >
+              <el-radio value="TRUE" class="opt-row">对</el-radio>
+              <el-radio value="FALSE" class="opt-row">错</el-radio>
+            </el-radio-group>
+          </article>
+        </div>
       </div>
 
       <!-- 答题卡 -->
@@ -692,24 +832,31 @@ const confirmSubmit = () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  --exam-font-size: 16px;
-  --exam-opt-font-size: 15px;
-  --exam-passage-font-size: 14px;
-  /* 传给 PassageCard：考试页保留字号设置与长文滚动 */
+  /* 默认「大」：答题区留白足，默认大字降低视疲劳 */
+  --exam-font-size: 20px;
+  --exam-opt-font-size: 18px;
+  --exam-passage-font-size: 18px;
+  /* 传给 PassageCard：长文整篇展示，不限死高度 */
   --passage-font-size: var(--exam-passage-font-size);
-  --passage-max-height: 300px;
+  --passage-max-height: none;
 }
 
 [data-font-size="small"] {
-  --exam-font-size: 14px;
-  --exam-opt-font-size: 13px;
-  --exam-passage-font-size: 12px;
+  --exam-font-size: 16px;
+  --exam-opt-font-size: 15px;
+  --exam-passage-font-size: 15px;
+}
+
+[data-font-size="medium"] {
+  --exam-font-size: 18px;
+  --exam-opt-font-size: 17px;
+  --exam-passage-font-size: 17px;
 }
 
 [data-font-size="large"] {
-  --exam-font-size: 18px;
-  --exam-opt-font-size: 17px;
-  --exam-passage-font-size: 16px;
+  --exam-font-size: 20px;
+  --exam-opt-font-size: 18px;
+  --exam-passage-font-size: 18px;
 }
 
 .top-bar {
@@ -751,26 +898,137 @@ const confirmSubmit = () => {
   flex: 1;
   background: #fff;
   border-radius: 6px;
-  padding: 24px;
+  padding: 16px 20px 20px;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
+  min-width: 0;
 }
+
+.main-sticky {
+  flex-shrink: 0;
+  background: #fff;
+  z-index: 2;
+}
+
+/** 阅读整组：上栏文章（固定）+ 下栏子题（滚动），互不遮挡 */
+.reading-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.reading-passage {
+  flex-shrink: 0;
+  max-height: 38vh;
+  overflow-y: auto;
+  padding-right: 4px;
+  border-bottom: 1px solid #ebeef5;
+
+  :deep(.passage-box) {
+    max-height: none;
+    overflow: visible;
+    margin-bottom: 0;
+    box-shadow: none;
+  }
+}
+
+.reading-questions {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  padding: 8px 4px 12px 0;
+}
+
+/** 普通题一题一屏 */
+.single-pane {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 4px 12px 0;
+}
+
+.q-block {
+  scroll-margin-top: 8px;
+  margin: 12px 0 18px;
+  padding: 16px 18px;
+  border-radius: 10px;
+  border: 1.5px solid transparent;
+  background: #fafbfc;
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  cursor: pointer;
+
+  &.standalone {
+    background: #fff;
+    border-color: #ebeef5;
+    margin-bottom: 22px;
+  }
+
+  &.active {
+    border-color: #409eff;
+    background: #f5f9ff;
+    box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12);
+  }
+
+  &.highlighted {
+    animation: q-flash 1.6s ease;
+  }
+
+  &.answered {
+    border-left: 4px solid #67c23a;
+  }
+}
+
+@keyframes q-flash {
+  0% { background: #ecf5ff; box-shadow: 0 0 0 4px rgba(64, 158, 255, 0.25); }
+  100% { background: #f5f9ff; box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.12); }
+}
+
+.q-block-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.q-no {
+  font-size: var(--exam-font-size);
+  font-weight: 700;
+  color: #1f2d3d;
+}
+
+.mark-mini {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #c0c4cc;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 6px;
+
+  &:hover { background: #fef0e6; color: #e6a23c; }
+  &.on { color: #e6a23c; }
+}
+
 .q-head {
   display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: 12px; border-bottom: 1px solid #f0f0f0; margin-bottom: 20px;
-  .q-idx { 
+  padding-bottom: 12px; border-bottom: 1px solid #f0f0f0; margin-bottom: 12px;
+  .q-idx {
     display: inline-flex; align-items: center; gap: 6px;
     background: linear-gradient(135deg, #409eff 0%, #66b1ff 100%);
     color: #fff; padding: 6px 14px; border-radius: 20px;
-    font-weight: 600; font-size: 14px;
+    font-weight: 600; font-size: 15px;
     box-shadow: 0 2px 8px rgba(64, 158, 255, 0.3);
     transition: all 0.2s;
     &:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(64, 158, 255, 0.4); }
   }
-  .q-meta { display: inline-flex; align-items: center; gap: 8px; }
-  .mark-btn { 
-    border-radius: 20px; 
+  .q-meta { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mark-btn {
+    border-radius: 20px;
     transition: all 0.2s;
     &:hover { transform: translateY(-1px); }
   }
@@ -779,22 +1037,35 @@ const confirmSubmit = () => {
 /* 阅读理解文章卡样式见 @/components/PassageCard.vue */
 
 .q-subtype { margin-bottom: 8px; }
-.q-stem { font-size: var(--exam-font-size); line-height: 1.9; color: #303133; margin-bottom: 20px; white-space: pre-wrap; }
-.opt-list { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.q-stem {
+  font-size: var(--exam-font-size);
+  line-height: 1.85;
+  color: #303133;
+  margin-bottom: 16px;
+  white-space: pre-wrap;
+  font-weight: 500;
+}
+.opt-list { display: flex; flex-direction: column; gap: 12px; width: 100%; }
 /* 文本作答（填空 / 无选项阅读题：摘要填空、句子补全等） */
 .text-answer { width: 100%; }
+.answer-input {
+  max-width: 560px;
+  margin-top: 8px;
+  :deep(.el-input__wrapper) { min-height: 44px; }
+  :deep(.el-input__inner) { font-size: var(--exam-opt-font-size); }
+}
 .hint-line {
   display: inline-flex; align-items: center; gap: 8px;
-  margin-top: 4px; padding: 6px 12px;
+  margin-top: 4px; padding: 8px 12px;
   background: #fff8e6; border: 1px dashed #f0c36d; border-radius: 6px;
-  font-size: 13px; color: #8a6d3b;
+  font-size: 15px; color: #8a6d3b;
 }
 /* 选项卡片：不要用 display:flex !important 覆盖 el-radio/el-checkbox 根元素，
    那会把内部 __input(圆圈) 与 __label(文字) 挤到同一行，圆圈被压没、点击热区错乱。 */
 .opt-row {
   display: flex; align-items: center;
-  width: 100%; height: auto; min-height: 44px;
-  padding: 12px 16px; margin: 0; border-radius: 8px;
+  width: 100%; height: auto; min-height: 52px;
+  padding: 14px 18px; margin: 0; border-radius: 8px;
   background: #fff; transition: all 0.18s;
   font-size: var(--exam-opt-font-size);
   border: 1px solid #e4e7ed;
@@ -806,7 +1077,8 @@ const confirmSubmit = () => {
 :deep(.el-radio__input), :deep(.el-checkbox__input) { flex-shrink: 0; margin-right: 8px; }
 :deep(.el-radio__label), :deep(.el-checkbox__label) {
   display: flex; align-items: center; flex: 1;
-  white-space: normal; line-height: 1.6; color: #303133; padding-left: 8px;
+  white-space: normal; line-height: 1.7; color: #303133; padding-left: 8px;
+  font-size: var(--exam-opt-font-size);
 }
 :deep(.opt-row.is-checked) {
   background: #ecf5ff;

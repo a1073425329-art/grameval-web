@@ -31,7 +31,7 @@ const teachers = ref<UserDetail[]>([])
 
 const query = reactive({
   pageNum: 1,
-  pageSize: 20,
+  pageSize: 50,
   commentType: '' as string,
   isRead: undefined as boolean | undefined,
   examId: undefined as number | undefined,
@@ -317,7 +317,7 @@ const handlePageChange = () => load()
         v-model:current-page="query.pageNum"
         v-model:page-size="query.pageSize"
         :total="total"
-        :page-sizes="[20, 50, 100]"
+        :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
         layout="total, sizes, prev, pager, next, jumper"
         @change="handlePageChange"
         style="margin-top:16px;justify-content:flex-end"

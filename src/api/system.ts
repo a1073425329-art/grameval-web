@@ -30,6 +30,8 @@ export interface AiOverview {
   difyGenerateConfigured: boolean
   mockEnabled: boolean
   defaultModel: string
+  currentModel?: string
+  qianwenModel?: string
   qianwenConfigured?: boolean
   temperature?: number
   maxTokens?: number

@@ -11,9 +11,12 @@
         </div>
       </template>
 
-      <el-descriptions :column="5" border size="default">
+      <el-descriptions :column="6" border size="default">
         <el-descriptions-item label="AI 智能体">
           <el-tag :type="providerTagType" size="default">{{ providerLabel }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="默认模型">
+          <span class="overview-model">{{ savedModelLabel }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="DeepSeek">
           <el-tag :type="aiOverview.deepseekConfigured ? 'success' : 'info'" size="small">
@@ -49,21 +52,62 @@
       <el-tabs v-model="activeTab" type="border-card">
         <!-- AI 智能体配置 -->
         <el-tab-pane label="AI 配置" name="ai">
-          <el-form :model="aiForm" label-width="150px" label-position="right">
+          <div class="ai-config-intro">
+            <div>
+              <div class="section-kicker">模型通路</div>
+              <h3>选择系统默认 AI 服务</h3>
+              <p>模型选择会同时影响学情分析、错题解析和智能出题。</p>
+            </div>
+            <div class="active-model-summary">
+              <span class="summary-label">当前编辑</span>
+              <strong>{{ activeProviderLabel }}</strong>
+              <span class="summary-model">{{ activeModelLabel }}</span>
+            </div>
+          </div>
+
+          <el-form :model="aiForm" label-width="150px" label-position="right" class="ai-config-form">
             <el-form-item label="智能体提供商">
-              <el-radio-group v-model="aiForm.provider">
+              <el-radio-group v-model="aiForm.provider" class="provider-radio-group">
                 <el-radio value="DEEPSEEK">DeepSeek 直连</el-radio>
                 <el-radio value="QIANWEN">通义千问</el-radio>
+                <el-radio value="OLLAMA">本地 Ollama</el-radio>
                 <el-radio value="DIFY">Dify 工作流</el-radio>
                 <el-radio value="HYBRID">混合模式</el-radio>
               </el-radio-group>
               <div class="form-tip">
                 DeepSeek：直接调用 DeepSeek API，性能强
                 <br />通义千问：阿里云 DashScope 千问大模型，中文效果最佳
+                <br />本地 Ollama：使用本机或 WSL 中的模型，不消耗云端 API 配额
                 <br />Dify：通过 Dify 编排复杂工作流
                 <br />混合模式：分析用直连，出题用工作流
               </div>
             </el-form-item>
+
+            <div class="model-focus-panel">
+              <div class="model-focus-copy">
+                <div class="model-focus-title">
+                  <el-icon><Cpu /></el-icon>
+                  <span>当前默认模型</span>
+                  <el-tag :type="activeProviderConfigured ? 'success' : 'warning'" size="small">
+                    {{ activeProviderConfigured ? '通路已配置' : '待配置' }}
+                  </el-tag>
+                </div>
+                <strong>{{ activeModelLabel }}</strong>
+                <span>{{ activeModelDescription }}</span>
+              </div>
+              <div class="model-focus-meta">
+                <span>保存后将用于新建的 AI 请求</span>
+                <el-button
+                  link
+                  type="primary"
+                  :loading="modelLoading[aiForm.provider]"
+                  :disabled="aiForm.provider === 'DIFY' || aiForm.provider === 'HYBRID'"
+                  @click="refreshProviderModels(aiForm.provider)"
+                >
+                  <el-icon><Refresh /></el-icon>刷新模型
+                </el-button>
+              </div>
+            </div>
 
             <el-divider content-position="left">DeepSeek 配置</el-divider>
 
@@ -88,12 +132,24 @@
               </el-button>
             </el-form-item>
             <el-form-item label="默认模型">
-              <el-select v-model="aiForm.deepseekModel" style="width: 250px">
-                <el-option label="deepseek-v4-pro（最新旗舰）" value="deepseek-v4-pro" />
-                <el-option label="deepseek-v4-flash（高速轻量）" value="deepseek-v4-flash" />
-                <el-option label="deepseek-chat（标准）" value="deepseek-chat" />
-                <el-option label="deepseek-r1.5b（推理模型）" value="deepseek-r1.5b" />
+              <el-select
+                v-model="aiForm.deepseekModel"
+                style="width: 320px"
+                filterable
+                :loading="modelLoading.DEEPSEEK"
+                @focus="loadProviderModels('DEEPSEEK')"
+              >
+                <el-option v-for="model in modelOptionsFor('DEEPSEEK')" :key="model.id" :label="model.name" :value="model.id">
+                  <div class="model-option">
+                    <div class="model-option-title">
+                      <strong>{{ model.name }}</strong>
+                      <el-tag v-if="model.id === aiForm.deepseekModel" type="success" size="small">当前</el-tag>
+                    </div>
+                    <span>{{ model.description }}</span>
+                  </div>
+                </el-option>
               </el-select>
+              <div v-if="modelLoadError.DEEPSEEK" class="model-field-tip warning">{{ modelLoadError.DEEPSEEK }}</div>
             </el-form-item>
 
             <el-divider content-position="left">通义千问配置</el-divider>
@@ -119,15 +175,59 @@
               </el-button>
             </el-form-item>
             <el-form-item label="默认模型">
-              <el-select v-model="aiForm.qianwenModel" style="width: 250px">
-                <el-option label="qwen3.7-max（最新旗舰）" value="qwen3.7-max" />
-                <el-option label="qwen-max（旗舰）" value="qwen-max" />
-                <el-option label="qwen-plus（增强）" value="qwen-plus" />
-                <el-option label="qwen-turbo（快速）" value="qwen-turbo" />
-                <el-option label="qwen-long（长上下文）" value="qwen-long" />
-                <el-option label="qwen2.5-72b（多模态）" value="qwen2.5" />
-                <el-option label="qwq-plus（推理增强）" value="qwq-plus" />
+              <el-select
+                v-model="aiForm.qianwenModel"
+                style="width: 320px"
+                filterable
+                :loading="modelLoading.QIANWEN"
+                @focus="loadProviderModels('QIANWEN')"
+              >
+                <el-option v-for="model in modelOptionsFor('QIANWEN')" :key="model.id" :label="model.name" :value="model.id">
+                  <div class="model-option">
+                    <div class="model-option-title">
+                      <strong>{{ model.name }}</strong>
+                      <el-tag v-if="model.id === aiForm.qianwenModel" type="success" size="small">当前</el-tag>
+                    </div>
+                    <span>{{ model.description }}</span>
+                  </div>
+                </el-option>
               </el-select>
+              <div v-if="modelLoadError.QIANWEN" class="model-field-tip warning">{{ modelLoadError.QIANWEN }}</div>
+            </el-form-item>
+
+            <el-divider content-position="left">本地 Ollama 配置</el-divider>
+
+            <el-form-item label="服务地址">
+              <el-input v-model="aiForm.ollamaBaseUrl" placeholder="http://127.0.0.1:11434" />
+              <el-button type="primary" plain :loading="testingOllama" @click="handleTestOllama">
+                测试服务
+              </el-button>
+              <div class="form-tip">支持本机或 WSL 中运行的 Ollama 服务。</div>
+            </el-form-item>
+            <el-form-item label="默认模型">
+              <el-select
+                v-model="aiForm.ollamaModel"
+                style="width: 320px"
+                filterable
+                allow-create
+                default-first-option
+                :loading="modelLoading.OLLAMA"
+                @focus="loadProviderModels('OLLAMA')"
+              >
+                <el-option v-for="model in modelOptionsFor('OLLAMA')" :key="model.id" :label="model.name" :value="model.id">
+                  <div class="model-option">
+                    <div class="model-option-title">
+                      <strong>{{ model.name }}</strong>
+                      <el-tag v-if="model.id === aiForm.ollamaModel" type="success" size="small">当前</el-tag>
+                    </div>
+                    <span>{{ model.description }}</span>
+                  </div>
+                </el-option>
+              </el-select>
+              <el-button link type="primary" :loading="modelLoading.OLLAMA" @click="refreshProviderModels('OLLAMA')">
+                <el-icon><Refresh /></el-icon>刷新模型
+              </el-button>
+              <div v-if="modelLoadError.OLLAMA" class="model-field-tip warning">{{ modelLoadError.OLLAMA }}</div>
             </el-form-item>
 
             <el-divider content-position="left">Dify 工作流配置</el-divider>
@@ -793,11 +893,11 @@ import {
   ChatDotRound,
   Search,
   VideoPlay,
+  Cpu,
 } from '@element-plus/icons-vue'
 import {
   getAiOverview,
   getConfigsByGroup,
-  testDeepSeekConnection,
   batchUpdateConfigs,
   refreshConfigs,
   getAiProvidersStatus,
@@ -819,7 +919,6 @@ import {
 // 状态
 const loading = ref(false)
 const saving = ref(false)
-const testingConnection = ref(false)
 const activeTab = ref('ai')
 
 // Provider测试状态
@@ -834,6 +933,44 @@ const customTestResult = ref<AiTestResult | null>(null)
 
 // AI 模型列表
 const availableModels = ref<AiModel[]>([])
+const providerModels = reactive<Record<string, AiModel[]>>({
+  DEEPSEEK: [],
+  QIANWEN: [],
+  OLLAMA: [],
+})
+const modelLoading = reactive<Record<string, boolean>>({
+  DEEPSEEK: false,
+  QIANWEN: false,
+  OLLAMA: false,
+})
+const modelLoadError = reactive<Record<string, string>>({
+  DEEPSEEK: '',
+  QIANWEN: '',
+  OLLAMA: '',
+})
+
+const fallbackModels: Record<string, AiModel[]> = {
+  DEEPSEEK: [
+    { id: 'deepseek-v4-pro', name: 'deepseek-v4-pro', description: '最新旗舰模型', provider: 'DEEPSEEK' },
+    { id: 'deepseek-v4-flash', name: 'deepseek-v4-flash', description: '高速轻量模型', provider: 'DEEPSEEK' },
+    { id: 'deepseek-chat', name: 'deepseek-chat', description: '标准模型', provider: 'DEEPSEEK' },
+    { id: 'deepseek-r1', name: 'deepseek-r1', description: '推理模型', provider: 'DEEPSEEK' },
+    { id: 'deepseek-reasoner', name: 'deepseek-reasoner', description: '深度推理模型', provider: 'DEEPSEEK' },
+  ],
+  QIANWEN: [
+    { id: 'qwen3.8-flash', name: 'qwen3.8-flash', description: '当前默认模型', provider: 'QIANWEN' },
+    { id: 'qwen3.7-max', name: 'qwen3.7-max', description: '最新旗舰模型', provider: 'QIANWEN' },
+    { id: 'qwen-max', name: 'qwen-max', description: '旗舰模型', provider: 'QIANWEN' },
+    { id: 'qwen-plus', name: 'qwen-plus', description: '增强模型', provider: 'QIANWEN' },
+    { id: 'qwen-turbo', name: 'qwen-turbo', description: '快速模型', provider: 'QIANWEN' },
+    { id: 'qwen-long', name: 'qwen-long', description: '长上下文模型', provider: 'QIANWEN' },
+    { id: 'qwen2.5', name: 'qwen2.5-72b', description: '多模态旗舰', provider: 'QIANWEN' },
+    { id: 'qwq-plus', name: 'qwq-plus', description: '推理增强模型', provider: 'QIANWEN' },
+  ],
+  OLLAMA: [
+    { id: 'qwen3.5:9b', name: 'qwen3.5:9b', description: '本地默认模型', provider: 'OLLAMA' },
+  ],
+}
 
 // AI 概览
 const aiOverview = ref<AiOverview>({
@@ -857,6 +994,8 @@ const aiForm = reactive({
   qianwenBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
   qianwenApiKey: '',
   qianwenModel: 'qwen-max',
+  ollamaBaseUrl: 'http://127.0.0.1:11434',
+  ollamaModel: 'qwen3.5:9b',
   difyBaseUrl: 'http://127.0.0.1:19002/v1',
   difyAnalyzeKey: '',
   difyGenerateKey: '',
@@ -982,34 +1121,111 @@ const menuForm = reactive({
 })
 
 // 计算属性
+const providerLabels: Record<string, string> = {
+  DEEPSEEK: 'DeepSeek 直连',
+  QIANWEN: '通义千问',
+  OLLAMA: '本地 Ollama',
+  DIFY: 'Dify 工作流',
+  HYBRID: '混合模式',
+}
+
+const modelOptionsFor = (provider: string) => {
+  const models = providerModels[provider]
+  return models?.length ? models : (fallbackModels[provider] || [])
+}
+
 const providerLabel = computed(() => {
-  const map: Record<string, string> = {
-    DEEPSEEK: 'DeepSeek 直连',
-    QIANWEN: '通义千问',
-    DIFY: 'Dify 工作流',
-    HYBRID: '混合模式',
-  }
-  return map[aiOverview.value.provider] || aiOverview.value.provider
+  return providerLabels[aiOverview.value.provider] || aiOverview.value.provider
 })
 
 const providerTagType = computed(() => {
   const map: Record<string, string> = {
     DEEPSEEK: 'primary',
     QIANWEN: 'success',
+    OLLAMA: 'info',
     DIFY: 'warning',
     HYBRID: 'info',
   }
   return (map[aiOverview.value.provider] as any) || 'info'
 })
 
-// 监听Provider变化，加载对应模型
-watch(() => chatForm.provider, async () => {
+const activeProviderLabel = computed(() => providerLabels[aiForm.provider] || aiForm.provider)
+
+const activeModelValue = computed(() => {
+  if (aiForm.provider === 'QIANWEN') return aiForm.qianwenModel
+  if (aiForm.provider === 'OLLAMA') return aiForm.ollamaModel
+  if (aiForm.provider === 'DIFY') return 'workflow'
+  if (aiForm.provider === 'HYBRID') return `${aiForm.deepseekModel} + workflow`
+  return aiForm.deepseekModel
+})
+
+const activeModelMeta = computed(() => {
+  if (aiForm.provider === 'DIFY' || aiForm.provider === 'HYBRID') return undefined
+  return modelOptionsFor(aiForm.provider).find(model => model.id === activeModelValue.value)
+})
+
+const activeModelLabel = computed(() => activeModelValue.value || '未选择模型')
+
+const activeModelDescription = computed(() => {
+  if (aiForm.provider === 'DIFY') return '由 Dify 工作流决定具体模型'
+  if (aiForm.provider === 'HYBRID') return '分析使用直连模型，出题使用 Dify 工作流'
+  return activeModelMeta.value?.description || '自定义模型或暂未加载模型列表'
+})
+
+const activeProviderConfigured = computed(() => {
+  if (aiForm.provider === 'DEEPSEEK') return aiOverview.value.deepseekConfigured
+  if (aiForm.provider === 'QIANWEN') return aiOverview.value.qianwenConfigured ?? false
+  if (aiForm.provider === 'OLLAMA') return true
+  if (aiForm.provider === 'DIFY') {
+    return aiOverview.value.difyAnalyzeConfigured && aiOverview.value.difyGenerateConfigured
+  }
+  return aiOverview.value.deepseekConfigured || aiOverview.value.qianwenConfigured === true
+})
+
+const savedModelLabel = computed(() => {
+  const provider = aiOverview.value.provider
+  if (provider === 'QIANWEN') return aiOverview.value.qianwenModel || aiOverview.value.defaultModel || '-'
+  if (provider === 'DIFY') return '由工作流决定'
+  if (provider === 'HYBRID') return `${aiOverview.value.defaultModel || '-'} + 工作流`
+  return aiOverview.value.currentModel || aiOverview.value.defaultModel || '-'
+})
+
+const loadProviderModels = async (provider: string, force = false) => {
+  if (!provider || modelLoading[provider]) return
+  if (!force && providerModels[provider]?.length) return
+
+  modelLoading[provider] = true
+  modelLoadError[provider] = ''
   try {
-    const res = await getAiModels(chatForm.provider)
-    if (res.code === 200) {
-      availableModels.value = res.data
+    const res = await getAiModels(provider)
+    if (res.code !== 200 || !res.data?.length) {
+      throw new Error(res.message || '模型列表为空')
     }
-  } catch { /* ignore */ }
+    providerModels[provider] = res.data
+  } catch (e) {
+    if (!providerModels[provider]?.length && fallbackModels[provider]) {
+      providerModels[provider] = fallbackModels[provider]
+    }
+    modelLoadError[provider] = '在线模型列表暂不可用，已显示内置选项'
+  } finally {
+    modelLoading[provider] = false
+  }
+}
+
+const refreshProviderModels = async (provider: string) => {
+  await loadProviderModels(provider, true)
+  if (!modelLoadError[provider]) ElMessage.success('模型列表已刷新')
+}
+
+// 监听 Provider 变化，加载对应模型；聊天测试和自定义测试共用同一份模型数据。
+watch(() => chatForm.provider, async () => {
+  await loadProviderModels(chatForm.provider)
+  availableModels.value = modelOptionsFor(chatForm.provider)
+}, { immediate: true })
+
+watch(() => customTest.provider, async () => {
+  await loadProviderModels(customTest.provider)
+  availableModels.value = modelOptionsFor(customTest.provider)
 }, { immediate: true })
 
 // 方法
@@ -1032,13 +1248,20 @@ const loadAiConfigs = async () => {
     if (g('ai.dify.base_url')) aiForm.difyBaseUrl = g('ai.dify.base_url')
     if (g('ai.deepseek.base_url')) aiForm.deepseekBaseUrl = g('ai.deepseek.base_url')
     if (g('ai.qianwen.base_url')) aiForm.qianwenBaseUrl = g('ai.qianwen.base_url')
+    if (g('ai.ollama.base_url')) aiForm.ollamaBaseUrl = g('ai.ollama.base_url')
     if (g('ai.deepseek.api_key')) aiForm.deepseekApiKey = g('ai.deepseek.api_key')
     if (g('ai.qianwen.api_key')) aiForm.qianwenApiKey = g('ai.qianwen.api_key')
     if (g('ai.dify.analyze_key')) aiForm.difyAnalyzeKey = g('ai.dify.analyze_key')
     if (g('ai.dify.generate_key')) aiForm.difyGenerateKey = g('ai.dify.generate_key')
-    if (g('ai.temperature')) aiForm.temperature = Number(g('ai.temperature'))
-    if (g('ai.max_tokens')) aiForm.maxTokens = Number(g('ai.max_tokens'))
-    if (g('ai.timeout')) aiForm.timeout = Number(g('ai.timeout'))
+    if (g('ai.deepseek.model')) aiForm.deepseekModel = g('ai.deepseek.model')
+    if (g('ai.qianwen.model')) aiForm.qianwenModel = g('ai.qianwen.model')
+    if (g('ai.ollama.model')) aiForm.ollamaModel = g('ai.ollama.model')
+    const temperature = Number(g('ai.temperature'))
+    if (Number.isFinite(temperature)) aiForm.temperature = temperature
+    const maxTokens = Number(g('ai.max_tokens'))
+    if (Number.isFinite(maxTokens)) aiForm.maxTokens = maxTokens
+    const timeout = Number(g('ai.timeout'))
+    if (Number.isFinite(timeout)) aiForm.timeout = timeout
     if (g('ai.system_prompt')) aiForm.systemPrompt = g('ai.system_prompt')
   } catch (e) {
     console.error('加载 AI 配置失败', e)
@@ -1054,13 +1277,14 @@ const loadAiOverview = async () => {
       aiForm.provider = res.data.provider || 'DEEPSEEK'
       aiForm.mockEnabled = res.data.mockEnabled
       aiForm.deepseekModel = res.data.defaultModel || 'deepseek-chat'
+      aiForm.qianwenModel = res.data.qianwenModel || aiForm.qianwenModel
       aiOverview.value.qianwenConfigured = res.data.qianwenConfigured ?? false
       aiOverview.value.temperature = res.data.temperature ?? 0.7
       aiOverview.value.maxTokens = res.data.maxTokens ?? 4096
       
       // 加载配置值到表单
       if (res.data.defaultModel) aiForm.deepseekModel = res.data.defaultModel
-      if ((res.data as any).qianwenModel) aiForm.qianwenModel = (res.data as any).qianwenModel
+      if (res.data.qianwenModel) aiForm.qianwenModel = res.data.qianwenModel
 
       // 回填 ai 分组其余配置（Dify 地址 / API Key / 温度等），避免保存时把默认值覆盖进库
       await loadAiConfigs()
@@ -1084,25 +1308,29 @@ const loadProviderStatus = async () => {
 }
 
 const loadAvailableModels = async () => {
-  try {
-    const res = await getAiModels()
-    if (res.code === 200) {
-      availableModels.value = res.data
-    }
-  } catch { /* ignore */ }
+  await Promise.all([
+    loadProviderModels('DEEPSEEK'),
+    loadProviderModels('QIANWEN'),
+    loadProviderModels('OLLAMA'),
+  ])
+  availableModels.value = modelOptionsFor(customTest.provider)
 }
 
 const testingDS = ref(false)
 const handleTestDeepSeek = async () => {
   testingDS.value = true
-  testingConnection.value = true
   try {
     const key = aiForm.deepseekApiKey && !aiForm.deepseekApiKey.includes('***')
       ? aiForm.deepseekApiKey
       : undefined
-    const res = await testDeepSeekConnection(key)
+    const payload: { apiKey?: string; model?: string; baseUrl?: string } = {
+      model: aiForm.deepseekModel,
+      baseUrl: aiForm.deepseekBaseUrl,
+    }
+    if (key) payload.apiKey = key
+    const res = await testAiProvider('DEEPSEEK', payload)
     if (res.data.success) {
-      ElMessage.success(res.data.message)
+      ElMessage.success(`${res.data.message}（耗时 ${res.data.latencyMs}ms）`)
     } else {
       ElMessage.error(res.data.message)
     }
@@ -1110,7 +1338,6 @@ const handleTestDeepSeek = async () => {
     ElMessage.error('连接测试失败：' + (e.message || '未知错误'))
   } finally {
     testingDS.value = false
-    testingConnection.value = false
   }
 }
 
@@ -1135,6 +1362,26 @@ const handleTestQianwen = async () => {
     ElMessage.error('连接测试失败：' + (e.message || '未知错误'))
   } finally {
     testingQW.value = false
+  }
+}
+
+const testingOllama = ref(false)
+const handleTestOllama = async () => {
+  testingOllama.value = true
+  try {
+    const res = await testAiProvider('OLLAMA', {
+      model: aiForm.ollamaModel,
+      baseUrl: aiForm.ollamaBaseUrl,
+    })
+    if (res.data.success) {
+      ElMessage.success(`${res.data.message}（耗时 ${res.data.latencyMs}ms）`)
+    } else {
+      ElMessage.error(res.data.message)
+    }
+  } catch (e: any) {
+    ElMessage.error('服务测试失败：' + (e.message || '未知错误'))
+  } finally {
+    testingOllama.value = false
   }
 }
 
@@ -1276,6 +1523,8 @@ const handleSaveAiConfig = async () => {
       'ai.deepseek.timeout': String(aiForm.timeout),
       'ai.qianwen.base_url': aiForm.qianwenBaseUrl,
       'ai.qianwen.model': aiForm.qianwenModel,
+      'ai.ollama.base_url': aiForm.ollamaBaseUrl,
+      'ai.ollama.model': aiForm.ollamaModel,
       'ai.dify.base_url': aiForm.difyBaseUrl,
       'ai.mock_enabled': String(aiForm.mockEnabled),
       'ai.temperature': String(aiForm.temperature),
@@ -1486,6 +1735,8 @@ onMounted(async () => {
 
 <style scoped>
 .system-settings {
+  width: min(100%, 1440px);
+  margin: 0 auto;
   padding: 20px;
 }
 
@@ -1512,6 +1763,183 @@ onMounted(async () => {
   font-size: 12px;
   line-height: 1.6;
   margin-top: 4px;
+}
+
+.overview-model {
+  color: #303133;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ai-config-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+  border: 1px solid #dfe8f5;
+  border-left: 4px solid #409eff;
+  border-radius: 8px;
+  background: #f7faff;
+}
+
+.section-kicker {
+  color: #409eff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.ai-config-intro h3 {
+  margin: 3px 0 4px;
+  color: #303133;
+  font-size: 18px;
+  line-height: 1.4;
+}
+
+.ai-config-intro p {
+  margin: 0;
+  color: #606266;
+  font-size: 13px;
+}
+
+.active-model-summary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  min-width: 180px;
+  padding-left: 18px;
+  border-left: 1px solid #dfe8f5;
+  color: #303133;
+}
+
+.active-model-summary .summary-label,
+.model-focus-meta {
+  color: #909399;
+  font-size: 12px;
+}
+
+.active-model-summary .summary-model {
+  color: #409eff;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 12px;
+}
+
+.provider-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.provider-radio-group :deep(.el-radio) {
+  height: auto;
+  margin-right: 0;
+  padding: 8px 14px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fff;
+  transition: border-color 0.2s ease, color 0.2s ease, background-color 0.2s ease;
+}
+
+.provider-radio-group :deep(.el-radio.is-checked) {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+.provider-radio-group :deep(.el-radio__input) {
+  display: none;
+}
+
+.provider-radio-group :deep(.el-radio__label) {
+  padding-left: 0;
+  color: #606266;
+}
+
+.provider-radio-group :deep(.el-radio.is-checked .el-radio__label) {
+  color: #1677c8;
+  font-weight: 600;
+}
+
+.model-focus-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 2px 0 22px 150px;
+  padding: 14px 16px;
+  border: 1px solid #dbe5f1;
+  border-left: 3px solid #409eff;
+  border-radius: 8px;
+  background: #f7faff;
+}
+
+.model-focus-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.model-focus-title,
+.model-option-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.model-focus-title {
+  color: #606266;
+  font-size: 12px;
+}
+
+.model-focus-copy > strong {
+  overflow: hidden;
+  color: #303133;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-focus-copy > span {
+  color: #909399;
+  font-size: 12px;
+}
+
+.model-focus-meta {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.model-option {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  line-height: 1.35;
+}
+
+.model-option-title strong {
+  color: #303133;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  font-size: 13px;
+}
+
+.model-option > span {
+  color: #909399;
+  font-size: 12px;
+}
+
+.model-field-tip.warning {
+  margin-top: 4px;
+  color: #b88230;
+  font-size: 12px;
 }
 
 .el-tabs {
@@ -1767,5 +2195,60 @@ onMounted(async () => {
 
 .status-na {
   color: #c0c4cc;
+}
+
+@media (max-width: 900px) {
+  .system-settings {
+    padding: 14px;
+  }
+
+  .ai-config-intro,
+  .model-focus-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .active-model-summary {
+    align-items: flex-start;
+    min-width: 0;
+    padding: 12px 0 0;
+    border-top: 1px solid #dfe8f5;
+    border-left: 0;
+  }
+
+  .model-focus-panel {
+    margin-left: 0;
+  }
+
+  .model-focus-meta {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .ai-config-form :deep(.el-form-item__content) {
+    flex-wrap: wrap;
+  }
+
+  .ai-config-form :deep(.el-input),
+  .ai-config-form :deep(.el-textarea),
+  .ai-config-form :deep(.el-select),
+  .ai-config-form :deep(.el-input-number) {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 640px) {
+  .system-settings :deep(.el-descriptions) {
+    --el-descriptions-table-border: 1px solid #ebeef5;
+  }
+
+  .system-settings :deep(.el-descriptions__body .el-descriptions__table) {
+    table-layout: fixed;
+  }
+
+  .provider-radio-group :deep(.el-radio) {
+    flex: 1 1 100%;
+  }
 }
 </style>

@@ -9,7 +9,17 @@ import type { AnswerDetail } from '@/types/exam'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { useViewMode } from '@/composables/useViewMode'
 import { useAuthStore } from '@/stores/auth'
-import * as echarts from 'echarts'
+// [2026-10-16 性能修复] 原来是 `import * as echarts from 'echarts'`（全量引入）。
+// 项目里另外 8 个用图表的页面都已按需引入（echarts/core + 具体 charts/components），
+// 唯独这一处全量，会让 rollup 把**所有**图表类型与组件都打进 echarts chunk
+// （实测 1162 KB / gzip 385 KB）。本页只用到折线图与堆叠柱状图，改为按需后其余类型可被摇掉。
+import * as echarts from 'echarts/core'
+import type { ECharts } from 'echarts/core'
+import { LineChart, BarChart } from 'echarts/charts'
+import { TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
+import { CanvasRenderer } from 'echarts/renderers'
+
+echarts.use([LineChart, BarChart, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -93,7 +103,7 @@ const difficultyLabel = (d?: Difficulty) => {
  *  新增：成绩趋势迷你图（sparkline）
  * ============================================================ */
 const trendChartRef = ref<HTMLElement | null>(null)
-let trendChart: echarts.ECharts | null = null
+let trendChart: ECharts | null = null
 
 const trendData = computed(() =>
   [...list.value].reverse().slice(0, 12).map(r => ({
@@ -189,7 +199,7 @@ const toggleCardDetail = (row: ExamResultItem) => {
 /* ============================================================ *
  *  新增：得分分布图（按题型 堆叠柱：正确/错误）
  * ============================================================ */
-const distCharts = new Map<number, echarts.ECharts>()
+const distCharts = new Map<number, ECharts>()
 
 const renderDistChart = (key: number, answers: AnswerDetail[] = []) => {
   const el = document.getElementById(`dist-chart-${key}`)
@@ -437,8 +447,13 @@ onBeforeUnmount(() => {
             <span style="color:#c0c4cc">/ {{ row.paperTotalScore ?? '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="正确率" width="100" align="center">
+        <!-- [2026-10-16 字段对齐] 旧实现该列表头写「正确率」，渲染的却是 scorePercentage（得分率）；
+             后端 ExamRecordVO 同时返回 correctRate（答对题数/作答题数），故拆为两列 -->
+        <el-table-column label="得分率" width="100" align="center">
           <template #default="{ row }">{{ row.scorePercentage != null ? row.scorePercentage.toFixed(1) + '%' : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="正确率" width="100" align="center">
+          <template #default="{ row }">{{ row.correctRate != null ? Number(row.correctRate).toFixed(1) + '%' : '-' }}</template>
         </el-table-column>
         <el-table-column label="用时" width="100" align="center">
           <template #default="{ row }">{{ durationText(row) }}</template>

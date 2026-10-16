@@ -72,7 +72,7 @@ const wrongCount = computed(() => detail.value?.wrongCount ?? 0)
 const totalCount = computed(() => correctCount.value + wrongCount.value)
 const accuracy = computed(() => totalCount.value > 0 ? (correctCount.value / totalCount.value * 100).toFixed(1) : '0.0')
 
-const typeLabel = (t: QuestionType) => ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
+const typeLabel = (t: QuestionType) => ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL: '填空', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
 
 /** 同一篇短文只在组首那题上方显示一次，回顾页不必把文章重复贴三遍 */
 const isPassageHead = (idx: number) => {

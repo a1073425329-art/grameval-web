@@ -43,7 +43,7 @@ const kpi = computed(() => data.value?.kpi ?? {
 const pct = (a: number, b: number) => (b > 0 ? ((a / b) * 100).toFixed(1) : '0.0')
 const accColor = (a: number) => (a >= 80 ? '#67c23a' : a >= 60 ? '#e6a23c' : '#f56c6c')
 const typeLabel = (t: QuestionType | string) =>
-  ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL_HINT: '填空', READING: '阅读' } as Record<string, string>)[t] || t
+  ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL: '填空', FILL_HINT: '填空', READING: '阅读' } as Record<string, string>)[t] || t
 const diffLabel = (d: number) => (d === 1 ? '简单' : d === 2 ? '中等' : '困难')
 const diffTagType = (d: number) => (d === 1 ? 'success' : d === 2 ? 'warning' : 'danger')
 

@@ -39,11 +39,17 @@ const markedSet = computed<Set<number>>(() =>
   props.marked instanceof Set ? props.marked : new Set(props.marked ?? [])
 )
 
+/** [2026-10-16 对齐] FILL（无提示填空）与 FILL_HINT（带括号提示填空）同属「填空」，
+ *  答题卡按题型筛选时统一归口到 FILL_HINT，避免手写 FILL 题筛不出来。
+ *  旧实现：filteredOut = props.filterType && type !== props.filterType
+ */
+const normType = (t: string) => (t === 'FILL' ? 'FILL_HINT' : t)
+
 const items = computed(() => {
   return Array.from({ length: props.total }, (_v, i) => {
     const idx = i + 1
     const type = props.questionTypes?.[i] || ''
-    const filteredOut = props.filterType && type !== props.filterType
+    const filteredOut = props.filterType && normType(type) !== props.filterType
     return {
       index: idx,
       active: idx === props.current,

@@ -156,6 +156,12 @@ const load = async () => {
 const doResume = async () => {
   try {
     const res = await resumeExam(examId)
+    // [2026-10-16 防御] 已交卷/记录异常时后端可能返回 data:null，旧代码直接解构会抛异常且静默
+    if (!res.data || !Array.isArray(res.data.questions)) {
+      ElMessage.warning('该考试已交卷或无可续考内容，即将跳转成绩页')
+      router.replace('/student/results')
+      return
+    }
     applyPaperView(res.data)
     ElMessage.success('已续考')
   } catch { /* handled */ }
@@ -345,7 +351,7 @@ const onAnswerChange = () => {
 }
 
 const typeLabel = (t: QuestionType) =>
-  ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
+  ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL: '填空', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
 
 const fontSize = ref<'small' | 'medium' | 'large'>('medium')
 const fontSizes = [

@@ -146,7 +146,7 @@ const doRegrade = async () => {
 }
 
 const typeLabel = (t: QuestionType) =>
-  ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
+  ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL: '填空', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
 
 const answerText = (a: string | undefined | null) => {
   if (a === undefined || a === null || a === '') return '（未作答）'
@@ -343,7 +343,8 @@ onMounted(load)
             <span style="color:#c0c4cc">/ {{ row.paperTotalScore ?? '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="正确率" width="100" align="center">
+        <!-- [2026-10-16 字段对齐] 本列渲染 scorePercentage（得分率），旧表头误写「正确率」，与后一列重复 -->
+        <el-table-column label="得分率" width="100" align="center">
           <template #default="{ row }">{{ row.scorePercentage != null ? row.scorePercentage.toFixed(1) + '%' : '-' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="100">

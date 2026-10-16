@@ -179,18 +179,8 @@ const closeRedoModal = () => {
   load()
 }
 
-/** 从分类树拍平，供级联选择器直接识别（不用 children 嵌套也可用） */
-const flatCategories = computed(() => {
-  const result: Category[] = []
-  const walk = (cats: Category[]) => {
-    cats.forEach(c => {
-      result.push(c)
-      if (c.children?.length) walk(c.children)
-    })
-  }
-  walk(categories.value)
-  return result
-})
+// [2026-10-16] 原 flatCategories（把分类树拍平给 el-select 用）已随级联选择器改造移除：
+// el-cascader 直接吃树形 categories，无需拍平，也不会再出现同名分类无法分辨的问题。
 
 onMounted(async () => {
   try { const c = await getCategoryTree(); categories.value = Array.isArray(c.data) ? c.data : [] } catch { }
@@ -220,26 +210,25 @@ onMounted(async () => {
 
         <el-divider direction="vertical" style="height:28px" />
 
-        <el-select
+        <!-- [2026-10-16 改造] 原来是 el-select 平铺全部分类（含多个同名「阅读理解」，
+             无法分辨层级与归属）。改用级联选择器，与练习页 / 语法题库页写法统一：
+             支持按层级逐级展开、可选任意层级（checkStrictly）、可搜索（filterable）。 -->
+        <el-cascader
           v-model="query.categoryId"
+          :options="categories"
+          :props="{
+            value: 'id',
+            label: 'categoryName',
+            children: 'children',
+            checkStrictly: true,
+            emitPath: false,
+          }"
           clearable
           filterable
-          placeholder="所有语法分类"
+          placeholder="所有语法专题"
           style="width:200px"
           @change="onFilterChange"
-        >
-          <el-option
-            v-for="c in flatCategories"
-            :key="c.id"
-            :label="c.categoryName"
-            :value="c.id"
-          >
-            <span>{{ c.categoryName }}</span>
-            <span v-if="c.questionCount" style="color:#909399;font-size:12px;float:right">
-              {{ c.questionCount }}
-            </span>
-          </el-option>
-        </el-select>
+        />
 
         <el-select
           v-model="query.questionType"

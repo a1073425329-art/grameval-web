@@ -7,6 +7,8 @@ import type { QuestionType, Difficulty } from '@/types/common'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import PassageCard from '@/components/PassageCard.vue'
+// [2026-10-16] 复用既有的分类多选组件（带搜索/全选/分组折叠/计数），替代原先平铺 127 项的下拉
+import CategoryMultiPicker from '@/components/CategoryMultiPicker.vue'
 import { readingSubtypeLabel } from '@/utils/dict'
 
 const authStore = useAuthStore()
@@ -228,18 +230,23 @@ const loadCategories = async () => {
   } catch { /* silent */ }
 }
 
-/** 打平树，方便左侧列表点击 */
-const flatCategories = computed<Category[]>(() => {
-  const out: Category[] = []
-  const walk = (arr: Category[]) => {
-    arr.forEach((c) => {
-      out.push(c)
-      if (c.children?.length) walk(c.children)
-    })
-  }
-  walk(categories.value)
-  return out
-})
+/**
+ * 左侧专题列表的展开状态（一级分类 id 集合）。
+ *
+ * [2026-10-16 改造] 原实现是 `flatCategories` 把分类树拍平成一个长列表，
+ * 注释写着「打平树，方便左侧列表点击」—— 实现省事了，但 127 个分类平铺后
+ * 一屏放不下、二级分类只靠 12px 缩进区分、同名分类（多个「阅读理解」）无法分辨。
+ * 现改为按论文 3.2.2 的两级结构分组：一级作可折叠标题，二级缩进在组内。
+ * 默认全部折叠 —— 30 个一级分类刚好一屏看全，点箭头才展开子类。
+ */
+const expandedGroups = ref<Set<number>>(new Set())
+const isExpanded = (id: number) => expandedGroups.value.has(id)
+const toggleGroup = (id: number) => {
+  const next = new Set(expandedGroups.value)
+  if (next.has(id)) next.delete(id)
+  else next.add(id)
+  expandedGroups.value = next
+}
 
 const startPractice = async (catId: number) => {
   activeCategoryId.value = catId
@@ -475,18 +482,40 @@ const submitAiGenerate = async () => {
           <el-button size="small" type="primary" plain @click="openAiDialog">AI 补题</el-button>
         </div>
         <el-scrollbar height="calc(100vh - 300px)">
-          <div
-            v-for="c in flatCategories"
-            :key="c.id"
-            class="cat-item"
-            :class="{ active: activeCategoryId === c.id, sub: c.parentId }"
-            @click="startPractice(c.id)"
-          >
-            <el-icon><Files /></el-icon>
-            <span>{{ c.categoryName }}</span>
-            <span v-if="c.questionCount" class="q-count">{{ c.questionCount }}</span>
+          <!-- [2026-10-16 改造] 原来是 127 个分类拍平成一个长列表（只靠 12px 缩进区分层级，
+               一屏放不下、同名分类无法分辨）。现在按论文 3.2.2 的两级分类结构分组：
+               一级分类作可折叠分组标题（点名称直接练该大类），二级分类缩进在组内。 -->
+          <div v-for="top in categories" :key="top.id" class="cat-group">
+            <div
+              class="cat-item cat-top"
+              :class="{ active: activeCategoryId === top.id }"
+              @click="startPractice(top.id)"
+            >
+              <el-icon
+                class="fold-icon"
+                :class="{ folded: !isExpanded(top.id) }"
+                @click.stop="toggleGroup(top.id)"
+              >
+                <ArrowDown />
+              </el-icon>
+              <span class="cat-name">{{ top.categoryName }}</span>
+              <span v-if="top.questionCount" class="q-count">{{ top.questionCount }}</span>
+            </div>
+            <div v-show="isExpanded(top.id)" class="cat-children">
+              <div
+                v-for="sub in top.children || []"
+                :key="sub.id"
+                class="cat-item cat-sub"
+                :class="{ active: activeCategoryId === sub.id }"
+                @click="startPractice(sub.id)"
+              >
+                <el-icon><Files /></el-icon>
+                <span class="cat-name">{{ sub.categoryName }}</span>
+                <span v-if="sub.questionCount" class="q-count">{{ sub.questionCount }}</span>
+              </div>
+            </div>
           </div>
-          <el-empty v-if="!flatCategories.length" description="暂无分类" :image-size="60" />
+          <el-empty v-if="!categories.length" description="暂无分类" :image-size="60" />
         </el-scrollbar>
 
         <!-- AI 补题：增量生成题目写入公共题库，全班可见 -->
@@ -499,20 +528,11 @@ const submitAiGenerate = async () => {
           />
           <el-form label-width="84px">
             <el-form-item label="专题">
-              <el-select
-                v-model="aiCategoryIds"
-                multiple
-                clearable
-                placeholder="不选 = 由 AI 自选专题"
-                style="width: 100%"
-              >
-                <el-option
-                  v-for="c in flatCategories"
-                  :key="c.id"
-                  :label="c.categoryName"
-                  :value="c.id"
-                />
-              </el-select>
+              <!-- [2026-10-16 改造] 原来是 el-select 平铺 127 个分类（含多个同名「阅读理解」，
+                   无法分辨层级）。现复用项目既有的 CategoryMultiPicker 组件（教师端 AI 组卷
+                   已在用，创建于 2026-10-02）：它自带搜索、全选/清空、一级分组折叠、
+                   组内计数与已选标签，比各页面各写一个下拉更一致也更好用。 -->
+              <CategoryMultiPicker v-model="aiCategoryIds" :categories="categories" />
             </el-form-item>
             <el-form-item label="题数">
               <el-input-number v-model="aiCount" :min="1" :step="1" />
@@ -817,6 +837,10 @@ const submitAiGenerate = async () => {
   gap: 6px;
 }
 .records-title { color: #409eff; }
+/* [2026-10-16] 专题列表改为两级分组后的样式：一级作分组标题（可折叠），二级缩进在组内 */
+.cat-group {
+  margin-bottom: 2px;
+}
 .cat-item {
   padding: 8px 12px;
   cursor: pointer;
@@ -827,6 +851,12 @@ const submitAiGenerate = async () => {
   color: #606266;
   font-size: 14px;
 
+  .cat-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .q-count {
     margin-left: auto;
     font-size: 11px;
@@ -834,11 +864,30 @@ const submitAiGenerate = async () => {
     background: #f0f2f5;
     padding: 1px 6px;
     border-radius: 8px;
+    flex-shrink: 0;
   }
 
-  &.sub { padding-left: 24px; font-size: 13px; color: #909399; }
   &:hover { background: #f5f7fa; color: #409eff; }
   &.active { background: #ecf5ff; color: #409eff; font-weight: 600; }
+}
+/* 一级分类：分组标题，底色区分 + 折叠箭头（旋转 90° 表示已折叠） */
+.cat-top {
+  font-weight: 600;
+  color: #303133;
+  background: #fafbfc;
+
+  .fold-icon {
+    font-size: 12px;
+    color: #909399;
+    transition: transform 0.2s;
+    &.folded { transform: rotate(-90deg); }
+    &:hover { color: #409eff; }
+  }
+}
+/* 二级分类：缩进在所属一级分类之下 */
+.cat-sub {
+  padding-left: 30px;
+  font-size: 13px;
 }
 
 .right-panel {

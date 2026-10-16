@@ -241,8 +241,11 @@ const proficiencyColor = (score: number) => {
       <template #header>
         <div style="display:flex;align-items:center;gap:8px">
           <el-icon><Aim /></el-icon>
-          <span>语法分类掌握度网格</span>
-          <el-tag size="small" type="info">共 {{ masteryGrid.length }} 个分类</el-tag>
+          <!-- [2026-10-16 术语对齐] 学生端统一用「语法专题」：论文表 3.2 明确
+               「英语语法分类信息表」是数据实体、其 category_name 的语义是「语法专题名称」，
+               面向学生的业务概念一律称「专题」（管理端菜单仍叫「语法分类」，因为它维护的是分类数据本身）。 -->
+          <span>语法专题掌握度网格</span>
+          <el-tag size="small" type="info">共 {{ masteryGrid.length }} 个专题</el-tag>
         </div>
       </template>
       <div class="mastery-grid">

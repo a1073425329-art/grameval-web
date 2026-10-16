@@ -43,16 +43,33 @@ const locked = computed(() => Boolean(initialRole.value))
 const loading = ref(false)
 const activeRole = ref<Role>(initialRole.value || 'STUDENT')
 
-/** 默认快捷账号 */
+/**
+ * 默认快捷账号
+ *
+ * [2026-10-16 修复] 原 STUDENT 快捷账号里的 `student01` / `student03` 在库中并不存在
+ * （库里真实学生账号是 user01~user05 与 student001/002/008/009），
+ * 点按钮后提交会得到「用户名或密码错误」。
+ * 现改成 4 个可用账号，label 一律用库里的真实姓名（不出现测试用例术语），
+ * 密码统一 123456：
+ *   系统管理员 admin / 王老师 teacher01 / 张小明 user01 / 李小红 user02
+ * 说明：user01~user05 是库中真实学生（张小明/李小红/王小刚/赵小丽/孙小华），
+ * user01 数据最丰富（12 次考试 + 176 次练习），首页演示效果最好。
+ *
+ * 原始实现保留备查：
+ *   STUDENT: [
+ *     { username: 'user01',    password: '123456', label: '演示学生' },
+ *     { username: 'student01', password: '123456', label: '李小红' },
+ *     { username: 'student03', password: '123456', label: '王小刚' },
+ *   ],
+ */
 const PRESET_ACCOUNTS: Record<Role, { username: string; password: string; label: string }[]> = {
   ADMIN: [
     { username: 'admin', password: '123456', label: '系统管理员' },
     { username: 'teacher01', password: '123456', label: '王老师' },
   ],
   STUDENT: [
-    { username: 'user01', password: '123456', label: '演示学生' },
-    { username: 'student01', password: '123456', label: '李小红' },
-    { username: 'student03', password: '123456', label: '王小刚' },
+    { username: 'user01', password: '123456', label: '张小明' },
+    { username: 'user02', password: '123456', label: '李小红' },
   ],
 }
 
@@ -227,9 +244,11 @@ const roleLabel = computed(() => (activeRole.value === 'ADMIN' ? '管理员' : '
           还没有账号？
           <el-link type="primary" @click="goRegister">立即注册</el-link>
         </el-text>
+        <!-- [2026-10-16 取消] 管理员默认账号提示行：论文已按此版截图，隐藏该行但不改布局；旧代码注释保留
         <el-text v-if="activeRole === 'ADMIN'" type="info" size="small" class="hint">
           管理员默认账号：admin / 123456
         </el-text>
+        -->
       </div>
     </div>
   </div>

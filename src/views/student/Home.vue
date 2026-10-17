@@ -37,8 +37,11 @@ const weakProgress = ref<LearningProgress[]>([])
 const streakDays = ref(0)
 const totalStudyDays = ref(0)
 const dailyTargetCount = ref(10)
-const totalQuestionsDone = ref(0)
-const totalCorrectCount = ref(0)
+/* [2026-10-17] 后端 /users/my-profile 实际不返回 totalQuestionsDone / totalCorrectCount，
+   原先直接取 profile 导致首页「累计做题 0 题」。
+   改为优先用 /students/{id}/statistics 的真实计数（练习 + 考试），profile 仅作兜底。 */
+const profileTotalQuestions = ref(0)
+const profileTotalCorrect = ref(0)
 const isCheckedIn = ref(false)
 const checkInLoading = ref(false)
 
@@ -47,7 +50,7 @@ const shortcuts = [
   { title: '专项练习', desc: '选专题刷题即时反馈', path: '/student/practice', icon: 'EditPen', color: '#67c23a' },
   { title: '在线考试', desc: '参加考试并答题', path: '/student/exams', icon: 'Document', color: '#e6a23c' },
   { title: '错题本', desc: '去重错题按考点分类', path: '/student/wrong-book', icon: 'CircleClose', color: '#f56c6c' },
-  { title: '学习数据', desc: '多维度分析 + 考点弱点', path: '/student/stats', icon: 'TrendCharts', color: '#409eff' },
+  { title: '学习分析', desc: '趋势/雷达/班级对比/考点弱点', path: '/student/stats', icon: 'TrendCharts', color: '#409eff' },
   { title: '个人资料', desc: '查看和编辑个人信息', path: '/student/profile', icon: 'User', color: '#9c27b0' },
 ]
 
@@ -156,8 +159,8 @@ const load = async () => {
       streakDays.value = profile.streakDays ?? 0
       totalStudyDays.value = profile.totalStudyDays ?? 0
       dailyTargetCount.value = profile.dailyTargetCount ?? 10
-      totalQuestionsDone.value = profile.totalQuestionsDone ?? 0
-      totalCorrectCount.value = profile.totalCorrectCount ?? 0
+      profileTotalQuestions.value = profile.totalQuestionsDone ?? 0
+      profileTotalCorrect.value = profile.totalCorrectCount ?? 0
       const lastDate = profile.lastStudyDate
       isCheckedIn.value = !!lastDate && lastDate === new Date().toISOString().split('T')[0]
     }
@@ -258,15 +261,29 @@ const avatarInitial = computed(() => {
   return name.slice(0, 1).toUpperCase()
 })
 
-/** 累计总正确率（来自 my-profile 的累计做题/正确数） */
+/** 累计做题 = 练习作答 + 考试作答（statistics 真实计数，profile 兜底） */
+const totalQuestionsDone = computed(() => {
+  const st = stats.value
+  const fromStats = (st?.practiceQuestionCount ?? 0) + (st?.examCorrectCount ?? 0) + (st?.examWrongCount ?? 0)
+  return fromStats > 0 ? fromStats : profileTotalQuestions.value
+})
+
+/** 累计答对 = 练习答对 + 考试答对 */
+const totalCorrectCount = computed(() => {
+  const st = stats.value
+  const fromStats = (st?.practiceCorrectCount ?? 0) + (st?.examCorrectCount ?? 0)
+  return fromStats > 0 ? fromStats : profileTotalCorrect.value
+})
+
+/** 累计总正确率 */
 const totalAccuracy = computed(() => {
   if (totalQuestionsDone.value <= 0) return 0
   return Math.round((totalCorrectCount.value / totalQuestionsDone.value) * 1000) / 10
 })
 
-/** 学习数据 tab 的指标条 */
+/** 学习进度 tab 的指标条（只放有真实数据源的指标） */
 const studyMetrics = computed(() => [
-  { label: '累计学习天数', value: `${totalStudyDays.value}`, suffix: '天', color: '#9c27b0' },
+  { label: '练习次数', value: `${stats.value?.practiceCount ?? 0}`, suffix: '次', color: '#9c27b0' },
   { label: '累计做题', value: `${totalQuestionsDone.value}`, suffix: '题', color: '#409eff' },
   { label: '累计答对', value: `${totalCorrectCount.value}`, suffix: '题', color: '#67c23a' },
   { label: '累计正确率', value: `${totalAccuracy.value}`, suffix: '%', color: accuracyColor(totalAccuracy.value) },
@@ -282,11 +299,16 @@ const trendData = computed(() => {
       classAvg: c.classAvgScore ?? null,
     }))
   }
-  return [...recentResults.value].reverse().slice(0, 8).map((r, i) => ({
-    label: r.submitTime?.slice(5, 10) || `#${i + 1}`,
-    mine: r.scorePercentage ?? 0,
-    classAvg: null,
-  }))
+  // [2026-10-17] 兜底分支同样只取已出分记录，避免未提交记录在曲线上画成 0 分
+  return [...recentResults.value]
+    .filter(r => r.scorePercentage != null)
+    .reverse()
+    .slice(0, 8)
+    .map((r, i) => ({
+      label: r.submitTime?.slice(5, 10) || `#${i + 1}`,
+      mine: r.scorePercentage ?? 0,
+      classAvg: null,
+    }))
 })
 
 const trendChartOption = computed(() => {
@@ -321,85 +343,13 @@ const trendChartOption = computed(() => {
   }
 })
 
-/** 得分分布环形图（最近考试记录） */
-const scoreDistOption = computed(() => {
-  const results = recentResults.value
-  if (!results.length) return {}
-  let excellent = 0, good = 0, pass = 0, fail = 0
-  results.forEach(r => {
-    const v = r.scorePercentage ?? 0
-    if (v >= 90) excellent++
-    else if (v >= 80) good++
-    else if (v >= 60) pass++
-    else fail++
-  })
-  return {
-    tooltip: { trigger: 'item', formatter: (p: any) => `${p.name}<br/>${p.value} 次 (${p.percent}%)` },
-    legend: { bottom: 0, left: 'center', textStyle: { fontSize: 12 } },
-    series: [{
-      type: 'pie', radius: ['45%', '70%'], center: ['50%', '44%'], avoidLabelOverlap: true,
-      data: [
-        { value: excellent, name: '优秀', itemStyle: { color: '#67c23a' } },
-        { value: good, name: '良好', itemStyle: { color: '#409eff' } },
-        { value: pass, name: '及格', itemStyle: { color: '#e6a23c' } },
-        { value: fail, name: '不及格', itemStyle: { color: '#f56c6c' } },
-      ],
-      label: { formatter: '{b}\n{c} 次', fontSize: 11, lineHeight: 16 },
-      emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0,0,0,0.3)' } },
-    }],
-  }
-})
+/* [2026-10-17 职责划分] scoreDistOption（得分分布环形图）已随该卡片下线 ——
+   分数段结构属诊断型内容，归 /student/stats 独占。
+   如需恢复，从 git 历史取回（注意过滤 scorePercentage 为 null 的未提交记录）。 */
 
-/** 语法大类正确率（横向柱状，升序取最弱的 6 个） */
-const categoryBarOption = computed(() => {
-  const list = [...(stats.value?.categoryStats ?? [])].sort((a, b) => a.accuracy - b.accuracy).slice(0, 6)
-  if (!list.length) return {}
-  return {
-    tooltip: {
-      trigger: 'axis',
-      formatter: (p: any) => {
-        const item = list[p[0]?.dataIndex ?? 0]
-        if (!item) return ''
-        return `${item.categoryName}<br/>正确率：${item.accuracy.toFixed(1)}%（${item.correct}/${item.total}）`
-      },
-    },
-    grid: { left: 100, right: 46, top: 6, bottom: 4 },
-    xAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%', fontSize: 10 } },
-    yAxis: {
-      type: 'category',
-      data: list.map(c => (c.categoryName.length > 8 ? c.categoryName.slice(0, 8) + '…' : c.categoryName)),
-      axisLabel: { fontSize: 11 },
-    },
-    series: [{
-      type: 'bar', data: list.map(c => c.accuracy), barMaxWidth: 16,
-      itemStyle: {
-        borderRadius: [0, 4, 4, 0],
-        color: (p: any) => { const v = p.value ?? 0; return v >= 80 ? '#67c23a' : v >= 60 ? '#e6a23c' : '#f56c6c' },
-      },
-      label: { show: true, position: 'right', formatter: '{c}%', fontSize: 10, color: '#909399' },
-    }],
-  }
-})
-
-/** 难度正确率（柱状） */
-const difficultyBarOption = computed(() => {
-  const list = [...(stats.value?.difficultyStats ?? [])].sort((a, b) => a.difficulty - b.difficulty)
-  if (!list.length) return {}
-  return {
-    tooltip: { trigger: 'axis' },
-    grid: { left: 44, right: 16, top: 20, bottom: 8 },
-    xAxis: { type: 'category', data: list.map(d => d.difficultyLabel), axisLabel: { fontSize: 11 } },
-    yAxis: { type: 'value', max: 100, axisLabel: { formatter: '{value}%', fontSize: 10 } },
-    series: [{
-      type: 'bar', data: list.map(d => Math.round(d.accuracy * 10) / 10), barMaxWidth: 40,
-      itemStyle: {
-        borderRadius: [4, 4, 0, 0],
-        color: (p: any) => { const v = p.value ?? 0; return v >= 80 ? '#67c23a' : v >= 60 ? '#e6a23c' : '#f56c6c' },
-      },
-      label: { show: true, position: 'top', formatter: '{c}%', fontSize: 10, color: '#909399' },
-    }],
-  }
-})
+/* [2026-10-17 职责划分] categoryBarOption / difficultyBarOption 已随
+   「薄弱语法大类」「按难度正确率」两块下线（归 /student/stats）。
+   如需恢复旧版首页分析图，从 git 历史取回这两个 computed。 */
 
 /** 可参加考试（按状态排序：进行中优先） */
 const sortedExams = computed(() => {
@@ -529,9 +479,6 @@ const sortedExams = computed(() => {
               <div class="card-head">
                 <span class="card-title-text">📊 各分类学习进度</span>
                 <div class="card-actions">
-                  <el-button type="primary" size="small" @click="router.push('/student/ai-assistant')">
-                    <el-icon><Cpu /></el-icon>AI学习分析
-                  </el-button>
                   <el-link type="primary" :underline="false" @click="router.push('/student/question-bank')">去练习 →</el-link>
                 </div>
               </div>
@@ -703,7 +650,7 @@ const sortedExams = computed(() => {
         </div>
         <div class="sh-hero-actions">
           <el-button class="sh-hero-btn sh-hero-primary" @click="router.push('/student/practice')">继续练习</el-button>
-          <el-button class="sh-hero-btn sh-hero-ghost" @click="router.push('/student/stats')">学习数据</el-button>
+          <el-button class="sh-hero-btn sh-hero-ghost" @click="router.push('/student/stats')">学习分析</el-button>
         </div>
       </div>
     </div>
@@ -750,30 +697,19 @@ const sortedExams = computed(() => {
           </div>
         </div>
 
-        <div class="sh-grid-2">
-          <el-card shadow="never" class="sh-card">
-            <template #header>
-              <div class="sh-card-head">
-                <span class="sh-card-title">成绩趋势</span>
-                <span class="sh-card-tip" v-if="scoreCurve.length">最近 {{ trendData.length }} 场 · 含班级平均对比</span>
-                <span class="sh-card-tip" v-else>最近 {{ trendData.length }} 场 · 含均分线</span>
-              </div>
-            </template>
-            <VChart v-if="trendChartOption.series" :option="trendChartOption" autoresize style="height:260px" />
-            <el-empty v-else description="暂无成绩数据" :image-size="70" />
-          </el-card>
-
-          <el-card shadow="never" class="sh-card">
-            <template #header>
-              <div class="sh-card-head">
-                <span class="sh-card-title">得分分布</span>
-                <el-link type="primary" :underline="false" @click="router.push('/student/stats')">深度分析 →</el-link>
-              </div>
-            </template>
-            <VChart v-if="scoreDistOption.series" :option="scoreDistOption" autoresize style="height:260px" />
-            <el-empty v-else description="暂无考试记录" :image-size="70" />
-          </el-card>
-        </div>
+        <!-- [2026-10-17 职责划分] 概览只保留「走势」这一层感知；
+             得分分布（分数段结构）属诊断型内容，归 /student/stats 独占，首页不再重复摆环形图。 -->
+        <el-card shadow="never" class="sh-card">
+          <template #header>
+            <div class="sh-card-head">
+              <span class="sh-card-title">近期成绩走势</span>
+              <span class="sh-card-tip" v-if="scoreCurve.length">最近 {{ trendData.length }} 场 · 含班级平均对比</span>
+              <span class="sh-card-tip" v-else>最近 {{ trendData.length }} 场 · 含均分线</span>
+            </div>
+          </template>
+          <VChart v-if="trendChartOption.series" :option="trendChartOption" autoresize style="height:240px" />
+          <el-empty v-else description="暂无成绩数据" :image-size="70" />
+        </el-card>
 
         <el-card shadow="never" class="sh-card">
           <template #header><span class="sh-card-title">快捷入口</span></template>
@@ -791,8 +727,11 @@ const sortedExams = computed(() => {
         </el-card>
       </el-tab-pane>
 
-      <!-- ============ Tab 2 学习数据 ============ -->
-      <el-tab-pane label="学习数据" name="study" lazy>
+      <!-- ============ Tab 2 学习进度 ============ -->
+      <!-- [2026-10-17 职责划分] 本 Tab 只放「进度型」信息（我还差多少）；
+           正确率分析、薄弱考点、难度分布等「诊断型」内容一律归 /student/stats，
+           两页不重复展示同一张图。 -->
+      <el-tab-pane label="学习进度" name="study" lazy>
         <div class="sh-metric-grid">
           <div v-for="m in studyMetrics" :key="m.label" class="sh-metric">
             <div class="sh-metric-num" :style="{ color: m.color }">{{ m.value }}<span class="sh-metric-suffix">{{ m.suffix }}</span></div>
@@ -805,9 +744,6 @@ const sortedExams = computed(() => {
             <div class="sh-card-head">
               <span class="sh-card-title">各分类学习进度</span>
               <div class="sh-card-actions">
-                <el-button type="primary" size="small" @click="router.push('/student/ai-assistant')">
-                  <el-icon><Cpu /></el-icon>AI 学习分析
-                </el-button>
                 <el-link type="primary" :underline="false" @click="router.push('/student/question-bank')">去练习 →</el-link>
               </div>
             </div>
@@ -827,39 +763,19 @@ const sortedExams = computed(() => {
           </div>
         </el-card>
 
-        <div class="sh-grid-2">
-          <el-card shadow="never" class="sh-card">
-            <template #header>
-              <div class="sh-card-head">
-                <span class="sh-card-title">薄弱语法大类</span>
-                <span class="sh-card-tip">正确率最低 6 项</span>
-              </div>
-            </template>
-            <VChart v-if="categoryBarOption.series" :option="categoryBarOption" autoresize style="height:240px" />
-            <el-empty v-else description="暂无分类统计" :image-size="70" />
-          </el-card>
-
-          <el-card shadow="never" class="sh-card">
-            <template #header>
-              <div class="sh-card-head">
-                <span class="sh-card-title">按难度正确率</span>
-                <span class="sh-card-tip">易 → 难</span>
-              </div>
-            </template>
-            <VChart v-if="difficultyBarOption.series" :option="difficultyBarOption" autoresize style="height:240px" />
-            <el-empty v-else description="暂无难度统计" :image-size="70" />
-          </el-card>
-        </div>
-
-        <el-card shadow="never" class="sh-card">
-          <template #header>
-            <div class="sh-card-head">
-              <span class="sh-card-title">薄弱考点 Top 5</span>
-              <el-link type="primary" :underline="false" @click="router.push('/student/stats')">查看全部考点 →</el-link>
+        <!-- [2026-10-17 职责划分] 原「薄弱语法大类」「按难度正确率」「薄弱考点 Top 5」
+             三张分析图已移出首页 —— 它们与 /student/stats 完全重复。
+             首页只回答「我还差多少」（进度），诊断交给学习分析页。 -->
+        <el-card shadow="never" class="sh-card sh-handoff">
+          <div class="sh-handoff-body">
+            <div class="sh-handoff-text">
+              <div class="sh-handoff-title">想看正确率、薄弱考点和难度分布？</div>
+              <div class="sh-handoff-desc">这些属于诊断分析，统一在学习分析页按维度查看，避免和首页重复。</div>
             </div>
-          </template>
-          <VChart v-if="weakChartOption.series" :option="weakChartOption" autoresize style="height:180px" />
-          <el-empty v-else description="暂无薄弱考点数据" :image-size="70" />
+            <el-button type="primary" plain size="small" @click="router.push('/student/stats')">
+              去学习分析 →
+            </el-button>
+          </div>
         </el-card>
       </el-tab-pane>
 
@@ -1096,6 +1012,16 @@ const sortedExams = computed(() => {
 .sh-card-title { font-size: 14px; font-weight: 600; color: #303133; }
 .sh-card-tip { font-size: 12px; color: #909399; }
 .sh-card-actions { display: flex; align-items: center; gap: 10px; }
+
+/* 诊断分析交接条（把分析型内容指向 /student/stats） */
+.sh-handoff {
+  background: linear-gradient(90deg, #f4f8ff 0%, #ffffff 60%);
+  border: 1px dashed #c6d9f7;
+  :deep(.el-card__body) { padding: 14px 18px; }
+}
+.sh-handoff-body { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.sh-handoff-title { font-size: 13px; font-weight: 600; color: #303133; }
+.sh-handoff-desc { font-size: 12px; color: #909399; margin-top: 3px; }
 
 /* KPI 卡片 */
 .sh-kpi-grid {

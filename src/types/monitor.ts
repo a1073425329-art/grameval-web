@@ -28,33 +28,3 @@ export interface ExamMonitorReportForm {
   clientInfo?: string
   detail?: string
 }
-
-/** 学生行为日志 */
-export interface BehaviorLog {
-  id: number
-  examId: number
-  questionId?: number
-  behaviorType: string
-  behaviorData?: string
-  behaviorTime: string
-  pageX?: number
-  pageY?: number
-  viewportWidth?: number
-  viewportHeight?: number
-  scrollPosition?: number
-  durationMs?: number
-  clientIp?: string
-}
-
-export interface BehaviorLogReportForm {
-  examId: number
-  questionId?: number
-  behaviorType: string
-  behaviorData?: string
-  pageX?: number
-  pageY?: number
-  viewportWidth?: number
-  viewportHeight?: number
-  scrollPosition?: number
-  durationMs?: number
-}

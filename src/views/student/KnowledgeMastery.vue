@@ -164,7 +164,7 @@ const levelCriteria: Record<number, string> = {
   2: '正确率50%~70%',
   3: '正确率70%~85%',
   4: '正确率85%~95%',
-  5: '正确率≥95%且答题≥20道',
+  5: '正确率≥95%（答题≥5道）',
 }
 
 const formulaTooltip = '综合评分 = 正确率×50% + 连续正确/10×30% + 答题量/50×20%。不只是看正确率，还考虑稳定性和练习量。'
@@ -198,7 +198,7 @@ const proficiencyColor = (score: number) => {
             <div style="display:flex;align-items:center;gap:8px">
               <el-icon><DataAnalysis /></el-icon>
               <span>知识点掌握雷达图</span>
-              <el-tooltip content="雷达图展示Top 8知识点的掌握度分布。越靠近外圈代表掌握越好（满分100）。多边形越大越均衡。" placement="top" effect="light">
+              <el-tooltip content="雷达图展示掌握度最低的 8 个知识点（最弱项优先，便于定位薄弱点）。越靠近外圈代表掌握越好（满分100）。多边形越大越均衡。" placement="top" effect="light">
                 <el-icon style="cursor:help;color:#909399"><QuestionFilled /></el-icon>
               </el-tooltip>
             </div>

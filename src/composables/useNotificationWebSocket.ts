@@ -58,7 +58,30 @@ function resolveNotificationType(msg: MessageNotification): 'success' | 'warning
   return 'info'
 }
 
-/** 弹出一条桌面通知 */
+/* ---------------- 弹出队列（修复批量推送时的通知堆叠错位） ---------------- */
+/**
+ * 后端在一次批量生成中会连续推送多条通知（例如登录后同时下发
+ * "考试已自动提交 / 解析已开放 / 错题待复习"）。这些消息在同一帧内到达，
+ * 若同步调用 ElNotification，Element Plus 计算 verticalOffset 时元素尚未完成
+ * 布局，offsetHeight 读不到高度，导致每条通知只叠加默认 offset(16px)，
+ * 多条通知重叠在一起（表现为"提示错位 / 挤成一团"）。
+ *
+ * 解决：把弹窗改成串行队列，每条之间留出一帧以上的间隔，保证前一条已布局、
+ * 后一条能正确累加高度；同时对短时间内的同内容消息去重，避免重复轰炸。
+ */
+const POP_INTERVAL = 240 // 相邻两条弹窗的间隔（ms），留足布局与入场动画时间
+const DEDUPE_WINDOW = 8000 // 同内容去重窗口（ms）
+const MAX_PER_BURST = 5 // 单批最多弹出条数，超出部分只计入未读数
+
+const popQueue: MessageNotification[] = []
+const recentKeys = new Map<string, number>()
+let draining = false
+
+function notificationKey(msg: MessageNotification): string {
+  return `${msg.title ?? ''}|${msg.summary ?? msg.content ?? ''}`
+}
+
+/** 弹出单条通知 */
 function showNotification(msg: MessageNotification) {
   ElNotification({
     title: msg.title || msg.typeLabel || '新消息',
@@ -67,6 +90,42 @@ function showNotification(msg: MessageNotification) {
     duration: 5000,
     position: 'top-right',
   })
+}
+
+/** 串行出队：保证每条通知弹出时前一条已完成布局 */
+function drainQueue() {
+  if (draining) return
+  draining = true
+  const step = () => {
+    const next = popQueue.shift()
+    if (!next) {
+      draining = false
+      return
+    }
+    showNotification(next)
+    window.setTimeout(step, POP_INTERVAL)
+  }
+  step()
+}
+
+/** 入队（含去重与限流） */
+function enqueueNotification(msg: MessageNotification) {
+  const now = Date.now()
+  const key = notificationKey(msg)
+
+  // 清理过期去重记录
+  for (const [k, t] of recentKeys) {
+    if (now - t > DEDUPE_WINDOW) recentKeys.delete(k)
+  }
+  // 同内容在窗口期内只弹一次
+  if (recentKeys.has(key)) return
+  recentKeys.set(key, now)
+
+  // 已达单批上限则不再弹窗（未读数仍已在 handleIncoming 中累加）
+  if (popQueue.length >= MAX_PER_BURST) return
+
+  popQueue.push(msg)
+  drainQueue()
 }
 
 /** 处理一条入站消息 */
@@ -82,7 +141,7 @@ function handleIncoming(raw: any) {
       /* ignore */
     }
   })
-  showNotification(msg)
+  enqueueNotification(msg)
 }
 
 /* ---------------- composable ---------------- */
@@ -91,8 +150,11 @@ export function useNotificationWebSocket() {
   const connect = () => {
     const token = getToken()
     if (!token) return
-    // 已连接则不重复建链
-    if (ws && ws.isConnected) return
+    // 已连接或正在连接则不重复建链。
+    // 注意：只看 isConnected(OPEN) 会漏掉 CONNECTING 状态——App.vue 里
+    // isLoggedIn / token / onMounted 三个入口可能连续触发，导致反复
+    // "断开旧连接 + 新建连接"，出现多条并存连接与后端会话抖动。
+    if (ws && (ws.isConnected || ws.readyState === WebSocket.CONNECTING)) return
 
     // 清理可能存在的旧实例（保留 unreadCount / lastMessage 业务态）
     if (ws) {

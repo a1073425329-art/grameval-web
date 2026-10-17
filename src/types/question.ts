@@ -75,6 +75,9 @@ export interface Question {
   hintText?: string
   createTime?: string
   updateTime?: string
+  tagIds?: number[]
+  primaryTagId?: number
+  tags?: Array<{ tagId: number; tagName: string; isPrimary?: boolean }>
   options?: QuestionOption[]
 }
 
@@ -102,6 +105,10 @@ export interface QuestionForm {
   questionSubtype?: string | undefined
   /** 计分方式：FULL(全对才给分) / PARTIAL(多空题逐空给分)，仅多空题有意义 */
   scoreType?: string | undefined
+  /** 考点标签 ID 列表 */
+  tagIds?: number[] | undefined
+  /** 主考点标签 ID */
+  primaryTagId?: number | undefined
   options?: Array<{
     optionLabel: string
     optionContent: string

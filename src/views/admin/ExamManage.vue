@@ -104,7 +104,7 @@ const submitting = ref(false)
 const form = reactive({
   id: 0, sessionName: '', paperId: undefined as number | undefined,
   duration: 60, timeRange: [] as string[],
-  maxAttempts: 1, showScoreImmediately: true, status: 1 as 0 | 1 | 2,
+  maxAttempts: 1, showScoreImmediately: true, allowResume: true, status: 1 as 0 | 1 | 2,
   studentIds: [] as number[],
 })
 
@@ -125,14 +125,14 @@ const loadPickers = async () => {
 
 const openCreate = async () => {
   editMode.value = 'create'
-  Object.assign(form, { id: 0, sessionName: '', paperId: undefined, duration: 60, timeRange: [], maxAttempts: 1, showScoreImmediately: true, status: 1, studentIds: [] })
+  Object.assign(form, { id: 0, sessionName: '', paperId: undefined, duration: 60, timeRange: [], maxAttempts: 1, showScoreImmediately: true, allowResume: true, status: 1, studentIds: [] })
   if (!papers.value.length || !students.value.length) await loadPickers()
   dialogVisible.value = true
 }
 
 const openEdit = async (row: ExamSession) => {
   editMode.value = 'edit'
-  Object.assign(form, { id: row.id, sessionName: row.sessionName, paperId: row.paperId, duration: row.duration, timeRange: [row.startTime, row.endTime], maxAttempts: row.maxAttempts ?? 1, showScoreImmediately: row.showScoreImmediately ?? true, status: row.status, studentIds: [] })
+  Object.assign(form, { id: row.id, sessionName: row.sessionName, paperId: row.paperId, duration: row.duration, timeRange: [row.startTime, row.endTime], maxAttempts: row.maxAttempts ?? 1, showScoreImmediately: row.showScoreImmediately ?? true, allowResume: row.allowResume ?? true, status: row.status, studentIds: [] })
   if (!papers.value.length || !students.value.length) await loadPickers()
   try { const res = await listExamStudents(row.id); form.studentIds = (res.data ?? []).map((s: any) => s.id) } catch { }
   dialogVisible.value = true
@@ -145,7 +145,7 @@ const submit = async () => {
     submitting.value = true
     const [startTime, endTime] = form.timeRange
     if (!startTime || !endTime) { ElMessage.warning('请选择考试时间'); return }
-    const payload: SessionForm = { sessionName: form.sessionName, paperId: form.paperId!, duration: form.duration, startTime, endTime, maxAttempts: form.maxAttempts, showScoreImmediately: form.showScoreImmediately, status: form.status }
+    const payload: SessionForm = { sessionName: form.sessionName, paperId: form.paperId!, duration: form.duration, startTime, endTime, maxAttempts: form.maxAttempts, showScoreImmediately: form.showScoreImmediately, allowResume: form.allowResume, status: form.status }
     try {
       let sessionId: number
       if (editMode.value === 'create') { const r = await createSession(payload); sessionId = r.data.id; ElMessage.success('考试已发布') }
@@ -466,6 +466,10 @@ onMounted(() => { load(); loadPickers() })
           <el-col :span="12"><el-form-item label="最大参考次数"><el-input-number v-model="form.maxAttempts" :min="1" :max="10" /></el-form-item></el-col>
         </el-row>
         <el-form-item label="立即出分"><el-switch v-model="form.showScoreImmediately" /></el-form-item>
+        <el-form-item label="允许续考">
+          <el-switch v-model="form.allowResume" />
+          <span class="form-tip">关闭=严格模式：意外退出后不可续考</span>
+        </el-form-item>
         <el-form-item label="状态">
           <el-radio-group v-model="form.status"><el-radio :value="0">草稿</el-radio><el-radio :value="1">已发布</el-radio><el-radio :value="2">已结束</el-radio></el-radio-group>
         </el-form-item>
@@ -603,4 +607,6 @@ onMounted(() => { load(); loadPickers() })
   border-top: 1px solid #f0f0f0;
   display: flex; justify-content: flex-end; gap: 4px;
 }
+
+.form-tip { margin-left: 8px; font-size: 12px; color: #909399; }
 </style>

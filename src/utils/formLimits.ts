@@ -60,8 +60,6 @@ export const FormLimits = {
   analysis: { min: 0, max: 5000 },
   // 评语/反馈
   comment: { min: 0, max: 2000 },
-  // 学习笔记
-  studyNote: { min: 0, max: 10000 },
   // AI Prompt(可能很长)
   aiPrompt: { min: 0, max: 5000 },
   // 搜索关键词

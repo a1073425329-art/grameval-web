@@ -18,12 +18,7 @@ import type { RouteRecordRaw } from 'vue-router'
  */
 export const DISABLED_PATHS = [
   '/student/leaderboard',
-  '/student/badges',
   '/student/weekly-report',
-  '/student/study-groups',
-  // [2026-09-26 恢复] 学习笔记、AI 学习助手 —— 用户拍板保留（原下线行保留备查）：
-  //   '/student/study-notes',
-  //   '/student/ai-assistant',
   // [2026-09-26 恢复] 试卷模板：论文 L1262 点名「组卷模块可加入随机抽题、专题比例、难度比例和分值约束，
   //   提高组卷效率」→ 恢复入口（06 清单 §8.3 O 档）。原禁用行保留备查：
   //   '/admin/paper-templates',
@@ -83,7 +78,7 @@ export const asyncRoutes: RouteRecordRaw[] = [
     path: 'student/stats',
     name: 'StudentStats',
     component: () => import('@/views/student/Stats.vue'),
-    meta: { title: '学习数据', icon: 'TrendCharts', roles: ['STUDENT'] },
+    meta: { title: '学习分析', icon: 'TrendCharts', roles: ['STUDENT'] },
   },
   {
     path: 'student/score-curve',
@@ -99,41 +94,11 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '学生排行榜', icon: 'Trophy', roles: ['STUDENT'], disabled: true },
   },
   {
-    // [2026-09-26 恢复] 学习笔记 —— 用户拍板保留（论文虽零命中，作为学生辅助功能保留）
-    //   原下线状态保留备查：meta 中曾含 disabled: true
-    path: 'student/study-notes',
-    name: 'StudyNotes',
-    component: () => import('@/views/student/StudyNotes.vue'),
-    meta: { title: '学习笔记', icon: 'EditPen', roles: ['STUDENT'], group: '学习中心' },
-  },
-  {
-    // 【已禁用】徽章系统 —— 非主流程
-    path: 'student/badges',
-    name: 'Badges',
-    component: () => import('@/views/student/Badges.vue'),
-    meta: { title: '徽章系统', icon: 'Trophy', roles: ['STUDENT'], disabled: true },
-  },
-  {
     // 【已禁用】学习周报 —— 非主流程
     path: 'student/weekly-report',
     name: 'WeeklyReport',
     component: () => import('@/views/student/WeeklyReport.vue'),
     meta: { title: '学习周报', icon: 'Calendar', roles: ['STUDENT'], disabled: true },
-  },
-  {
-    // [2026-09-26 恢复] AI 学习助手 —— 用户拍板保留（NLP 属任务书技术要求，作为独立辅助功能保留）
-    //   原下线状态保留备查：meta 中曾含 disabled: true
-    path: 'student/ai-assistant',
-    name: 'AiAssistant',
-    component: () => import('@/views/student/AiAssistant.vue'),
-    meta: { title: 'AI学习助手', icon: 'ChatDotRound', roles: ['STUDENT'] },
-  },
-  {
-    // 【已禁用】学习小组 —— 非主流程
-    path: 'student/study-groups',
-    name: 'StudyGroups',
-    component: () => import('@/views/student/StudyGroups.vue'),
-    meta: { title: '学习小组', icon: 'UserFilled', roles: ['STUDENT'], disabled: true },
   },
   // hidden routes
   { path: 'student/exam-room/:examId', name: 'ExamRoom', component: () => import('@/views/student/ExamRoom.vue'), meta: { title: '考试中', roles: ['STUDENT'], hidden: true } },
@@ -269,6 +234,19 @@ export const asyncRoutes: RouteRecordRaw[] = [
     name: 'AdminSystemSettings',
     component: () => import('@/views/admin/SystemSettings.vue'),
     meta: { title: '系统设置', icon: 'Setting', roles: ['ADMIN'], group: '系统管理', superOnly: true },
+  },
+  {
+    // [2026-10-17 调整] 系统架构举证页 —— 答辩时回答「用了多少张表 / 什么字段 / 什么技术」。
+    //   数据实时来自 information_schema 与 pom.xml/package.json，非硬编码文档。
+    //
+    //   【唯一入口】按用户要求，入口只保留在「头像下拉 → 退出登录正上方」
+    //   （见 layout/components/Header.vue 的 showArchitecture 分支）。
+    //   故此处加 hidden: true —— 不在侧边栏渲染菜单，但路由仍注册，
+    //   直接访问 /admin/architecture 依然可用（便于收藏与演示）。
+    path: 'admin/architecture',
+    name: 'AdminArchitecture',
+    component: () => import('@/views/admin/SystemArchitecture.vue'),
+    meta: { title: '系统架构', icon: 'Coin', roles: ['ADMIN'], hidden: true },
   },
   // hidden routes
   { path: 'admin/exams/:sessionId/monitor', name: 'AdminExamMonitor', component: () => import('@/views/admin/ExamMonitor.vue'), meta: { title: '考试监控', roles: ['ADMIN'], hidden: true } },

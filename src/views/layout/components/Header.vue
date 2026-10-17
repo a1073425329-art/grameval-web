@@ -6,6 +6,7 @@ import { usePermissionStore } from '@/stores/permission'
 import { ElMessageBox } from 'element-plus'
 import { getMyNotifications, getUnreadCount, markNotificationRead, markAllRead as markAllReadApi, calculateMessages } from '@/api/student'
 import type { MessageNotification } from '@/types/notification'
+import { Coin } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -22,10 +23,21 @@ const dropdownLinks = computed(() => {
   return [
     { path: '/student/home', icon: 'HomeFilled', label: '首页' },
     { path: '/student/messages', icon: 'Bell', label: '消息中心' },
-    { path: '/student/stats', icon: 'TrendCharts', label: '学习数据' },
+    { path: '/student/stats', icon: 'TrendCharts', label: '学习分析' },
     { path: '/student/profile', icon: 'User', label: '个人资料' },
   ]
 })
+
+/**
+ * [2026-10-17 用户要求] 系统架构唯一入口 = 头像下拉里「退出登录」的正上方。
+ *
+ * 之前它挂在侧边栏「系统管理」分组里，用户希望只有一个入口且紧邻退出登录，
+ * 避免侧边栏与下拉两处重复。故：
+ *   · 侧边栏路由加 meta.hidden（不渲染菜单，但仍注册 —— 直接访问 URL 依然可用）
+ *   · 这里单独渲染一条，位置固定在退出登录之上
+ * 仅管理员可见（学生看系统架构没有意义，后端接口也只对 ADMIN 开放）。
+ */
+const showArchitecture = computed(() => authStore.role === 'ADMIN')
 
 /** 头像来源 */
 const avatarUrl = computed(() => {
@@ -172,7 +184,13 @@ onMounted(async () => {
             <el-dropdown-item v-for="link in dropdownLinks" :key="link.path" @click="router.push(link.path)">
               <el-icon><component :is="link.icon" /></el-icon>{{ link.label }}
             </el-dropdown-item>
-            <el-dropdown-item divided @click="handleLogout"><el-icon><SwitchButton /></el-icon>退出登录</el-dropdown-item>
+            <!-- 系统架构：唯一入口，固定在「退出登录」正上方 -->
+            <el-dropdown-item v-if="showArchitecture" divided @click="router.push('/admin/architecture')">
+              <el-icon><Coin /></el-icon>系统架构
+            </el-dropdown-item>
+            <el-dropdown-item :divided="!showArchitecture" @click="handleLogout">
+              <el-icon><SwitchButton /></el-icon>退出登录
+            </el-dropdown-item>
           </el-dropdown-menu>
         </template>
       </el-dropdown>

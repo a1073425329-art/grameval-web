@@ -266,7 +266,7 @@ onMounted(load)
       <template #header>
         <div style="display:flex;align-items:center;gap:8px">
           <el-icon><DataAnalysis /></el-icon>
-          <span>知识点掌握度雷达图（Top 8）</span>
+          <span>知识点掌握度雷达图（最弱 8 项）</span>
           <el-button type="primary" size="small" link @click="$router.push('/student/knowledge-mastery')">
             查看全部 →
           </el-button>

@@ -15,6 +15,8 @@ export interface ExamSession {
   answerPublishTime?: string
   maxAttempts?: number
   showScoreImmediately?: boolean
+  /** 是否允许续考（断点恢复）：false=严格模式，离开后不可续考 */
+  allowResume?: boolean
   /** 0草稿 / 1已发布 / 2已结束 */
   status: 0 | 1 | 2
   createBy?: number
@@ -36,6 +38,8 @@ export interface SessionForm {
   answerPublishTime?: string
   maxAttempts?: number
   showScoreImmediately?: boolean
+  /** 是否允许续考（断点恢复）：false=严格模式，离开后不可续考 */
+  allowResume?: boolean
   status?: 0 | 1 | 2
 }
 

@@ -262,35 +262,3 @@ export interface OperationLog {
   memoryUsedBytes?: number
   createTime: string
 }
-
-/** 我的学生（管理员绑定学生） */
-export interface AdminStudent {
-  // 关联信息
-  adminId: number
-  studentId: number
-  remark?: string
-  createdAt: string
-
-  // 学生基本信息（扁平结构，与后端 AdminStudentVO 对齐）
-  username: string
-  realName?: string
-  englishName?: string
-  displayName?: string   // @JsonGetter 别名
-  email?: string
-  phone?: string
-  avatar?: string
-  gender?: number         // 0未知 1男 2女
-  status?: number         // 1启用 0禁用
-  lastLoginTime?: string
-
-  // 训练信息
-  trainingStartDate?: string
-  actualStartDate?: string
-  trainingDays?: string   // 逗号分隔 1-7
-
-  // 学习概览
-  examCount?: number       // 考试总次数
-  recentScore?: number     // 最近一次百分制得分
-  averageScore?: number    // 考试平均分
-  wrongCount?: number      // 去重错题数
-}

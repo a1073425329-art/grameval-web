@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { getStudentStatistics, getMyResults, listPractices } from '@/api/student'
+import { getStudentStatistics, getMyResults } from '@/api/student'
 import { getMyScoreTrend } from '@/api/scoreCurve'
 import { getStudentMastery } from '@/api/knowledgeMastery'
 import type { StudentStatistics, CategoryStat, DifficultyStat, TagStat } from '@/types/stats'
 import type { ExamResultItem } from '@/types/result'
-import type { PracticeRecord } from '@/types/question'
 import type { ScoreCurve as SC } from '@/types/scoreCurve'
 import type { KnowledgeMastery as KM } from '@/types/knowledgeMastery'
 import VChart from 'vue-echarts'
@@ -14,7 +13,7 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart, RadarChart, PieChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent, RadarComponent, MarkLineComponent, MarkPointComponent } from 'echarts/components'
-import { Cpu, TrendCharts, DataAnalysis } from '@element-plus/icons-vue'
+import { TrendCharts, DataAnalysis } from '@element-plus/icons-vue'
 
 use([CanvasRenderer, BarChart, LineChart, RadarChart, PieChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, RadarComponent, MarkLineComponent, MarkPointComponent])
 
@@ -24,17 +23,19 @@ const loading = ref(false)
 
 const stats = ref<StudentStatistics | null>(null)
 const recentResults = ref<ExamResultItem[]>([])
-const recentPractices = ref<PracticeRecord[]>([])
+/* [2026-10-17] recentPractices 已随「最近练习记录」卡下线（流水归首页），不再拉取 */
 
 // ===== 新增：雷达图/班级对比/分布图所需数据 =====
 const scoreCurveData = ref<SC[]>([])
 const masteryData = ref<KM[]>([])
 
 // 维度切换
+/* [2026-10-17 职责划分] 原「考试+练习+错题」维度对应的 KPI 四卡与考试/练习流水已移到首页，
+   本页该维度只剩摘要数字，故更名为「成绩概览」。 */
 const currentModule = ref('all')
 const moduleOptions = [
   { label: '全部', value: 'all' },
-  { label: '考试+练习+错题', value: 'basic,exam,practice,wrong' },
+  { label: '成绩概览', value: 'basic,exam,practice,wrong' },
   { label: '考点弱点', value: 'tag' },
   { label: '语法大类', value: 'category' },
   { label: '难度分布', value: 'difficulty' },
@@ -69,16 +70,14 @@ const load = async () => {
   if (!userId.value) return
   loading.value = true
   try {
-    const [s, r, p, sc, km] = await Promise.allSettled([
+    const [s, r, sc, km] = await Promise.allSettled([
       getStudentStatistics(userId.value, includeMap[currentModule.value]),
       getMyResults({ pageNum: 1, pageSize: 20 }),
-      listPractices({ pageNum: 1, pageSize: 10 }),
       getMyScoreTrend(),
       getStudentMastery(userId.value),
     ])
     if (s.status === 'fulfilled') stats.value = s.value.data
     if (r.status === 'fulfilled') recentResults.value = r.value.data?.records ?? ([] as any)
-    if (p.status === 'fulfilled') recentPractices.value = p.value.data?.records ?? ([] as any)
     if (sc.status === 'fulfilled') scoreCurveData.value = sc.value.data ?? []
     if (km.status === 'fulfilled') masteryData.value = km.value.data ?? []
   } finally { loading.value = false }
@@ -86,9 +85,13 @@ const load = async () => {
 
 const switchModule = (val: string) => { currentModule.value = val; load() }
 
-// 成绩趋势数据：取最近 10 次考试
+/** [2026-10-17] 只统计已出分记录：未提交/超时的记录 scorePercentage 为 null，
+    直接按 0 分处理会把它们画成 0 分并归入「不及格」，趋势和分布都会失真。 */
+const scoredResults = computed(() => recentResults.value.filter(r => r.scorePercentage != null))
+
+// 成绩趋势数据：取最近 10 次已出分考试
 const scoreTrendData = computed(() => {
-  return [...recentResults.value].reverse().slice(0, 10).map(r => ({
+  return [...scoredResults.value].reverse().slice(0, 10).map(r => ({
     name: (r.sessionName?.length ?? 0) > 8 ? r.sessionName!.slice(0, 8) + '…' : (r.sessionName || '-'),
     score: r.scorePercentage ?? 0,
     date: r.submitTime?.slice(0, 10) || '',
@@ -98,7 +101,6 @@ const scoreTrendData = computed(() => {
 onMounted(load)
 
 // ===== Helpers =====
-const genderText = computed(() => { const g = stats.value?.gender; if (g === 1) return '男'; if (g === 2) return '女'; return '未知' })
 const accuracyColor = (v?: number) => { if (v == null) return '#909399'; if (v >= 80) return '#67c23a'; if (v >= 60) return '#e6a23c'; return '#f56c6c' }
 const weekDayNames: Record<string, string> = { '1': '周一', '2': '周二', '3': '周三', '4': '周四', '5': '周五', '6': '周六', '7': '周日' }
 const trainingDaysText = computed(() => {
@@ -404,7 +406,7 @@ const comparisonTableData = computed(() => {
 
 // ===== 新增：得分分布环形图 =====
 const scoreDistributionOption = computed(() => {
-  const results = recentResults.value
+  const results = scoredResults.value
   if (!results.length) return {}
   let excellent = 0, good = 0, pass = 0, fail = 0
   results.forEach(r => {
@@ -445,7 +447,7 @@ const scoreDistributionOption = computed(() => {
 
 /** 得分分布统计摘要 */
 const scoreDistributionSummary = computed(() => {
-  const results = recentResults.value
+  const results = scoredResults.value
   if (!results.length) return null
   let excellent = 0, good = 0, pass = 0, fail = 0
   results.forEach(r => {
@@ -463,58 +465,30 @@ const scoreDistributionSummary = computed(() => {
 <template>
   <div class="page" v-loading="loading">
     <div class="page-header">
-      <h3 class="page-title">📊 学习数据</h3>
+      <div class="page-title-wrap">
+        <h3 class="page-title">📈 学习分析</h3>
+        <span class="page-subtitle">成绩趋势 · 知识点雷达 · 班级对比 · 考点弱点诊断（活动流水请看首页）</span>
+      </div>
       <div class="page-header-actions">
         <el-radio-group v-model="currentModule" @change="switchModule" size="small">
           <el-radio-button v-for="m in moduleOptions" :key="m.value" :value="m.value">{{ m.label }}</el-radio-button>
         </el-radio-group>
-        <el-button type="primary" size="small" @click="$router.push('/student/ai-assistant')">
-          <el-icon><Cpu /></el-icon>AI数据分析
-        </el-button>
       </div>
     </div>
 
     <template v-if="stats">
-      <!-- ====== 用户信息条 ====== -->
-      <el-card shadow="never" class="section-card" v-if="stats.realName">
-        <div class="basic-info">
-          <div class="basic-left">
-            <el-avatar :size="48" :src="stats.avatar" style="background:#409eff;font-size:20px">{{ (stats.realName || stats.username)[0]?.toUpperCase() }}</el-avatar>
-            <div class="basic-text">
-              <div class="basic-name">{{ stats.realName || stats.username }}</div>
-              <div class="basic-meta">{{ genderText }} · 注册于 {{ stats.createTime?.slice(0, 10) }} · 上次登录 {{ stats.lastLoginTime?.slice(0, 16) || '-' }}</div>
-            </div>
-          </div>
-        </div>
-      </el-card>
-
-      <!-- ====== KPI 总览 ====== -->
-      <el-row :gutter="16" class="stat-row">
-        <el-col :span="6">
-          <div class="kpi kpi-exam" @click="$router.push('/student/results')">
-            <div class="kpi-num">{{ stats.examCount ?? '-' }}</div><div class="kpi-lbl">考试次数</div>
-            <div class="kpi-sub">均分 {{ stats.examAverageScore?.toFixed(1) ?? '-' }} · 最高 {{ stats.examHighestScore ?? '-' }}</div>
-          </div>
-        </el-col>
-        <el-col :span="6">
-          <div class="kpi kpi-practice" @click="$router.push('/student/practice')">
-            <div class="kpi-num">{{ stats.practiceCount ?? '-' }}</div><div class="kpi-lbl">练习次数</div>
-            <div class="kpi-sub">{{ stats.practiceQuestionCount ?? 0 }} 题 · 正确率 {{ stats.practiceAccuracy?.toFixed(1) ?? '-' }}%</div>
-          </div>
-        </el-col>
-        <el-col :span="6">
-          <div class="kpi kpi-accuracy">
-            <div class="kpi-num" :style="{ color: accuracyColor(stats.examAccuracy) }">{{ stats.examAccuracy?.toFixed(1) ?? '-' }}%</div><div class="kpi-lbl">考试正确率</div>
-            <div class="kpi-sub">对 {{ stats.examCorrectCount ?? 0 }} / 错 {{ stats.examWrongCount ?? 0 }}</div>
-          </div>
-        </el-col>
-        <el-col :span="6">
-          <div class="kpi kpi-wrong" @click="$router.push('/student/wrong-book')">
-            <div class="kpi-num" style="color:#f56c6c">{{ stats.distinctWrongCount ?? '-' }}</div><div class="kpi-lbl">去重错题</div>
-            <div class="kpi-sub" v-if="stats.tagStats?.length">最弱：{{ stats.tagStats[0]?.tagName }}</div>
-          </div>
-        </el-col>
-      </el-row>
+      <!-- ====== 一句话摘要（取代原用户信息条 + KPI 四卡：身份归首页 Hero，KPI 归首页概览） ====== -->
+      <!-- 切到「考点弱点/语法大类/难度分布」维度时后端不返回 exam/practice 计数，
+           此处用 '—' 占位，避免把"未返回"误显示成 0。 -->
+      <div class="analysis-brief">
+        <span>共 <b>{{ stats.examCount ?? '—' }}</b> 场考试、<b>{{ stats.practiceCount ?? '—' }}</b> 次练习</span>
+        <span class="ab-sep">·</span>
+        <span>考试正确率 <b :style="{ color: accuracyColor(stats.examAccuracy) }">{{ stats.examAccuracy != null ? stats.examAccuracy.toFixed(1) + '%' : '—' }}</b></span>
+        <span class="ab-sep">·</span>
+        <span>去重错题 <b style="color:#f56c6c">{{ stats.distinctWrongCount ?? '—' }}</b></span>
+        <span class="ab-sep" v-if="stats.tagStats?.length">·</span>
+        <span v-if="stats.tagStats?.length">最弱考点 <b style="color:#e6a23c">{{ stats.tagStats[0]?.tagName }}</b></span>
+      </div>
 
       <!-- ====== 成绩趋势图（增强版：移动平均、最值标记、及格线） ====== -->
       <el-card v-if="scoreTrendData.length >= 2" shadow="never" class="section-card">
@@ -645,47 +619,11 @@ const scoreDistributionSummary = computed(() => {
               <div class="tg-item"><div class="tg-label">剩余</div><div class="tg-value" style="color:#e6a23c">{{ stats.daysRemaining ?? '-' }} 天</div></div>
             </div>
           </el-card>
-
-          <!-- 最近练习 -->
-          <el-card shadow="never" class="section-card" style="margin-top:14px" v-if="recentPractices.length">
-            <template #header>🎯 最近练习记录</template>
-            <el-table :data="recentPractices.slice(0, 5)" size="small">
-              <el-table-column prop="categoryName" label="专题" min-width="100" />
-              <el-table-column label="对/错" width="80" align="center">
-                <template #default="{ row }">{{ row.correctCount }}/{{ row.wrongCount }}</template>
-              </el-table-column>
-              <el-table-column label="正确率" width="80" align="center">
-                <template #default="{ row }"><span :style="{ color: accuracyColor(row.accuracy) }">{{ row.accuracy?.toFixed(0) ?? '-' }}%</span></template>
-              </el-table-column>
-              <el-table-column prop="startTime" label="时间" width="140">
-                <template #default="{ row }">{{ row.startTime?.slice(0, 16) }}</template>
-              </el-table-column>
-            </el-table>
-          </el-card>
         </el-col>
       </el-row>
 
-      <!-- ====== 最近考试记录 ====== -->
-      <el-card shadow="never" class="section-card" v-if="recentResults.length">
-        <template #header>📝 最近考试记录</template>
-        <el-table :data="recentResults.slice(0, 10)" size="small">
-          <el-table-column prop="sessionName" label="考试名称" min-width="150" show-overflow-tooltip />
-          <el-table-column label="提交时间" width="160">
-            <template #default="{ row }">{{ row.submitTime?.slice(0, 16) || '-' }}</template>
-          </el-table-column>
-          <el-table-column label="得分" width="100" align="center">
-            <template #default="{ row }">
-              <span :style="{ color: accuracyColor(row.scorePercentage), fontWeight: 600 }">{{ row.totalScore ?? '-' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="正确率" width="90" align="center">
-            <template #default="{ row }">{{ row.scorePercentage?.toFixed(1) ?? '-' }}%</template>
-          </el-table-column>
-          <el-table-column label="对/错" width="80" align="center">
-            <template #default="{ row }">{{ row.correctCount ?? '-' }}/{{ row.wrongCount ?? '-' }}</template>
-          </el-table-column>
-        </el-table>
-      </el-card>
+      <!-- [2026-10-17 职责划分] 「最近练习记录」「最近考试记录」已移出本页 ——
+           活动流水属于首页「考试与练习」Tab，本页只做诊断分析，不重复摆流水。 -->
 
       <!-- ====== 考点弱点明细表 ====== -->
       <el-card shadow="never" class="section-card" v-if="stats.tagStats?.length">
@@ -715,35 +653,26 @@ const scoreDistributionSummary = computed(() => {
 
 <style scoped lang="scss">
 .page { display: flex; flex-direction: column; gap: 14px; padding: 4px; }
-.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; gap: 16px; flex-wrap: wrap; }
+.page-title-wrap { display: flex; flex-direction: column; gap: 3px; }
 .page-title { margin: 0; font-size: 18px; font-weight: 600; color: #303133; }
+.page-subtitle { font-size: 12px; color: #909399; }
 
 .section-card {
   border-radius: 8px;
   :deep(.el-card__header) { padding: 12px 20px; font-weight: 600; font-size: 14px; }
 }
 
-// Basic info
-.basic-info { display: flex; align-items: center; justify-content: space-between; }
-.basic-left { display: flex; align-items: center; gap: 14px; }
-.basic-name { font-size: 16px; font-weight: 600; color: #303133; }
-.basic-meta { font-size: 12px; color: #909399; margin-top: 2px; }
-
-// KPI row
-.stat-row { margin: 0 !important; }
-.page-header-actions { display: flex; align-items: center; gap: 16px; }
-.kpi {
-  text-align: center; background: #fff; border-radius: 8px; padding: 18px 12px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06); cursor: pointer; transition: transform 0.15s;
-  &:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+/* 一句话摘要（取代原用户信息条 + KPI 四卡） */
+.analysis-brief {
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+  background: #f7f9fc; border: 1px solid #ebeef5; border-radius: 8px;
+  padding: 10px 16px; font-size: 13px; color: #606266;
+  b { font-weight: 600; color: #303133; }
+  .ab-sep { color: #dcdfe6; }
 }
-.kpi-num { font-size: 28px; font-weight: 700; color: #303133; line-height: 1.2; }
-.kpi-lbl { font-size: 13px; color: #606266; margin: 4px 0; }
-.kpi-sub { font-size: 11px; color: #909399; }
-.kpi-exam { border-top: 3px solid #409eff; }
-.kpi-practice { border-top: 3px solid #67c23a; }
-.kpi-accuracy { border-top: 3px solid #e6a23c; }
-.kpi-wrong { border-top: 3px solid #f56c6c; }
+
+.page-header-actions { display: flex; align-items: center; gap: 16px; }
 
 // Training
 .training-grid { display: flex; gap: 28px; flex-wrap: wrap; }

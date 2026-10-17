@@ -44,10 +44,6 @@ vi.mock('@/api/student', () => ({
     ],
   }),
   startExam: vi.fn().mockResolvedValue({ data: { id: 999 } }),
-  listMyNotes: vi.fn(),
-  createStudyNote: vi.fn(),
-  updateStudyNote: vi.fn(),
-  deleteStudyNote: vi.fn(),
   listCategories: vi.fn(),
 }))
 
@@ -68,12 +64,14 @@ const mountIt = () =>
 describe('考试列表页 (ExamList.vue)', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('能顺利挂载, 显示"在线考试"标题和两个 Tab', async () => {
+  it('能顺利挂载, 显示"在线考试"标题和四个 Tab', async () => {
     const w = mountIt()
     await flushPromises()
 
     expect(w.text()).toContain('在线考试')
+    expect(w.text()).toContain('全部')
     expect(w.text()).toContain('待考')
+    expect(w.text()).toContain('续考')
     expect(w.text()).toContain('已参加')
 
     // onMounted 会同时加载两个列表
@@ -83,38 +81,50 @@ describe('考试列表页 (ExamList.vue)', () => {
     w.unmount()
   })
 
-  it('默认展示待考 Tab, 卡片上有"进入考试"按钮', async () => {
+  it('默认展示全部 Tab, 卡片按续考→待考→已参加排序', async () => {
     const w = mountIt()
     await flushPromises()
 
-    // 第一张卡片: 进行中的考试, 按钮应该是"进入考试"
+    // 全部 Tab：四条都应出现
     expect(w.text()).toContain('期中语法测验')
-    expect(w.text()).toContain('进行中')
-
-    // 第二张卡片: 已结束, 按钮显示"已结束"
     expect(w.text()).toContain('已经结束的考试')
-    expect(w.text()).toContain('已结束')
+    expect(w.text()).toContain('已参加的词汇测验')
+    expect(w.text()).toContain('进行中的考试(已参加但未提交)')
+
+    // 续考排最前
+    const text = w.text()
+    const iResume = text.indexOf('进行中的考试(已参加但未提交)')
+    const iPending = text.indexOf('期中语法测验')
+    const iDone = text.indexOf('已参加的词汇测验')
+    expect(iResume).toBeGreaterThanOrEqual(0)
+    expect(iPending).toBeGreaterThan(iResume)
+    expect(iDone).toBeGreaterThan(iPending)
 
     w.unmount()
   })
 
-  it('已参加 Tab 显示"已提交"和"续考"两种状态', async () => {
+  it('已参加 Tab 显示已提交成绩；续考 Tab 显示未完成答卷', async () => {
     const w = mountIt()
     await flushPromises()
 
-    // 找到"已参加" Tab 并点击
+    // 已参加 Tab：只有已提交
     const tabs = w.findAll('.el-tabs__item')
     const attendedTab = tabs.find((t) => t.text().includes('已参加'))
     expect(attendedTab, '应该有"已参加" Tab').toBeTruthy()
     await attendedTab!.trigger('click')
     await flushPromises()
 
-    // 第一张已考卡片: 已提交, 显示分数 85.50
     expect(w.text()).toContain('已参加的词汇测验')
     expect(w.text()).toContain('已提交')
     expect(w.text()).toContain('85.50')
+    // 未完成的不在已参加里
+    expect(w.text()).not.toContain('进行中的考试(已参加但未提交)')
 
-    // 第二张已考卡片: 未提交, 按钮是"续考"
+    // 续考 Tab：未完成答卷 + 续考按钮
+    const resumeTab = tabs.find((t) => t.text().includes('续考'))
+    expect(resumeTab, '应该有"续考" Tab').toBeTruthy()
+    await resumeTab!.trigger('click')
+    await flushPromises()
     expect(w.text()).toContain('进行中的考试(已参加但未提交)')
     expect(w.text()).toContain('续考')
 

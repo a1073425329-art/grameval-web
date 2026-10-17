@@ -48,6 +48,15 @@ a { color: $primary-color; text-decoration: none; }
 }
 .el-button--large { border-radius: $radius-md; }
 
+// 通知窄屏适配：手机上 330px 固定宽度会贴边、正文频繁换行，
+// 改为随视口收缩（保留左右各 16px 安全边距）。
+@media (max-width: 480px) {
+  .el-notification {
+    width: calc(100vw - 32px) !important;
+    max-width: 360px;
+  }
+}
+
 .el-table th.el-table__cell {
   background-color: #fafafa !important;
   color: $text-regular !important;

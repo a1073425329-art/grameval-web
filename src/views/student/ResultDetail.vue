@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getResultDetail, getDimensionAnalysis } from '@/api/student'
 import type { ResultDetail as ResultDetailType } from '@/types/result'
-import { flattenAnswerUnits } from '@/utils/questionUnits'
+import { flattenAnswerUnits, type AnswerReviewItem } from '@/utils/questionUnits'
 import type { DimensionAnalysis } from '@/types/stats'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { getJudgeOptionLabel } from '@/utils/dict'
@@ -76,15 +76,92 @@ const accuracy = computed(() => totalCount.value > 0 ? (correctCount.value / tot
 
 const typeLabel = (t: QuestionType) => ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL: '填空', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
 
-/** 同一篇短文只在组首那题上方显示一次，回顾页不必把文章重复贴三遍 */
-const isPassageHead = (idx: number) => {
-  const list = answerItems.value
-  const answer = list[idx]
+/* ============================================================
+ *  成绩概览增强
+ *  下面这些字段接口本来就返回，只是原页面没有展示：
+ *  classRank / totalCount（班级排名）、remainingSeconds（提前交卷）、
+ *  resumeCount（断点续考）、paperTotalScore / 题量（每题分值）。
+ * ============================================================ */
+
+/** 班级排名：第 N 名 / 共 M 人 */
+const rankText = computed(() => {
+  const r = detail.value?.classRank
+  const t = detail.value?.totalCount
+  if (r == null || !t) return '-'
+  return `${r} / ${t}`
+})
+
+/** 超过班级多少比例的同学（1/4 → 100%） */
+const rankBeatPercent = computed(() => {
+  const r = detail.value?.classRank
+  const t = detail.value?.totalCount
+  if (r == null || !t || t <= 1) return null
+  return Math.round(((t - r) / (t - 1)) * 100)
+})
+
+/** 提前交卷时长（交卷时剩余时间），未提前则为 null */
+const earlySubmitText = computed(() => {
+  const rest = detail.value?.remainingSeconds
+  if (rest == null || rest <= 0) return null
+  const m = Math.floor(rest / 60)
+  const s = rest % 60
+  return m > 0 ? `${m} 分 ${s} 秒` : `${s} 秒`
+})
+
+/** 平均每题分值，用来解释"错一题大概丢多少分" */
+const avgScorePerQuestion = computed(() => {
+  const n = totalCount.value
+  const total = detail.value?.paperTotalScore
+  if (!n || !total) return '-'
+  return (total / n).toFixed(1)
+})
+
+/** 答题速览：每题一个色块，一眼看出错在第几题 */
+const overviewCells = computed(() =>
+  answerItems.value.map((a, i) => ({
+    no: i + 1,
+    questionId: a.questionId,
+    ok: a.isCorrect === 1,
+    marked: a.markedFlag === 1,
+  })),
+)
+
+const jumpToQuestion = (questionId: number) => {
+  const el = document.querySelector<HTMLElement>(`[data-qid="${questionId}"]`)
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  el.classList.add('flash')
+  window.setTimeout(() => el.classList.remove('flash'), 1400)
+}
+
+/** 明细筛选：全部 / 仅错题 / 仅标记 */
+const answerFilter = ref<'ALL' | 'WRONG' | 'MARKED'>('ALL')
+const markedCount = computed(() => answerItems.value.filter((a) => a.markedFlag === 1).length)
+const visibleAnswers = computed(() => {
+  if (answerFilter.value === 'WRONG') return answerItems.value.filter((a) => a.isCorrect === 0)
+  if (answerFilter.value === 'MARKED') return answerItems.value.filter((a) => a.markedFlag === 1)
+  return answerItems.value
+})
+
+/** 题号始终取原始序号：筛选后不重新编号，避免"第 1 题"指代错乱 */
+const numberOf = (a: AnswerReviewItem) =>
+  answerItems.value.findIndex((x) => x.questionId === a.questionId) + 1
+
+/** 语法大类正确率：把维度分析提到首屏，不用滚到页尾才看得到 */
+const categoryBars = computed(() =>
+  [...(dim.value?.byCategory ?? [])].sort((a, b) => a.accuracy - b.accuracy),
+)
+
+/** 同一篇短文只在组首那题上方显示一次，回顾页不必把文章重复贴三遍。
+ *  这里按题目对象而非列表下标判断——明细加了筛选后下标会变，用下标会误判组首。 */
+const isPassageHead = (answer: AnswerReviewItem) => {
   if (!answer?.passageId) return false
+  const list = answerItems.value
+  const idx = list.findIndex((x) => x.questionId === answer.questionId)
   return list[idx - 1]?.passageId !== answer.passageId
 }
 
-const passageGroupSize = (idx: number) => answerItems.value[idx]?.readingGroupSize ?? 0
+const passageGroupSize = (answer: AnswerReviewItem) => answer.readingGroupSize ?? 0
 
 const difficultyLabel = (d: Difficulty) => {
   if (d === 1) return { text: '简单', color: '#67c23a' }
@@ -222,7 +299,18 @@ const dimDifficultyChartOption = computed(() => {
   <div class="page" v-loading="loading">
     <div class="page-header">
       <el-button link @click="router.back()"><el-icon :size="20"><ArrowLeft /></el-icon>返回</el-button>
-      <h3 class="page-title">{{ detail?.sessionName || '成绩详情' }}</h3>
+      <div class="title-block">
+        <h3 class="page-title">{{ detail?.sessionName || '成绩详情' }}</h3>
+        <div class="title-sub" v-if="detail">
+          <span>{{ detail.paperName || '—' }}</span>
+          <span class="dot">·</span>
+          <span>共 {{ totalCount }} 题</span>
+          <span class="dot">·</span>
+          <span>满分 {{ detail.paperTotalScore ?? '-' }}</span>
+          <span class="dot">·</span>
+          <span>每题均 {{ avgScorePerQuestion }} 分</span>
+        </div>
+      </div>
     </div>
 
     <!-- 汇总卡片 -->
@@ -269,10 +357,10 @@ const dimDifficultyChartOption = computed(() => {
           </div>
         </div>
         <div class="stat-item">
-          <div class="stat-icon paper"><el-icon><Trophy /></el-icon></div>
+          <div class="stat-icon rank"><el-icon><Trophy /></el-icon></div>
           <div class="stat-info">
-            <div class="stat-value">{{ detail.paperName || '-' }}</div>
-            <div class="stat-label">试卷名称</div>
+            <div class="stat-value">{{ rankText }}</div>
+            <div class="stat-label">班级排名</div>
           </div>
         </div>
         <div class="stat-item">
@@ -295,6 +383,68 @@ const dimDifficultyChartOption = computed(() => {
           <span class="meta-label">提交时间：</span>
           <span class="meta-value">{{ detail.submitTime || '-' }}</span>
         </span>
+        <span class="meta-item" v-if="earlySubmitText">
+          <span class="meta-icon"><Clock /></span>
+          <span class="meta-label">提前交卷：</span>
+          <span class="meta-value early">{{ earlySubmitText }}</span>
+        </span>
+        <span class="meta-item" v-if="detail.resumeCount">
+          <span class="meta-icon"><Clock /></span>
+          <span class="meta-label">断点续考：</span>
+          <span class="meta-value">{{ detail.resumeCount }} 次</span>
+        </span>
+        <span class="meta-item" v-if="rankBeatPercent !== null">
+          <span class="meta-icon"><Trophy /></span>
+          <span class="meta-label">排名位置：</span>
+          <span class="meta-value">超过班级 {{ rankBeatPercent }}% 的同学</span>
+        </span>
+      </div>
+    </div>
+
+    <!-- ===== 答题概览：速览网格 + 语法大类正确率 ===== -->
+    <div class="overview-section" v-if="detail?.answers?.length">
+      <div class="ov-head">
+        <h4 class="ov-title">🎯 答题概览</h4>
+        <div class="ov-legend">
+          <span class="lg ok">正确 {{ correctCount }}</span>
+          <span class="lg ng">错误 {{ wrongCount }}</span>
+          <span class="lg mk" v-if="markedCount">标记 {{ markedCount }}</span>
+        </div>
+      </div>
+
+      <div class="ov-body">
+        <div class="ov-grid-wrap">
+          <div class="ov-grid">
+            <div
+              v-for="c in overviewCells"
+              :key="c.questionId"
+              class="ov-cell"
+              :class="{ ok: c.ok, ng: !c.ok, marked: c.marked }"
+              :title="`第 ${c.no} 题 · ${c.ok ? '正确' : '错误'}${c.marked ? ' · 已标记' : ''}（点击定位）`"
+              @click="jumpToQuestion(c.questionId)"
+            >
+              {{ c.no }}
+            </div>
+          </div>
+          <div class="ov-hint">点击题号定位到下方题目</div>
+        </div>
+
+        <div class="ov-cats" v-if="categoryBars.length">
+          <div class="ov-cats-title">语法大类正确率</div>
+          <div v-for="c in categoryBars" :key="c.categoryId" class="cat-row">
+            <span class="cat-name">{{ c.categoryName }}</span>
+            <div class="cat-bar">
+              <div
+                class="cat-bar-fill"
+                :style="{
+                  width: Math.min(c.accuracy, 100) + '%',
+                  background: c.accuracy >= 80 ? '#67c23a' : c.accuracy >= 60 ? '#e6a23c' : '#f56c6c',
+                }"
+              ></div>
+            </div>
+            <span class="cat-val">{{ c.correct }}/{{ c.total }}</span>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -302,16 +452,26 @@ const dimDifficultyChartOption = computed(() => {
     <div class="answers" v-if="detail?.answers?.length">
       <div class="answers-header">
         <h4 class="answers-title">📝 答题明细</h4>
-        <div class="answers-summary">
-          <span class="summary-tag ok">{{ correctCount }} 题正确</span>
-          <span class="summary-tag ng">{{ wrongCount }} 题错误</span>
+        <div class="answers-tools">
+          <el-radio-group v-model="answerFilter" size="small">
+            <el-radio-button value="ALL">全部 {{ answerItems.length }}</el-radio-button>
+            <el-radio-button value="WRONG">仅错题 {{ wrongCount }}</el-radio-button>
+            <el-radio-button value="MARKED" :disabled="!markedCount">仅标记 {{ markedCount }}</el-radio-button>
+          </el-radio-group>
         </div>
       </div>
 
+      <el-empty
+        v-if="!visibleAnswers.length"
+        :description="answerFilter === 'MARKED' ? '本卷没有标记的题目' : '本场考试没有错题 🎉'"
+        :image-size="90"
+      />
+
       <div
-        v-for="(a, idx) in answerItems"
+        v-for="a in visibleAnswers"
         :key="a.questionId"
         class="answer-card"
+        :data-qid="a.questionId"
         :class="{ ok: a.isCorrect === 1, ng: a.isCorrect === 0 }"
       >
         <!-- 题目头部 -->
@@ -319,7 +479,7 @@ const dimDifficultyChartOption = computed(() => {
           <div class="q-left">
             <span class="q-idx" :class="{ ok: a.isCorrect === 1, ng: a.isCorrect === 0 }">
               <el-icon><CircleCheck v-if="a.isCorrect === 1" /><CircleClose v-else /></el-icon>
-              第 {{ idx + 1 }} 题
+              第 {{ numberOf(a) }} 题
             </span>
             <el-tag size="small" class="q-type">{{ typeLabel(a.questionType) }}</el-tag>
             <el-tag size="small" class="q-difficulty" :style="{ backgroundColor: difficultyLabel(a.difficulty || 2).color + '15', color: difficultyLabel(a.difficulty || 2).color, borderColor: difficultyLabel(a.difficulty || 2).color + '30' }">
@@ -330,6 +490,7 @@ const dimDifficultyChartOption = computed(() => {
             </el-tag>
           </div>
           <div class="q-right">
+            <span class="q-loss" v-if="a.isCorrect === 0">失 {{ a.questionScore ?? 0 }} 分</span>
             <span class="q-score">
               <span :class="a.isCorrect === 1 ? 'ok-text' : 'ng-text'">{{ a.obtainedScore ?? 0 }}</span>
               <span class="score-separator">/</span>
@@ -341,11 +502,11 @@ const dimDifficultyChartOption = computed(() => {
 
         <!-- 阅读理解：回顾要带上当时的文章 -->
         <PassageCard
-          v-if="a.passageContent && isPassageHead(idx)"
+          v-if="a.passageContent && isPassageHead(a)"
           :content="a.passageContent"
           :title="a.passageTitle"
           :word-count="a.passageWordCount"
-          :group-total="passageGroupSize(idx)"
+          :group-total="passageGroupSize(a)"
           :group-score="a.readingGroupScore"
         />
 
@@ -478,8 +639,15 @@ const dimDifficultyChartOption = computed(() => {
 </template>
 
 <style scoped lang="scss">
-.page-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.page-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
 .page-title { margin: 0; font-size: 20px; font-weight: 600; color: #303133; }
+
+.title-block { display: flex; flex-direction: column; gap: 4px; }
+.title-sub {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  font-size: 13px; color: #909399;
+  .dot { color: #dcdfe6; }
+}
 
 // ===== 汇总区域 =====
 .summary-section {
@@ -529,6 +697,7 @@ const dimDifficultyChartOption = computed(() => {
   &.accuracy { background: #ecf5ff; color: #409eff; }
   &.duration { background: #fdf6ec; color: #e6a23c; }
   &.paper { background: #f0f9eb; color: #67c23a; }
+  &.rank { background: #fdf6ec; color: #e6a23c; }
   &.status { background: #fafafa; color: #909399; }
 }
 
@@ -550,6 +719,65 @@ const dimDifficultyChartOption = computed(() => {
 .meta-icon { font-size: 14px; color: #909399; }
 .meta-label { color: #909399; }
 .meta-value { color: #303133; }
+.meta-value.early { color: #67c23a; font-weight: 600; }
+
+// ===== 答题概览 =====
+.overview-section {
+  background: #fff; border-radius: 12px; padding: 20px 24px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 20px;
+}
+
+.ov-head {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 10px; margin-bottom: 16px;
+}
+
+.ov-title { margin: 0; font-size: 16px; font-weight: 600; color: #303133; }
+
+.ov-legend { display: flex; gap: 8px; }
+.lg {
+  padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;
+  &.ok { background: #f0f9eb; color: #67c23a; }
+  &.ng { background: #fef0f0; color: #f56c6c; }
+  &.mk { background: #fdf6ec; color: #e6a23c; }
+}
+
+.ov-body { display: flex; gap: 28px; flex-wrap: wrap; }
+
+.ov-grid-wrap { flex: 1 1 380px; min-width: 300px; }
+
+.ov-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.ov-cell {
+  width: 38px; height: 38px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  border: 1px solid transparent; transition: all 0.15s;
+  &.ok { background: #f0f9eb; color: #529b2e; border-color: #c2e7b0; }
+  &.ng { background: #fef0f0; color: #c45656; border-color: #fab6b6; }
+  &.marked { outline: 2px dashed #e6a23c; outline-offset: 1px; }
+  &:hover { transform: translateY(-2px); box-shadow: 0 3px 8px rgba(0,0,0,0.12); }
+}
+
+.ov-hint { margin-top: 10px; font-size: 12px; color: #b1b3b8; }
+
+.ov-cats { flex: 1 1 300px; min-width: 260px; }
+
+.ov-cats-title { font-size: 13px; font-weight: 600; color: #606266; margin-bottom: 10px; }
+
+.cat-row {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 13px;
+}
+
+.cat-name { width: 88px; flex: none; color: #606266; text-align: right; }
+
+.cat-bar {
+  flex: 1; height: 10px; background: #f0f2f5; border-radius: 5px; overflow: hidden;
+}
+
+.cat-bar-fill { height: 100%; border-radius: 5px; transition: width 0.4s ease; }
+
+.cat-val { width: 44px; flex: none; color: #909399; font-size: 12px; }
 
 // ===== 答题明细 =====
 .answers-header {
@@ -559,12 +787,7 @@ const dimDifficultyChartOption = computed(() => {
 
 .answers-title { margin: 0; font-size: 18px; font-weight: 600; color: #303133; }
 
-.answers-summary { display: flex; gap: 8px; }
-.summary-tag {
-  padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 500;
-  &.ok { background: #f0f9eb; color: #67c23a; }
-  &.ng { background: #fef0f0; color: #f56c6c; }
-}
+.answers-tools { display: flex; gap: 8px; }
 
 .answers { display: flex; flex-direction: column; gap: 16px; margin-bottom: 20px; }
 
@@ -572,8 +795,9 @@ const dimDifficultyChartOption = computed(() => {
   background: #fff; border-radius: 12px; padding: 20px;
   box-shadow: 0 2px 8px rgba(0,0,0,0.05);
   border-left: 4px solid #dcdfe6;
-  transition: box-shadow 0.2s;
+  transition: box-shadow 0.2s, background-color 0.6s;
   &:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+  &.flash { background-color: #fdf6ec; }
 }
 
 .answer-card.ok { border-left-color: #67c23a; }
@@ -596,7 +820,13 @@ const dimDifficultyChartOption = computed(() => {
 .q-type { background: #ecf5ff; color: #409eff; border: none; }
 .q-difficulty { border: none; }
 
-.q-right { display: flex; align-items: center; }
+.q-right { display: flex; align-items: center; gap: 10px; }
+
+.q-loss {
+  padding: 2px 8px; border-radius: 10px;
+  background: #fef0f0; color: #f56c6c;
+  font-size: 12px; font-weight: 600;
+}
 
 .q-score {
   display: flex; align-items: baseline; gap: 4px; font-size: 16px;

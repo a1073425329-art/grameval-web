@@ -34,23 +34,11 @@ async function get(request: APIRequestContext, path: string, token: string) {
 }
 
 test.describe('前端 axios 使用的 URL 白名单', () => {
-  test('学生端: 个人资料 / 笔记 / 小组 / 徽章 / 周报 / 学习进度', async ({ request }) => {
+  test('学生端: 个人资料 / 周报 / 学习进度', async ({ request }) => {
     const t = studentToken
     // 个人资料 — 别名接口 my-profile 是刚补的
     await expect((await get(request, '/api/users/my-profile', t)).status()).toBe(200)
     await expect((await get(request, '/api/users/me', t)).status()).toBe(200)
-
-    // 学习笔记 —— 前端约定的 /study-notes/*
-    await expect((await get(request, '/api/study-notes/my-list?pageNum=1&pageSize=10', t)).status()).toBe(200)
-    await expect((await get(request, '/api/study-notes/public?pageNum=1&pageSize=10', t)).status()).toBe(200)
-
-    // 学习小组
-    await expect((await get(request, '/api/study-groups/my-groups', t)).status()).toBe(200)
-    await expect((await get(request, '/api/study-groups/search?keyword=', t)).status()).toBe(200)
-
-    // 徽章
-    await expect((await get(request, '/api/badges/my-badges', t)).status()).toBe(200)
-    await expect((await get(request, '/api/badges/all', t)).status()).toBe(200)
 
     // 学习周报
     await expect((await get(request, '/api/weekly-report/current', t)).status()).toBe(200)
@@ -71,10 +59,8 @@ test.describe('前端 axios 使用的 URL 白名单', () => {
     await expect((await get(request, '/api/results/wrong-book?pageNum=1&pageSize=10', t)).status()).toBe(200)
   })
 
-  test('学生端 AI 助手 / 通知', async ({ request }) => {
+  test('学生端 通知', async ({ request }) => {
     const t = studentToken
-    await expect((await get(request, '/api/student/assistant/sessions', t)).status()).toBe(200)
-    await expect((await get(request, '/api/student/assistant/stats', t)).status()).toBe(200)
     await expect((await get(request, '/api/notifications?pageNum=1&pageSize=10', t)).status()).toBe(200)
     await expect((await get(request, '/api/notifications/unread-count', t)).status()).toBe(200)
     await expect((await get(request, '/api/notifications/preferences', t)).status()).toBe(200)
@@ -99,7 +85,6 @@ test.describe('前端 axios 使用的 URL 白名单', () => {
     await expect((await get(request, '/api/admin/operation-logs/types', t)).status()).toBe(200)
     await expect((await get(request, '/api/admin/system-config', t)).status()).toBe(200)
     await expect((await get(request, '/api/admin/system-config/ai/overview', t)).status()).toBe(200)
-    await expect((await get(request, '/api/admin/my-students', t)).status()).toBe(200)
   })
 
   test('管理员端: 工作流 / AI', async ({ request }) => {

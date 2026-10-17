@@ -95,6 +95,8 @@
 
 ## 三、技术栈
 
+> **2026-10-18 实测口径**：前端版本均 ≥ 论文表 5.1 声明（论文写 Vue 3 / Element Plus / Node.js 20，实际 Vue 3.5.39 / Element Plus 2.14.3 / Node 26.5.0）。
+
 | 层级 | 组件 | 版本 | 备注 |
 |---|---|---|---|
 | 框架 | **Vue 3** | ^3.5.39 | Composition API + `<script setup>` |
@@ -110,11 +112,13 @@
 | 日期 | dayjs | ^1.11.21 | |
 | 样式 | Sass (SCSS) | ^1.101.0 | |
 | 单测 | Vitest + @vue/test-utils + happy-dom | ^4.1.10 / ^2.4.11 / ^20.11.1 | |
-| E2E | Playwright | ^1.62.0 | 需后端 9001 启动 |
+| E2E | Playwright | ^1.62.0 | 需后端 9001 启动；**当前只配 chromium**（`playwright.config.ts`） |
 | 规范 | ESLint 10 + eslint-plugin-vue + typescript-eslint | ^10.8.0 / ^10.10.0 / ^8.65.0 | **0 warning 容忍** |
 | 类型门禁 | vue-tsc | ^3.3.5 | `vue-tsc -b` 三工程 |
 | 压缩 | vite-plugin-compression | ^0.5.1 | Gzip + Brotli |
 | 包管理 | **pnpm** | — | 见 `pnpm-lock.yaml` / `pnpm-workspace.yaml` |
+
+**浏览器覆盖（2026-10-18）**：论文表 5.12 声称 Chrome/Edge/Firefox 两分辨率通过；**三浏览器均人工测试通过**——Chrome 历史截图、Firefox 用户手动（母本 `04-证据与验证记录.md` E10）、**Edge 用户手动（2026-10-18）**；Playwright 自动化仍仅覆盖 chromium（不影响人工结论）。
 
 **运行环境约束**（`package.json` 硬性要求）：
 
@@ -590,11 +594,12 @@ npx playwright test                # 直接跑 E2E
 
 - [x] 清理残留垃圾文件 `DGramEvalgrameval-javaapp.log`（文件名是路径被错误拼接，2026-10-16 已删除）
 - [x] 清理 `scripts/lint-vue.report.json`（每次运行 `lint-vue.mjs` 自动再生，2026-10-16 已删除）
+- [x] **浏览器覆盖补齐**（论文表 5.12 要求 Chrome/Edge/Firefox）：Chrome 历史截图 + Firefox 人工测试通过 + **Edge 人工测试通过**（2026-10-18，母本 E10）；Playwright 自动化仅 chromium（可选补 firefox/Edge 项目）
 - [ ] 前端产物目录 `dist/`、测试产物不入库（`playwright-report/`、`test-results/` 建议显式加进 `.gitignore`）
 - [ ] 按需补充 E2E 场景覆盖（当前 E2E 为学生端交互为主）
 
 ---
 
 **项目版本**：0.0.0（随论文交付版本 1.0.0）
-**最后更新**：2026-10-16（README 重写：补论文指向、交付目标、配置全量说明；修正 dev 端口 9000/后端 9001、补 6 层门禁与严格模式）
+**最后更新**：2026-10-18（技术栈实测对齐：Vue 3.5.39 / Node 26.5.0；记录浏览器覆盖与论文定稿冻结）
 **开发团队**：GramEval Team

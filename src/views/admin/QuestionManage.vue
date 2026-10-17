@@ -39,6 +39,7 @@ import {
   downloadImportTemplate,
   importQuestions,
 } from '@/api/admin'
+import { listQuestionTags } from '@/api/tag'
 import type { UploadInstance } from 'element-plus'
 import { validateQuestion, generateReading } from '@/api/ai'
 import type { Question, QuestionOption, QuestionForm } from '@/types/question'
@@ -67,6 +68,7 @@ const list = ref<Question[]>([])
 const total = ref(0)
 const loading = ref(false)
 const categories = ref<Category[]>([])
+const tagOptions = ref<Array<{ id: number; tagName: string }>>([])
 const selected = ref<Question[]>([])
 
 const normalTypeOptions: { label: string; value: QuestionType }[] = [
@@ -215,6 +217,8 @@ type NormalForm = {
   knowledgePoints: string[]
   fillHint: string
   passageId?: number | undefined
+  tagIds?: number[]
+  primaryTagId?: number | undefined
 }
 
 const normalForm = reactive<NormalForm>({
@@ -276,6 +280,8 @@ const resetNormalForm = () => {
     knowledgePoints: [],
     fillHint: '',
     passageId: undefined,
+    tagIds: [],
+    primaryTagId: undefined,
   })
 }
 
@@ -734,6 +740,8 @@ const openEdit = (row: Question) => {
   normalForm.trapNote = row.trapNote || ''
   normalForm.analysis = row.analysis || ''
   normalForm.knowledgePoints = row.knowledgePoints || []
+  normalForm.tagIds = row.tagIds || []
+  normalForm.primaryTagId = row.primaryTagId || undefined
   normalForm.options = row.options?.length
     ? row.options.map((o) => ({ ...o }))
     : normalForm.options
@@ -979,6 +987,8 @@ const submit = async () => {
       hasTrap: normalForm.hasTrap,
       trapNote: normalForm.trapNote,
       passageId: normalForm.passageId,
+      tagIds: normalForm.tagIds,
+      primaryTagId: normalForm.primaryTagId,
       options:
         activeTab.value === 'JUDGE' ||
         activeTab.value === 'FILL_HINT' ||
@@ -1399,6 +1409,12 @@ onMounted(async () => {
   try {
     const c = await listCategoryTree()
     categories.value = c.data ?? []
+  } catch {
+    /* silent */
+  }
+  try {
+    const t = await listQuestionTags(undefined, 1)
+    tagOptions.value = t.data ?? []
   } catch {
     /* silent */
   }
@@ -1946,6 +1962,11 @@ onMounted(async () => {
                 <el-radio :value="1">启用</el-radio>
                 <el-radio :value="0">停用</el-radio>
               </el-radio-group>
+            </el-form-item>
+            <el-form-item label="考点标签">
+              <el-select v-model="normalForm.tagIds" multiple clearable style="width: 100%" placeholder="请选择考点标签">
+                <el-option v-for="tag in tagOptions" :key="tag.id" :label="tag.tagName" :value="tag.id" />
+              </el-select>
             </el-form-item>
             <el-form-item label="题干" prop="stem">
               <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干" />

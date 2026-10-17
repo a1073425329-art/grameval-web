@@ -8,7 +8,6 @@ import type { Category } from '@/types/category'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { getJudgeOptionLabel } from '@/utils/dict'
 import PassageCard from '@/components/PassageCard.vue'
-import { Cpu } from '@element-plus/icons-vue'
 
 const query = reactive({
   source: 'ALL' as 'ALL' | 'EXAM' | 'PRACTICE',
@@ -58,7 +57,21 @@ const load = async () => {
   } finally { loading.value = false }
 }
 
-const onFilterChange = () => { query.pageNum = 1; load() }
+const onFilterChange = () => {
+  query.pageNum = 1
+  load()
+  // 筛选变化后回到顶部，避免停留在上一批结果的中段
+  window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+/** 是否存在任何筛选条件（用于区分"真的没有错题"与"筛选后无结果"） */
+const hasFilter = computed(
+  () =>
+    query.source !== 'ALL' ||
+    query.categoryId !== undefined ||
+    query.questionType !== undefined ||
+    query.difficulty !== undefined,
+)
 
 const sourceTag = (s: string) => (s === 'EXAM' ? 'danger' : 'warning')
 const sourceLabel = (s: string) => (s === 'EXAM' ? '考试错题' : '练习错题')
@@ -88,7 +101,9 @@ const redoQuestions = ref<PracticeQuestionItem[]>([])
 const redoCurrentIndex = ref(0)
 const redoAnswers = ref<Record<number, string>>({})
 const redoSubmitting = ref(false)
-const redoResult = ref<{ total: number; correct: number } | null>(null)
+/** 已提交题目的判分记录（以服务端 isCorrect 为准，跳过的题不入列） */
+const redoRecords = ref<Array<{ questionId: number; isCorrect: boolean }>>([])
+const redoResult = ref<{ total: number; correct: number; skipped: number } | null>(null)
 
 const currentRedoQuestion = computed(() => redoQuestions.value[redoCurrentIndex.value])
 const redoProgress = computed(() => ({
@@ -100,14 +115,23 @@ const redoProgress = computed(() => ({
 const startRedo = async () => {
   redoSubmitting.value = true
   try {
-    const res = await getRedoQuestions({ categoryId: query.categoryId, count: 10 })
+    // 带着当前筛选条件取题：用户在列表里筛了"考试错题 + 判断题"，
+    // 重做就必须是同一批题，否则筛选形同虚设。
+    const res = await getRedoQuestions({
+      categoryId: query.categoryId,
+      questionType: query.questionType,
+      difficulty: query.difficulty,
+      source: query.source,
+      count: 10,
+    })
     redoQuestions.value = flattenPracticeQuestionUnits(res.data ?? [])
     if (!redoQuestions.value.length) {
-      ElMessage.info('当前没有可重做的错题')
+      ElMessage.info(hasFilter.value ? '当前筛选条件下没有可重做的错题' : '当前没有可重做的错题')
       return
     }
     redoCurrentIndex.value = 0
     redoAnswers.value = {}
+    redoRecords.value = []
     redoResult.value = null
     redoModal.value = true
   } finally {
@@ -144,39 +168,57 @@ const setRedoAnswer = (v: string) => {
   if (q) redoAnswers.value[q.id] = v
 }
 
+/** 进入下一题；已是最后一题则结算 */
+const advanceRedo = () => {
+  if (redoCurrentIndex.value < redoQuestions.value.length - 1) {
+    redoCurrentIndex.value++
+  } else {
+    finishRedo()
+  }
+}
+
+/** 结算：正确数取服务端判分，跳过题单独计数 */
+const finishRedo = () => {
+  const total = redoQuestions.value.length
+  const correct = redoRecords.value.filter((r) => r.isCorrect).length
+  redoResult.value = { total, correct, skipped: total - redoRecords.value.length }
+  // 重做会更新错题的复习状态/掌握度，回到列表时应是最新数据
+  load()
+}
+
 const submitRedo = async () => {
   const q = currentRedoQuestion.value
-  if (!q || !redoAnswers.value[q.id]) {
-    ElMessage.warning('请选择答案')
+  if (!q) return
+  if (!redoAnswers.value[q.id]) {
+    ElMessage.warning('请先作答，或点击「跳过」')
     return
   }
   redoSubmitting.value = true
   try {
-    await submitPractice({
+    // 判分以服务端返回的 isCorrect 为准：
+    // 重做接口按设计不返回 standardAnswer，前端无法自行比对。
+    const res = await submitPractice({
       questionId: q.id,
       userAnswer: redoAnswers.value[q.id] ?? '',
     })
-    if (redoCurrentIndex.value < redoQuestions.value.length - 1) {
-      redoCurrentIndex.value++
-    } else {
-      // 完成所有重做题目，计算结果
-      let correct = 0
-      redoQuestions.value.forEach(rq => {
-        const user = (redoAnswers.value[rq.id] || '').trim().toUpperCase()
-        const standard = (rq.standardAnswer || '').trim().toUpperCase()
-        if (user === standard) correct++
-      })
-      redoResult.value = { total: redoQuestions.value.length, correct }
-    }
+    redoRecords.value.push({ questionId: q.id, isCorrect: !!res.data?.isCorrect })
+    advanceRedo()
   } finally {
     redoSubmitting.value = false
   }
+}
+
+/** 跳过当前题：不提交、不落库，直接进入下一题 */
+const skipRedo = () => {
+  if (!currentRedoQuestion.value) return
+  advanceRedo()
 }
 
 const closeRedoModal = () => {
   redoModal.value = false
   redoQuestions.value = []
   redoAnswers.value = {}
+  redoRecords.value = []
   redoResult.value = null
   load()
 }
@@ -259,16 +301,17 @@ onMounted(async () => {
           <el-button type="primary" @click="startRedo" :loading="redoSubmitting">
             <el-icon><Refresh /></el-icon> 开始重做
           </el-button>
-          <el-button type="primary" @click="$router.push('/student/ai-assistant')">
-            <el-icon><Cpu /></el-icon>AI错题分析
-          </el-button>
         </div>
       </div>
     </div>
 
     <!-- ========== 题目列表 ========== -->
     <div v-loading="loading" class="wrong-list">
-      <el-empty v-if="!loading && !list.length" description="🎉 恭喜！暂无错题" :image-size="120" />
+      <el-empty
+        v-if="!loading && !list.length"
+        :description="hasFilter ? '当前筛选条件下没有错题，试试放宽条件' : '🎉 恭喜！暂无错题'"
+        :image-size="120"
+      />
 
       <div v-for="(unit, idx) in list" :key="unit.unitType === 'READING' ? `p-${unit.passageId}` : `q-${unit.question?.questionId}`" class="wrong-card">
         <div class="wc-head">
@@ -427,14 +470,20 @@ onMounted(async () => {
           <el-icon :size="48">{{ redoResult.correct === redoResult.total ? 'CircleCheck' : redoResult.correct >= redoResult.total / 2 ? 'Warning' : 'Close' }}</el-icon>
         </div>
         <div class="result-title">{{ redoResult.correct === redoResult.total ? '太棒了！全部正确！' : `重做完成，正确 ${redoResult.correct}/${redoResult.total} 题` }}</div>
-        <div class="result-desc">正确率 {{ Math.round((redoResult.correct / redoResult.total) * 100) }}%</div>
+        <div class="result-desc">
+          正确率 {{ Math.round((redoResult.correct / redoResult.total) * 100) }}%
+          <span v-if="redoResult.skipped > 0" class="result-skipped">· 跳过 {{ redoResult.skipped }} 题</span>
+        </div>
       </div>
 
       <!-- 按钮 -->
       <template #footer>
         <el-button @click="closeRedoModal">关闭</el-button>
+        <el-button v-if="redoQuestions.length && !redoResult" :disabled="redoSubmitting" @click="skipRedo">
+          跳过本题
+        </el-button>
         <el-button v-if="redoQuestions.length && !redoResult" type="primary" @click="submitRedo" :loading="redoSubmitting">
-          {{ redoCurrentIndex < redoQuestions.length - 1 ? '下一题' : '提交答案' }}
+          {{ redoCurrentIndex < redoQuestions.length - 1 ? '提交并下一题' : '提交答案' }}
         </el-button>
         <el-button v-if="redoResult" type="primary" @click="startRedo">再做一次</el-button>
       </template>
@@ -562,5 +611,6 @@ onMounted(async () => {
   }
   .result-title { font-size: 20px; font-weight: 600; color: #303133; margin-bottom: 8px; }
   .result-desc { font-size: 14px; color: #606266; }
+  .result-skipped { color: #e6a23c; margin-left: 4px; }
 }
 </style>

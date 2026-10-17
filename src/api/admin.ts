@@ -16,7 +16,6 @@ import type {
   SessionStatistics,
   QuestionAnalytics,
   OperationLog,
-  AdminStudent,
 } from '@/types/admin'
 
 /**
@@ -320,24 +319,6 @@ export const getOperationLogTypes = () =>
     '/admin/operation-logs/types'
   )
 
-/** 我的学生（管理员绑定） */
-export const listMyStudents = () =>
-  request.get<ApiResponse<AdminStudent[]>>('/admin/my-students')
-
-/** 绑定学生（全量替换） —— PUT /admin/my-students */
-export const bindMyStudents = (studentIds: number[]) =>
-  request.put<ApiResponse<void>>('/admin/my-students', { studentIds })
-
-/** 未绑定的学生 */
-export const listUnassignedStudents = () =>
-  request.get<ApiResponse<UserDetail[]>>('/admin/my-students/unassigned')
-
-/** 查询学生所属管理员 */
-export const listStudentAdmins = (studentId: number) =>
-  request.get<ApiResponse<Array<{ id: number; username: string; realName?: string }>>>(
-    `/admin/students/${studentId}/admins`
-  )
-
 /* ============================================================ *
  *  7. 阅读理解文章库 /reading-passages
  * ============================================================ */
@@ -431,7 +412,7 @@ export interface ClassStudent {
   trainingDays?: string
   trainingStartDate?: string
   actualStartDate?: string
-  /** 学习概览（与 AdminStudent 同口径，供「按班级」Tab 渲染） */
+  /** 学习概览（与后端学生列表同口径，供「按班级」Tab 渲染） */
   examCount?: number
   recentScore?: number
   averageScore?: number

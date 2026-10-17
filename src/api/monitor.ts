@@ -1,6 +1,6 @@
 import request from '@/utils/request'
 import type { ApiResponse, PageQuery, PageResult } from '@/types/common'
-import type { ExamMonitorEvent, ExamMonitorReportForm, BehaviorLog, BehaviorLogReportForm } from '@/types/monitor'
+import type { ExamMonitorEvent, ExamMonitorReportForm } from '@/types/monitor'
 
 /* ===== 异常监控 ===== */
 
@@ -21,11 +21,3 @@ export const getGlobalMonitorStats = () =>
 
 export const handleMonitorEvent = (id: number, note?: string) =>
   request.put<ApiResponse<void>>(`/monitor/events/${id}/handle`, null, { params: { note } })
-
-/* ===== 行为日志 ===== */
-
-export const reportBehaviorLog = (data: BehaviorLogReportForm) =>
-  request.post<ApiResponse<void>>('/monitor/behavior', data)
-
-export const listBehaviorLogs = (params: { examId?: number; questionId?: number; behaviorType?: string } & PageQuery) =>
-  request.get<ApiResponse<PageResult<BehaviorLog>>>('/monitor/behavior', { params })

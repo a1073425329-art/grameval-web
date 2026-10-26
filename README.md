@@ -215,10 +215,14 @@ cd grameval-web && pnpm dev
 
 ### 测试账号
 
+> **2026-10-21 按实时库 `sys_user` 更正**：原先列的 `student01` 库里**不存在**（0 命中），照它登录会失败。
+
 | 账号 | 密码 | 角色 |
 |---|---|---|
-| `admin` | `123456` | ADMIN（系统管理员） |
-| `student01` | `123456` | STUDENT（演示学生） |
+| `admin` | `123456` | ADMIN（系统管理员，id=7） |
+| `user01` | `123456` | STUDENT（演示主角张小明，id=1，数据最多） |
+
+另实测存在 `student001`（STUDENT，id=9，**口令未核实**）与 `teacher01`（ADMIN，id=6）。依据：`grameval-java/README.md` §十四、`tests/api/frontend-urls.test.ts:9`。
 
 ---
 

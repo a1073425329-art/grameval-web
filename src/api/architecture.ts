@@ -72,6 +72,8 @@ export interface ArchColumn {
   primaryKey: boolean
   foreignKey: boolean
   uniqueKey: boolean
+  /** true = 论文表 3.1–3.12 逐字段设计过的字段；false = 系统扩展字段 */
+  paperCore?: boolean
   meaning: string
 }
 

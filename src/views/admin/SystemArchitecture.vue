@@ -488,6 +488,12 @@ const focusTable = (name: string) => {
                       <code class="col-name">{{ c.name }}</code>
                     </template>
                   </el-table-column>
+                  <el-table-column label="口径" width="72" align="center">
+                    <template #default="{ row: c }">
+                      <el-tag v-if="c.paperCore" size="small" type="success" effect="light">论文</el-tag>
+                      <el-tag v-else size="small" type="info" effect="plain">扩展</el-tag>
+                    </template>
+                  </el-table-column>
                   <el-table-column label="类型" width="150">
                     <template #default="{ row: c }">
                       <span class="col-type" :style="{ color: typeColor(c.baseType) }">{{ c.dataType }}</span>

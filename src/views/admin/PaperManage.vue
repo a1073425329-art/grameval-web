@@ -441,6 +441,16 @@ const loadAnswer = async (questionId: number) => {
   } catch { ElMessage.error('答案加载失败') }
 }
 
+const formatAnswerText = (ans?: string, type?: string) => {
+  if (!ans) return '-'
+  if (type === 'JUDGE') {
+    const up = ans.trim().toUpperCase()
+    if (up === 'TRUE' || up === 'T' || up === '对' || up === '正确') return '对'
+    if (up === 'FALSE' || up === 'F' || up === '错' || up === '错误') return '错'
+  }
+  return ans
+}
+
 /* ---------------- 行操作 ---------------- */
 const publish = async (row: Paper) => {
   try {
@@ -892,7 +902,7 @@ onMounted(async () => {
                 <div v-for="option in (viewAnswers[question.questionId]?.options ?? [])" :key="option.optionLabel" class="q-opt">
                   <b>{{ option.optionLabel }}.</b> {{ option.optionContent }}
                 </div>
-                <div class="q-ana"><b>标准答案：{{ viewAnswers[question.questionId]?.standardAnswer }}</b></div>
+                <div class="q-ana"><b>标准答案：{{ formatAnswerText(viewAnswers[question.questionId]?.standardAnswer, question.questionType) }}</b></div>
                 <div class="q-ana">解析：{{ viewAnswers[question.questionId]?.analysis || '(无解析)' }}</div>
               </div>
             </div>
@@ -914,7 +924,7 @@ onMounted(async () => {
                   <b>{{ option.optionLabel }}.</b> {{ option.optionContent }}
                 </div>
               </template>
-              <div class="q-ana"><b>标准答案：{{ viewAnswers[unit.questionId]?.standardAnswer }}</b></div>
+              <div class="q-ana"><b>标准答案：{{ formatAnswerText(viewAnswers[unit.questionId]?.standardAnswer, unit.questionType) }}</b></div>
               <div class="q-ana">解析：{{ viewAnswers[unit.questionId]?.analysis || '(无解析)' }}</div>
             </div>
           </template>

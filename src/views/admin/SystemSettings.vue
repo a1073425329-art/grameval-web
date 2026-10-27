@@ -52,33 +52,52 @@
       <el-tabs v-model="activeTab" type="border-card">
         <!-- AI 智能体配置 -->
         <el-tab-pane label="AI 配置" name="ai">
-          <div class="ai-config-intro">
-            <div>
-              <div class="section-kicker">模型通路</div>
-              <h3>选择系统默认 AI 服务</h3>
-              <p>模型选择会同时影响学情分析、错题解析和智能出题。</p>
+          <!-- ① 当前生效通路。优先级与后端 AiChatClient.chatAny 一致：厂商档案 > 内置 provider -->
+          <div class="active-path-banner" :class="{ 'is-shadowed': shadowedByProfile }">
+            <div class="active-path-main">
+              <div class="section-kicker">当前走哪条路</div>
+              <div class="active-path-line">
+                <strong class="active-path-name">{{ activePathRow?.label || '未选择' }}</strong>
+                <span class="active-path-model">{{ activePathRow?.model || '未设置模型' }}</span>
+                <el-tag :type="activePathRow?.status === 'ok' ? 'success' : 'warning'" size="small" effect="light">
+                  {{ activePathRow?.status === 'ok' ? '通路已配置' : (activePathRow?.statusText || '待配置') }}
+                </el-tag>
+                <el-tag size="small" type="info" effect="plain">
+                  来源：{{ activePathRow?.group === 'profile' ? '厂商档案（优先）' : '内置通路' }}
+                </el-tag>
+              </div>
+              <div class="active-path-url">{{ activePathRow?.subtitle || '-' }}</div>
             </div>
-            <div class="active-model-summary">
-              <span class="summary-label">当前默认</span>
-              <strong>{{ currentVendorLabel }}</strong>
-              <span class="summary-model">{{ currentVendorModelLabel }}</span>
+            <div class="active-path-side">
+              <el-button
+                link
+                type="primary"
+                :loading="modelLoading[aiForm.provider]"
+                :disabled="activePathRow?.group !== 'provider' || activePathRow.id === 'DIFY' || activePathRow.id === 'HYBRID'"
+                @click="refreshProviderModels(aiForm.provider)"
+              >
+                <el-icon><Refresh /></el-icon>刷新模型
+              </el-button>
             </div>
+            <p v-if="shadowedByProfile" class="active-path-warn">
+              厂商档案的优先级高于内置通路：即使选了下面的内置通路，只要档案还开着，实际仍走档案。
+              点内置通路时会提示你一并停用档案。
+            </p>
           </div>
 
-          <!-- ============ [2026-10-16 新增] 多厂商模型档案管理 ============ -->
-          <div class="vendor-manager">
-            <div class="vendor-manager-head">
+          <!-- ============ [2026-10-27 改版] 内置通路与厂商档案合并为一个选择列表 ============ -->
+          <div class="path-picker">
+            <div class="path-picker-head">
               <div>
-                <div class="section-kicker">厂商档案</div>
-                <h3>多厂商模型管理</h3>
-                <p>
-                  一条档案 = 一个网关地址 + 一把 Key + 一个默认模型。选为「当前」后，
-                  学情分析 / 错题解析 / 智能出题全部走它；未启用档案时回落到下面的内置直连通路。
+                <div class="section-kicker">选一条通路</div>
+                <p class="path-picker-hint">
+                  点选即生效，同时影响学情分析、错题解析和智能出题。
+                  内置通路写 <code>ai.provider</code>；档案写「当前档案」，且档案优先级更高。
                 </p>
               </div>
-              <div class="vendor-manager-actions">
+              <div class="path-picker-actions">
                 <el-button type="primary" :icon="Plus" @click="openVendorDialog()">新增厂商</el-button>
-                <el-button :icon="Refresh" :loading="vendorLoading" @click="loadVendorProfiles">刷新</el-button>
+                <el-button :icon="Refresh" :loading="vendorLoading" @click="reloadPathRows">刷新</el-button>
               </div>
             </div>
 
@@ -88,79 +107,81 @@
               show-icon
               :closable="false"
               title="还没有厂商档案"
-              description="点「新增厂商」把网关地址与 API Key 填进来，保存后即可「设为当前」。"
+              description="点「新增厂商」把网关地址与 API Key 填进来；不建档案时，用上面的内置通路即可。"
             />
 
-            <div class="vendor-grid">
+            <div class="path-list">
               <div
-                v-for="vendor in vendorProfiles"
-                :key="vendor.id"
-                class="vendor-card"
-                :class="{ 'is-current': vendor.isCurrent, 'is-off': !vendor.enabled }"
+                v-for="row in visiblePathRows"
+                :key="row.key"
+                class="path-row"
+                :class="{ 'is-active': row.key === activePathKey, 'is-off': row.off }"
+                @click="handleSelectPath(row)"
               >
-                <div class="vendor-card-head">
-                  <div class="vendor-card-title">
-                    <strong>{{ vendor.vendor || vendor.id }}</strong>
-                    <el-tag v-if="vendor.isCurrent" type="success" size="small" effect="dark">当前使用</el-tag>
-                    <el-tag v-else-if="!vendor.enabled" type="info" size="small">已停用</el-tag>
+                <span class="path-radio" :class="{ 'is-on': row.key === activePathKey }" />
+                <div class="path-row-main">
+                  <div class="path-row-title">
+                    <strong>{{ row.label }}</strong>
+                    <el-tag v-if="row.key === activePathKey" size="small" type="success" effect="dark">当前使用</el-tag>
+                    <el-tag v-if="row.group === 'profile'" size="small" type="warning" effect="plain">档案优先</el-tag>
+                    <el-tag v-if="row.off" size="small" type="info">已停用</el-tag>
                   </div>
-                  <el-switch v-model="vendor.enabled" size="small" @change="handleToggleVendor" />
-                </div>
-
-                <div class="vendor-card-body">
-                  <div class="vendor-line">
-                    <span class="k">协议</span>
-                    <span class="v">{{ vendor.protocol === 'ollama' ? '本地 Ollama' : 'OpenAI 兼容' }}</span>
-                  </div>
-                  <div class="vendor-line">
-                    <span class="k">地址</span>
-                    <span class="v url">{{ vendor.baseUrl || '-' }}</span>
-                  </div>
-                  <div class="vendor-line">
-                    <span class="k">默认模型</span>
-                    <span class="v">{{ vendor.model || '-' }}</span>
-                  </div>
-                  <div class="vendor-line">
-                    <span class="k">API Key</span>
-                    <span class="v mono">{{ vendor.apiKey || '未配置' }}</span>
-                  </div>
-                  <div class="vendor-line">
-                    <span class="k">候选模型</span>
-                    <span class="v">{{ (vendor.models || []).length }} 个</span>
+                  <div class="path-row-sub">
+                    <span class="path-row-model">{{ row.model || '未设置模型' }}</span>
+                    <span class="path-row-url">{{ row.subtitle }}</span>
                   </div>
                 </div>
-
-                <el-alert
-                  v-if="vendorTestResult[vendor.id]"
-                  class="vendor-test-alert"
-                  :type="vendorTestResult[vendor.id]?.success ? 'success' : 'error'"
-                  :title="vendorTestResult[vendor.id]?.message ?? ''"
-                  :description="`耗时 ${vendorTestResult[vendor.id]?.latencyMs ?? 0}ms`"
-                  show-icon
-                  :closable="false"
-                />
-
-                <div class="vendor-card-foot">
+                <div class="path-row-side">
+                  <el-tag v-if="row.status === 'ok'" size="small" type="success" effect="plain">已配置</el-tag>
+                  <el-tag v-else size="small" type="warning" effect="plain">{{ row.statusText }}</el-tag>
                   <el-button
-                    size="small"
+                    v-if="row.canTest"
+                    link
                     type="primary"
-                    :disabled="vendor.isCurrent || !vendor.enabled"
-                    @click="handleSetCurrentVendor(vendor)"
+                    :loading="pathTestingId === row.id"
+                    @click.stop="handleTestPath(row)"
                   >
-                    {{ vendor.isCurrent ? '当前使用' : '设为当前' }}
-                  </el-button>
-                  <el-button size="small" :loading="vendorTestingId === vendor.id" @click="handleTestVendor(vendor.id)">
                     测试连通
                   </el-button>
-                  <el-button size="small" :loading="vendorPullingId === vendor.id" @click="handlePullVendorModels(vendor.id)">
+                  <el-button
+                    v-if="row.raw"
+                    link
+                    type="primary"
+                    :loading="vendorPullingId === row.id"
+                    @click.stop="handlePullVendorModels(row.id)"
+                  >
                     拉取模型
                   </el-button>
-                  <el-button size="small" @click="openVendorDialog(vendor)">编辑</el-button>
-                  <el-button size="small" type="danger" plain @click="handleDeleteVendor(vendor)">删除</el-button>
+                  <el-switch
+                    v-if="row.raw"
+                    :model-value="row.off !== true"
+                    size="small"
+                    @click.stop
+                    @change="handleTogglePathRow(row)"
+                  />
+                  <el-button v-if="row.raw" link @click.stop="openVendorDialog(row.raw)">编辑</el-button>
+                  <el-button v-if="row.raw" link type="danger" @click.stop="handleDeleteVendor(row.raw)">删除</el-button>
+                </div>
+                <div v-if="row.id && vendorTestResult[row.id]" class="path-row-test">
+                  <el-tag :type="vendorTestResult[row.id]?.success ? 'success' : 'error'" size="small" effect="plain">
+                    {{ vendorTestResult[row.id]?.message }}
+                  </el-tag>
+                  <span class="path-row-latency">{{ vendorTestResult[row.id]?.latencyMs ?? 0 }} ms</span>
                 </div>
               </div>
+
+              <el-button
+                v-if="pathRows.length > PATH_COLLAPSE_LIMIT"
+                link
+                type="primary"
+                class="path-expand"
+                @click="pathsExpanded = !pathsExpanded"
+              >
+                {{ pathsExpanded ? '收起' : `展开全部 ${pathRows.length} 条通路` }}
+              </el-button>
             </div>
           </div>
+          <!-- ============ [改版结束] ============ -->
 
           <!-- 厂商档案编辑弹窗 -->
           <el-dialog
@@ -209,49 +230,14 @@
           <!-- ============ [新增结束] ============ -->
 
           <el-form :model="aiForm" label-width="150px" label-position="right" class="ai-config-form">
-            <el-form-item label="智能体提供商">
-              <el-radio-group v-model="aiForm.provider" class="provider-radio-group">
-                <el-radio value="DEEPSEEK">DeepSeek 直连</el-radio>
-                <el-radio value="QIANWEN">通义千问</el-radio>
-                <el-radio value="OLLAMA">本地 Ollama</el-radio>
-                <el-radio value="DIFY">Dify 工作流</el-radio>
-                <el-radio value="HYBRID">混合模式</el-radio>
-              </el-radio-group>
-              <div class="form-tip">
-                DeepSeek：直接调用 DeepSeek API，性能强
-                <br />通义千问：阿里云 DashScope 千问大模型，中文效果最佳
-                <br />本地 Ollama：使用本机或 WSL 中的模型，不消耗云端 API 配额
-                <br />Dify：通过 Dify 编排复杂工作流
-                <br />混合模式：分析用直连，出题用工作流
-              </div>
-            </el-form-item>
-
-            <div class="model-focus-panel">
-              <div class="model-focus-copy">
-                <div class="model-focus-title">
-                  <el-icon><Cpu /></el-icon>
-                  <span>当前默认模型</span>
-                  <el-tag :type="activeProviderConfigured ? 'success' : 'warning'" size="small">
-                    {{ activeProviderConfigured ? '通路已配置' : '待配置' }}
-                  </el-tag>
-                </div>
-                <strong>{{ activeModelLabel }}</strong>
-                <span>{{ activeModelDescription }}</span>
-              </div>
-              <div class="model-focus-meta">
-                <span>保存后将用于新建的 AI 请求</span>
-                <el-button
-                  link
-                  type="primary"
-                  :loading="modelLoading[aiForm.provider]"
-                  :disabled="aiForm.provider === 'DIFY' || aiForm.provider === 'HYBRID'"
-                  @click="refreshProviderModels(aiForm.provider)"
-                >
-                  <el-icon><Refresh /></el-icon>刷新模型
-                </el-button>
-              </div>
+            <div class="config-scope-bar">
+              <span class="config-scope-title">
+                下面只展示<strong>{{ activePathRow?.label || '所选' }}</strong>这一条通路的参数
+              </span>
+              <el-switch v-model="showAllProviderConfigs" size="small" active-text="显示全部通路配置" />
             </div>
 
+            <template v-if="providerConfigVisible('DEEPSEEK')">
             <el-divider content-position="left">DeepSeek 配置</el-divider>
 
             <el-form-item label="API 地址">
@@ -295,6 +281,8 @@
               <div v-if="modelLoadError.DEEPSEEK" class="model-field-tip warning">{{ modelLoadError.DEEPSEEK }}</div>
             </el-form-item>
 
+            </template>
+            <template v-if="providerConfigVisible('QIANWEN')">
             <el-divider content-position="left">通义千问配置</el-divider>
 
             <el-form-item label="API 地址">
@@ -338,6 +326,8 @@
               <div v-if="modelLoadError.QIANWEN" class="model-field-tip warning">{{ modelLoadError.QIANWEN }}</div>
             </el-form-item>
 
+            </template>
+            <template v-if="providerConfigVisible('OLLAMA')">
             <el-divider content-position="left">本地 Ollama 配置</el-divider>
 
             <el-form-item label="服务地址">
@@ -373,6 +363,8 @@
               <div v-if="modelLoadError.OLLAMA" class="model-field-tip warning">{{ modelLoadError.OLLAMA }}</div>
             </el-form-item>
 
+            </template>
+            <template v-if="providerConfigVisible('DIFY')">
             <el-divider content-position="left">Dify 工作流配置</el-divider>
 
             <el-form-item label="Dify 地址">
@@ -397,6 +389,7 @@
               />
             </el-form-item>
 
+            </template>
             <el-divider content-position="left">通用 AI 参数</el-divider>
 
             <el-form-item label="温度参数">
@@ -1036,7 +1029,8 @@ import {
   ChatDotRound,
   Search,
   VideoPlay,
-  Cpu,
+  // [2026-10-27 改版] 「当前默认模型」面板移除后 Cpu 图标不再使用
+  // Cpu,
   Plus,
 } from '@element-plus/icons-vue'
 import {
@@ -1105,15 +1099,17 @@ const vendorForm = reactive<AiVendorProfile>({
 /** 当前生效的厂商档案（后端标记 isCurrent） */
 const currentVendor = computed(() => vendorProfiles.value.find(v => v.isCurrent))
 
-const currentVendorLabel = computed(() => {
-  if (currentVendor.value) return currentVendor.value.vendor || currentVendor.value.id
-  return providerLabels[aiOverview.value.provider] || aiOverview.value.provider
-})
-
-const currentVendorModelLabel = computed(() => {
-  if (currentVendor.value) return currentVendor.value.model || '-'
-  return savedModelLabel.value
-})
+// [2026-10-27 注释保留] AI 配置页改版：概览与通路列表改用 currentVendor / pathRows，
+// 这两个计算属性不再有引用点（noUnusedLocals 会报 TS6133，故整段注释）。
+// const currentVendorLabel = computed(() => {
+//   if (currentVendor.value) return currentVendor.value.vendor || currentVendor.value.id
+//   return providerLabels[aiOverview.value.provider] || aiOverview.value.provider
+// })
+//
+// const currentVendorModelLabel = computed(() => {
+//   if (currentVendor.value) return currentVendor.value.model || '-'
+//   return savedModelLabel.value
+// })
 
 const loadVendorProfiles = async () => {
   vendorLoading.value = true
@@ -1272,6 +1268,169 @@ const handleDeleteVendor = (vendor: AiVendorProfile) => {
     })
     .catch(() => { /* 用户取消 */ })
 }
+
+// ==================== [2026-10-27 改版] 内置通路与厂商档案合并为一个选择列表 ====================
+
+interface PathRow {
+  key: string
+  id: string
+  group: 'provider' | 'profile'
+  label: string
+  model: string
+  subtitle: string
+  status: 'ok' | 'missing'
+  statusText: string
+  canTest: boolean
+  off: boolean
+  raw: AiVendorProfile | null
+}
+
+const PATH_COLLAPSE_LIMIT = 5
+const pathsExpanded = ref(false)
+const showAllProviderConfigs = ref(false)
+const pathTestingId = ref<string | null>(null)
+const providerPathOrder = ['DEEPSEEK', 'QIANWEN', 'OLLAMA', 'DIFY', 'HYBRID']
+
+const providerPathModel = (p: string) =>
+  p === 'DEEPSEEK' ? aiForm.deepseekModel : p === 'QIANWEN' ? aiForm.qianwenModel : p === 'OLLAMA' ? aiForm.ollamaModel : ''
+
+const providerPathUrl = (p: string) =>
+  p === 'DEEPSEEK' ? aiForm.deepseekBaseUrl
+    : p === 'QIANWEN' ? aiForm.qianwenBaseUrl
+      : p === 'OLLAMA' ? aiForm.ollamaBaseUrl
+        : p === 'HYBRID' ? `${aiForm.deepseekBaseUrl} + ${aiForm.difyBaseUrl}` : aiForm.difyBaseUrl
+
+const providerPathConfigured = (p: string): boolean => {
+  if (p === 'DEEPSEEK') return aiOverview.value.deepseekConfigured
+  if (p === 'QIANWEN') return aiOverview.value.qianwenConfigured === true
+  if (p === 'OLLAMA') return true
+  if (p === 'DIFY') return aiOverview.value.difyAnalyzeConfigured && aiOverview.value.difyGenerateConfigured
+  return aiOverview.value.deepseekConfigured || aiOverview.value.qianwenConfigured === true
+}
+
+const providerPathNote = (p: string) =>
+  p === 'OLLAMA' ? '本机或 WSL，不耗云端配额'
+    : p === 'DIFY' ? '由工作流决定模型'
+      : p === 'HYBRID' ? '分析走直连，出题走工作流' : ''
+
+const providerPathRows = computed<PathRow[]>(() => providerPathOrder.map(p => ({
+  key: `provider:${p}`,
+  id: p,
+  group: 'provider' as const,
+  label: providerLabels[p] || p,
+  model: providerPathModel(p),
+  subtitle: providerPathUrl(p),
+  status: providerPathConfigured(p) ? 'ok' as const : 'missing' as const,
+  statusText: providerPathConfigured(p) ? (providerPathNote(p) || '已配置') : '未配 Key',
+  canTest: p !== 'DIFY' && p !== 'HYBRID',
+  off: false,
+  raw: null,
+})))
+
+const profilePathRows = computed<PathRow[]>(() => vendorProfiles.value.map(v => ({
+  key: `profile:${v.id}`,
+  id: v.id,
+  group: 'profile' as const,
+  label: v.vendor || v.id,
+  model: v.model,
+  subtitle: `${v.protocol === 'ollama' ? '本地 Ollama' : 'OpenAI 兼容'} · ${v.baseUrl || '-'} · ${(v.models || []).length} 个候选`,
+  status: v.apiKey || v.protocol === 'ollama' ? 'ok' as const : 'missing' as const,
+  statusText: v.apiKey || v.protocol === 'ollama' ? `Key ${v.apiKey || '无需'}` : '未配 Key',
+  canTest: true,
+  off: v.enabled !== true,
+  raw: v,
+})))
+
+const pathRows = computed<PathRow[]>(() => [...providerPathRows.value, ...profilePathRows.value])
+
+const visiblePathRows = computed<PathRow[]>(() =>
+  pathsExpanded.value ? pathRows.value : pathRows.value.slice(0, PATH_COLLAPSE_LIMIT))
+
+const activePathKey = computed(() =>
+  currentVendor.value ? `profile:${currentVendor.value.id}` : `provider:${aiForm.provider}`)
+
+const activePathRow = computed<PathRow | undefined>(() =>
+  pathRows.value.find(r => r.key === activePathKey.value))
+
+/** 只要存在生效档案，它就压过内置 provider —— 与后端 chatAny 的顺序一致 */
+const shadowedByProfile = computed(() => Boolean(currentVendor.value))
+
+const providerConfigVisible = (p: string) =>
+  showAllProviderConfigs.value || (activePathRow.value?.group === 'provider' && aiForm.provider === p)
+
+const reloadPathRows = async () => {
+  await loadVendorProfiles()
+  await loadAiOverview()
+}
+
+const saveProviderOnly = async () => {
+  try {
+    const res = await batchUpdateConfigs({ 'ai.provider': aiForm.provider })
+    if (res.code === 200) {
+      ElMessage.success(`已切换为「${providerLabels[aiForm.provider] || aiForm.provider}」`)
+    } else {
+      ElMessage.error(res.message || '切换失败')
+    }
+    await loadAiOverview()
+  } catch (e: any) {
+    ElMessage.error('切换失败：' + (e.message || '未知错误'))
+  }
+}
+
+const handleSelectPath = async (row: PathRow) => {
+  if (row.key === activePathKey.value) return
+  if (row.group === 'profile') {
+    if (!row.raw) return
+    if (row.off) {
+      ElMessage.warning('这条档案已停用，先打开右侧开关再选它')
+      return
+    }
+    await handleSetCurrentVendor(row.raw)
+    return
+  }
+  aiForm.provider = row.id
+  const activeProfile = currentVendor.value
+  if (activeProfile) {
+    try {
+      await ElMessageBox.confirm(
+        `厂商档案「${activeProfile.vendor || activeProfile.id}」的优先级高于内置通路，不停用它的话实际仍走档案。要同时停用吗？`,
+        '确认要走内置通路？',
+        {
+          confirmButtonText: '停用档案并切换',
+          cancelButtonText: '只切换，不停用',
+          type: 'warning',
+          distinguishCancelAndClose: true,
+        },
+      )
+      activeProfile.enabled = false
+      await persistVendorProfiles(vendorProfiles.value)
+    } catch (action) {
+      // 关闭（X / ESC）= 放弃本次切换；cancel = 保留档案，仅改 ai.provider
+      if (action !== 'cancel') return
+    }
+  }
+  await saveProviderOnly()
+}
+
+const handleTestPath = async (row: PathRow) => {
+  pathTestingId.value = row.id
+  try {
+    if (row.group === 'profile') await handleTestVendor(row.id)
+    else if (row.id === 'DEEPSEEK') await handleTestDeepSeek()
+    else if (row.id === 'QIANWEN') await handleTestQianwen()
+    else if (row.id === 'OLLAMA') await handleTestOllama()
+    else ElMessage.info('Dify / 混合模式请在对应配置区分别测试')
+  } finally {
+    pathTestingId.value = null
+  }
+}
+
+const handleTogglePathRow = async (row: PathRow) => {
+  if (!row.raw) return
+  row.raw.enabled = row.off === true
+  await handleToggleVendor()
+}
+// ==================== [改版结束] ====================
 
 // ==================== [新增结束] ====================
 
@@ -1497,36 +1656,38 @@ const providerTagType = computed(() => {
 // [2026-10-16 注释保留] 概览区已改用「当前厂商档案」currentVendorLabel，此计算属性暂无引用
 // const activeProviderLabel = computed(() => providerLabels[aiForm.provider] || aiForm.provider)
 
-const activeModelValue = computed(() => {
-  if (aiForm.provider === 'QIANWEN') return aiForm.qianwenModel
-  if (aiForm.provider === 'OLLAMA') return aiForm.ollamaModel
-  if (aiForm.provider === 'DIFY') return 'workflow'
-  if (aiForm.provider === 'HYBRID') return `${aiForm.deepseekModel} + workflow`
-  return aiForm.deepseekModel
-})
-
-const activeModelMeta = computed(() => {
-  if (aiForm.provider === 'DIFY' || aiForm.provider === 'HYBRID') return undefined
-  return modelOptionsFor(aiForm.provider).find(model => model.id === activeModelValue.value)
-})
-
-const activeModelLabel = computed(() => activeModelValue.value || '未选择模型')
-
-const activeModelDescription = computed(() => {
-  if (aiForm.provider === 'DIFY') return '由 Dify 工作流决定具体模型'
-  if (aiForm.provider === 'HYBRID') return '分析使用直连模型，出题使用 Dify 工作流'
-  return activeModelMeta.value?.description || '自定义模型或暂未加载模型列表'
-})
-
-const activeProviderConfigured = computed(() => {
-  if (aiForm.provider === 'DEEPSEEK') return aiOverview.value.deepseekConfigured
-  if (aiForm.provider === 'QIANWEN') return aiOverview.value.qianwenConfigured ?? false
-  if (aiForm.provider === 'OLLAMA') return true
-  if (aiForm.provider === 'DIFY') {
-    return aiOverview.value.difyAnalyzeConfigured && aiOverview.value.difyGenerateConfigured
-  }
-  return aiOverview.value.deepseekConfigured || aiOverview.value.qianwenConfigured === true
-})
+// [2026-10-27 注释保留] 改版后「当前默认模型」面板由 activePathRow / providerPathRows 承担，
+// 下面五个计算属性不再有引用点（保留原文便于回滚比对）。
+// const activeModelValue = computed(() => {
+//   if (aiForm.provider === 'QIANWEN') return aiForm.qianwenModel
+//   if (aiForm.provider === 'OLLAMA') return aiForm.ollamaModel
+//   if (aiForm.provider === 'DIFY') return 'workflow'
+//   if (aiForm.provider === 'HYBRID') return `${aiForm.deepseekModel} + workflow`
+//   return aiForm.deepseekModel
+// })
+//
+// const activeModelMeta = computed(() => {
+//   if (aiForm.provider === 'DIFY' || aiForm.provider === 'HYBRID') return undefined
+//   return modelOptionsFor(aiForm.provider).find(model => model.id === activeModelValue.value)
+// })
+//
+// const activeModelLabel = computed(() => activeModelValue.value || '未选择模型')
+//
+// const activeModelDescription = computed(() => {
+//   if (aiForm.provider === 'DIFY') return '由 Dify 工作流决定具体模型'
+//   if (aiForm.provider === 'HYBRID') return '分析使用直连模型，出题使用 Dify 工作流'
+//   return activeModelMeta.value?.description || '自定义模型或暂未加载模型列表'
+// })
+//
+// const activeProviderConfigured = computed(() => {
+//   if (aiForm.provider === 'DEEPSEEK') return aiOverview.value.deepseekConfigured
+//   if (aiForm.provider === 'QIANWEN') return aiOverview.value.qianwenConfigured ?? false
+//   if (aiForm.provider === 'OLLAMA') return true
+//   if (aiForm.provider === 'DIFY') {
+//     return aiOverview.value.difyAnalyzeConfigured && aiOverview.value.difyGenerateConfigured
+//   }
+//   return aiOverview.value.deepseekConfigured || aiOverview.value.qianwenConfigured === true
+// })
 
 const savedModelLabel = computed(() => {
   const provider = aiOverview.value.provider
@@ -2749,4 +2910,231 @@ onMounted(async () => {
     flex: 1 1 100%;
   }
 }
+/* ==================== [2026-10-27 改版] 通路状态条 + 统一通路列表 ==================== */
+.active-path-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  border: 1px solid #dfe8f5;
+  border-left: 4px solid #409eff;
+  border-radius: 8px;
+  background: #f7faff;
+}
+
+.active-path-banner.is-shadowed {
+  border-left-color: #e6a23c;
+  background: #fdf6ec;
+}
+
+.active-path-main {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 260px;
+}
+
+.active-path-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.active-path-name {
+  color: #303133;
+  font-size: 18px;
+  line-height: 1.3;
+}
+
+.active-path-model {
+  padding: 1px 8px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  color: #409eff;
+  font-family: Consolas, Monaco, monospace;
+  font-size: 13px;
+}
+
+.active-path-url {
+  color: #909399;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.active-path-warn {
+  flex-basis: 100%;
+  margin: 0;
+  color: #b88230;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.path-picker {
+  padding: 16px 18px;
+  margin-bottom: 18px;
+  border: 1px solid #e4ebf5;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.path-picker-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.path-picker-hint {
+  margin: 4px 0 0;
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.path-picker-hint code {
+  padding: 0 4px;
+  border-radius: 3px;
+  background: #f4f4f5;
+  color: #476582;
+  font-size: 11px;
+}
+
+.path-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.path-row {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid #eaeef5;
+  border-radius: 6px;
+  background: #fcfdff;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.path-row:hover {
+  border-color: #b3d8ff;
+  background: #f5faff;
+}
+
+.path-row.is-active {
+  border-color: #409eff;
+  background: #ecf5ff;
+}
+
+.path-row.is-off {
+  opacity: 0.55;
+}
+
+.path-radio {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #c0c4cc;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.path-radio.is-on {
+  border: 4px solid #409eff;
+}
+
+.path-row-main {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.path-row-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.path-row-title strong {
+  color: #303133;
+  font-size: 14px;
+}
+
+.path-row-sub {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.path-row-model {
+  color: #409eff;
+  font-family: Consolas, Monaco, monospace;
+}
+
+.path-row-url {
+  color: #909399;
+  word-break: break-all;
+}
+
+.path-row-side {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.path-row-test {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px dashed #ebeef5;
+}
+
+.path-row-latency {
+  color: #909399;
+  font-size: 12px;
+}
+
+.path-expand {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.config-scope-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 6px;
+  border: 1px solid #eaeef5;
+  border-radius: 6px;
+  background: #fafcff;
+}
+
+.config-scope-title {
+  color: #606266;
+  font-size: 13px;
+}
+
+.config-scope-title strong {
+  color: #409eff;
+}
+/* ==================== [改版样式结束] ==================== */
 </style>

@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { List, Grid, Plus, Upload, MagicStick, Edit, Delete, Search, Refresh, Reading } from '@element-plus/icons-vue'
+import { List, Grid, Plus, Upload, MagicStick, Edit, Delete, Search, Refresh, Reading, View } from '@element-plus/icons-vue'
 import {
   listReadingPassages,
   getReadingPassageDetail,
@@ -70,6 +70,46 @@ const typeLabel = (t?: string) =>
   passageTypeOptions.find((o) => o.value === t)?.label ?? t
 const diffTagType = (d?: Difficulty) =>
   d === 1 ? 'success' : d === 2 ? 'warning' : 'danger'
+const subtypeLabel = (v?: string) =>
+  readingSubtypeDict.find((d) => d.value === v)?.label || v || '细节题'
+
+/* ---------- 题目详情抽屉 ---------- */
+const detailDrawerVisible = ref(false)
+const detailLoading = ref(false)
+const currentPassageDetail = ref<ReadingPassage | null>(null)
+
+const openPassageDetail = async (row: ReadingPassage) => {
+  detailDrawerVisible.value = true
+  detailLoading.value = true
+  currentPassageDetail.value = row
+  try {
+    const res = await getReadingPassageDetail(row.id)
+    if (res.data) {
+      currentPassageDetail.value = res.data
+    }
+  } catch {
+    ElMessage.error('获取文章及题目详情失败')
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+const openEditFromDetail = () => {
+  if (!currentPassageDetail.value) return
+  detailDrawerVisible.value = false
+  openEdit(currentPassageDetail.value)
+}
+
+const isSubOptionRight = (q: { standardAnswer?: string } | null | undefined, optLabel: string) => {
+  if (!q || !q.standardAnswer) return false
+  const a = q.standardAnswer.trim()
+  const cleanLabel = optLabel.trim()
+  if (a.includes(',') || a.includes(' ') || a.includes('、')) {
+    const list = a.split(/[,、\s]+/).map((s) => s.trim().toUpperCase())
+    return list.includes(cleanLabel.toUpperCase())
+  }
+  return a.toUpperCase() === cleanLabel.toUpperCase()
+}
 
 const load = async () => {
   loading.value = true
@@ -588,8 +628,11 @@ onMounted(async () => {
             }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" align="center" fixed="right">
+        <el-table-column label="操作" width="220" align="center" fixed="right">
           <template #default="{ row }">
+            <el-button type="success" size="small" plain @click="openPassageDetail(row)">
+              <el-icon><View /></el-icon>题目详情
+            </el-button>
             <el-button type="primary" size="small" @click="openEdit(row)">编辑</el-button>
             <el-button type="danger" size="small" @click="confirmDelete(row)">删除</el-button>
           </template>
@@ -652,6 +695,9 @@ onMounted(async () => {
           <div class="card-footer">
             <span v-if="item.topic" class="topic-tag">🏷️ {{ item.topic }}</span>
             <div class="actions">
+              <el-button type="success" size="small" plain @click.stop="openPassageDetail(item)">
+                <el-icon><View /></el-icon>题目详情
+              </el-button>
               <el-button type="primary" size="small" @click.stop="openEdit(item)">
                 <el-icon><Edit /></el-icon>编辑
               </el-button>
@@ -886,6 +932,165 @@ onMounted(async () => {
         <el-button type="primary" @click="submit">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 题目详情抽屉 -->
+    <el-drawer
+      v-model="detailDrawerVisible"
+      :title="`📖 阅读文章与配套试题详情 #${currentPassageDetail?.id || ''}`"
+      size="65%"
+      direction="rtl"
+      destroy-on-close
+      class="passage-detail-drawer"
+    >
+      <div v-loading="detailLoading" class="detail-drawer-content" v-if="currentPassageDetail">
+        <!-- 头部文章摘要卡片 -->
+        <div class="passage-info-card">
+          <div class="pi-header">
+            <span class="pi-title">{{ currentPassageDetail.title || '(无标题文章)' }}</span>
+            <div class="pi-tags">
+              <el-tag size="small" type="primary">{{ typeLabel(currentPassageDetail.passageType) }}</el-tag>
+              <el-tag size="small" :type="diffTagType(currentPassageDetail.difficulty)">{{ diffLabel(currentPassageDetail.difficulty) }}</el-tag>
+              <el-tag size="small" :type="currentPassageDetail.status === 1 ? 'success' : 'info'">
+                {{ currentPassageDetail.status === 1 ? '已启用' : '已停用' }}
+              </el-tag>
+              <el-tag size="small" type="info" effect="plain">{{ sourceLabel(currentPassageDetail.source) }}</el-tag>
+            </div>
+          </div>
+          <el-descriptions :column="3" border size="small" class="pi-desc">
+            <el-descriptions-item label="分类">{{ currentPassageDetail.categoryName || '-' }}</el-descriptions-item>
+            <el-descriptions-item label="词数">{{ currentPassageDetail.wordCount ?? 0 }} 词</el-descriptions-item>
+            <el-descriptions-item label="配套题目">{{ currentPassageDetail.questions?.length ?? currentPassageDetail.questionCount ?? 0 }} 道</el-descriptions-item>
+            <el-descriptions-item label="主题" :span="2">{{ currentPassageDetail.topic || '通用英语' }}</el-descriptions-item>
+            <el-descriptions-item label="文章ID">#{{ currentPassageDetail.id }}</el-descriptions-item>
+          </el-descriptions>
+        </div>
+
+        <!-- 文章英文正文 -->
+        <div class="article-section">
+          <div class="section-title">📄 文章正文（英文）</div>
+          <div class="article-content-box">
+            <p v-for="(p, pi) in (currentPassageDetail.content || '').split('\n').filter(Boolean)" :key="pi">
+              {{ p }}
+            </p>
+          </div>
+        </div>
+
+        <!-- 中文翻译与摘要 -->
+        <div class="article-section" v-if="currentPassageDetail.translation">
+          <div class="section-title">🌐 中文参考翻译</div>
+          <div class="article-translation-box">
+            <p v-for="(p, pi) in currentPassageDetail.translation.split('\n').filter(Boolean)" :key="pi">
+              {{ p }}
+            </p>
+          </div>
+        </div>
+
+        <!-- 重点词汇 -->
+        <div class="article-section" v-if="currentPassageDetail.keyVocabulary?.length">
+          <div class="section-title">🔤 重点词汇与释义（{{ currentPassageDetail.keyVocabulary.length }} 词）</div>
+          <div class="vocab-grid">
+            <div v-for="(v, vi) in currentPassageDetail.keyVocabulary" :key="vi" class="vocab-card">
+              <span class="vocab-word">{{ v.word }}</span>
+              <span class="vocab-meaning">{{ v.meaning }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 配套题目列表 -->
+        <div class="questions-section-view">
+          <div class="section-header">
+            <div class="section-title">
+              📚 配套试题列表（共 {{ currentPassageDetail.questions?.length ?? 0 }} 题）
+            </div>
+            <el-button size="small" type="primary" plain @click="openEditFromDetail">
+              <el-icon><Edit /></el-icon>编辑试题
+            </el-button>
+          </div>
+
+          <div v-if="!currentPassageDetail.questions?.length" class="empty-questions">
+            <el-empty description="该文章暂未录入配套题目">
+              <el-button type="primary" size="small" @click="openEditFromDetail">
+                <el-icon><Plus /></el-icon>立即添加题目
+              </el-button>
+            </el-empty>
+          </div>
+
+          <div v-else class="question-cards-list">
+            <div
+              v-for="(q, qIndex) in currentPassageDetail.questions"
+              :key="q.id ?? qIndex"
+              class="question-view-card"
+            >
+              <div class="qvc-header">
+                <div class="qvc-title">
+                  <span class="q-order">第 {{ qIndex + 1 }} 题</span>
+                  <el-tag size="small" type="info" effect="dark">{{ subtypeLabel(q.questionSubtype) }}</el-tag>
+                  <el-tag size="small" :type="diffTagType(q.difficulty)">{{ diffLabel(q.difficulty) }}</el-tag>
+                  <span class="q-score">分值：{{ q.defaultScore ?? 2 }} 分</span>
+                </div>
+                <div class="qvc-id">#{{ q.id }}</div>
+              </div>
+
+              <div class="qvc-stem">{{ q.stem }}</div>
+
+              <!-- 选项列表 -->
+              <div v-if="q.options?.length" class="qvc-options">
+                <div
+                  v-for="opt in q.options"
+                  :key="opt.optionLabel"
+                  class="qvc-opt-item"
+                  :class="{ 'is-correct': isSubOptionRight(q, opt.optionLabel) }"
+                >
+                  <span class="opt-label">{{ opt.optionLabel }}.</span>
+                  <span class="opt-text">{{ opt.optionContent }}</span>
+                  <el-tag
+                    v-if="isSubOptionRight(q, opt.optionLabel)"
+                    size="small"
+                    type="success"
+                    effect="dark"
+                    class="opt-right-tag"
+                  >
+                    ✓ 正确答案
+                  </el-tag>
+                </div>
+              </div>
+
+              <!-- 填空或简答类答案 -->
+              <div v-else class="qvc-fill-answer">
+                <span class="fill-lbl">标准答案：</span>
+                <span class="fill-val">{{ q.standardAnswer }}</span>
+              </div>
+
+              <!-- 解析 -->
+              <div class="qvc-analysis" v-if="q.analysis">
+                <span class="ana-lbl">💡 解析：</span>
+                <span class="ana-text">{{ q.analysis }}</span>
+              </div>
+
+              <!-- 知识点 -->
+              <div class="qvc-kp" v-if="q.knowledgePoints?.length">
+                <span class="kp-lbl">🏷️ 考点知识点：</span>
+                <el-tag
+                  v-for="kp in q.knowledgePoints"
+                  :key="kp"
+                  size="small"
+                  type="info"
+                  class="kp-tag"
+                >
+                  {{ kp }}
+                </el-tag>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="detailDrawerVisible = false">关闭</el-button>
+        <el-button type="primary" @click="openEditFromDetail">
+          <el-icon><Edit /></el-icon>编辑文章与题目
+        </el-button>
+      </template>
+    </el-drawer>
   </div>
 </template>
 
@@ -1124,5 +1329,227 @@ onMounted(async () => {
   grid-template-columns: 1.2fr 1fr 1.6fr auto;
   gap: 8px;
   align-items: center;
+}
+
+/* 详情抽屉样式 */
+:deep(.passage-detail-drawer) {
+  .el-drawer__body {
+    padding: 16px 20px;
+  }
+}
+.detail-drawer-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 4px;
+}
+.passage-info-card {
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 14px 16px;
+  border: 1px solid #e2e8f0;
+  .pi-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    .pi-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+    .pi-tags {
+      display: flex;
+      gap: 6px;
+    }
+  }
+}
+.article-section {
+  .section-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #334155;
+    margin-bottom: 8px;
+  }
+  .article-content-box {
+    background: #fcfcfd;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-size: 14px;
+    line-height: 1.8;
+    color: #1f2937;
+    p {
+      margin: 0 0 10px 0;
+      text-indent: 2em;
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+  .article-translation-box {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 13.5px;
+    line-height: 1.7;
+    color: #166534;
+    p {
+      margin: 0 0 8px 0;
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+  .vocab-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px;
+    .vocab-card {
+      background: #f1f5f9;
+      border-radius: 6px;
+      padding: 6px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      .vocab-word {
+        font-weight: 600;
+        color: #0f172a;
+        font-size: 13px;
+      }
+      .vocab-meaning {
+        color: #64748b;
+        font-size: 12px;
+      }
+    }
+  }
+}
+.questions-section-view {
+  margin-top: 8px;
+  .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    .section-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #1e293b;
+    }
+  }
+  .question-cards-list {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    .question-view-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px;
+      background: #ffffff;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+      .qvc-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        .qvc-title {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          .q-order {
+            font-weight: 700;
+            color: #409eff;
+            font-size: 14px;
+          }
+          .q-score {
+            color: #64748b;
+            font-size: 12px;
+          }
+        }
+        .qvc-id {
+          color: #94a3b8;
+          font-size: 12px;
+        }
+      }
+      .qvc-stem {
+        font-size: 14px;
+        font-weight: 500;
+        color: #1e293b;
+        line-height: 1.6;
+        margin-bottom: 12px;
+      }
+      .qvc-options {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 10px;
+        .qvc-opt-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px;
+          border-radius: 6px;
+          background: #f8fafc;
+          border: 1px solid #edf2f7;
+          font-size: 13.5px;
+          .opt-label {
+            font-weight: 600;
+            color: #475569;
+            min-width: 18px;
+          }
+          .opt-text {
+            flex: 1;
+            color: #334155;
+          }
+          &.is-correct {
+            background: #f0fdf4;
+            border-color: #86efac;
+            .opt-label {
+              color: #16a34a;
+            }
+            .opt-text {
+              color: #15803d;
+              font-weight: 600;
+            }
+          }
+        }
+      }
+      .qvc-fill-answer {
+        margin-bottom: 10px;
+        padding: 8px 12px;
+        background: #f0fdf4;
+        border-radius: 6px;
+        border: 1px solid #86efac;
+        .fill-lbl {
+          font-weight: 600;
+          color: #16a34a;
+        }
+        .fill-val {
+          font-weight: 700;
+          color: #15803d;
+        }
+      }
+      .qvc-analysis {
+        background: #eff6ff;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 13px;
+        color: #1e40af;
+        margin-bottom: 8px;
+        line-height: 1.5;
+        .ana-lbl {
+          font-weight: 600;
+        }
+      }
+      .qvc-kp {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        color: #64748b;
+      }
+    }
+  }
 }
 </style>

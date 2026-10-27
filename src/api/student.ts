@@ -402,12 +402,9 @@ export const getMyRank = () =>
   request.get<ApiResponse<MyRank>>('/leaderboard/my-rank')
 
 /* ============================================================ *
- *  10. 学习打卡与目标
+ *  10. 我的资料
+ *  [2026-10-27 删除] checkIn()：后端 POST /users/check-in 与 sys_user 打卡字段已整体下线
  * ============================================================ */
-
-/** 学习打卡 */
-export const checkIn = () =>
-  request.post<ApiResponse<any>>('/users/check-in')
 
 /** 获取我的资料 */
 export const getMyProfile = () =>

@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Calendar, Check, Cpu, TrendCharts, Odometer, DataLine, CircleClose } from '@element-plus/icons-vue'
+// [2026-10-27] 打卡功能下线后 ElMessage 与 Check 图标在本页已无使用者
+import { Calendar, Cpu, TrendCharts, Odometer, DataLine, CircleClose } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { getMySummary, getAvailableExams, getStudentStatistics, getMyResults, listPractices, getMyLearningProgress, getWeakCategories, checkIn, getMyProfile } from '@/api/student'
+import { getMySummary, getAvailableExams, getStudentStatistics, getMyResults, listPractices, getMyLearningProgress, getWeakCategories, getMyProfile } from '@/api/student'
 import { getMyScoreTrend } from '@/api/scoreCurve'
 import type { ResultSummary, ExamResultItem } from '@/types/result'
 import type { AvailableExam } from '@/types/exam'
@@ -33,17 +33,9 @@ const recentPractices = ref<PracticeRecord[]>([])
 const learningProgress = ref<LearningProgress[]>([])
 const weakProgress = ref<LearningProgress[]>([])
 
-// 学习打卡状态
-const streakDays = ref(0)
-const totalStudyDays = ref(0)
-const dailyTargetCount = ref(10)
-/* [2026-10-17] 后端 /users/my-profile 实际不返回 totalQuestionsDone / totalCorrectCount，
-   原先直接取 profile 导致首页「累计做题 0 题」。
-   改为优先用 /students/{id}/statistics 的真实计数（练习 + 考试），profile 仅作兜底。 */
-const profileTotalQuestions = ref(0)
-const profileTotalCorrect = ref(0)
-const isCheckedIn = ref(false)
-const checkInLoading = ref(false)
+/* [2026-10-27] 学习打卡整条链已下线（sys_user 的 streak_days / total_study_days /
+   daily_target_count 等 9 列删除，后端 /users/check-in 接口移除）。
+   累计做题与累计答对改为只用 /students/{id}/statistics 的真实计数。 */
 
 const shortcuts = [
   { title: '语法题库', desc: '按专题浏览 + 学习模式看解析', path: '/student/question-bank', icon: 'Notebook', color: '#409eff' },
@@ -102,12 +94,6 @@ const shortcuts = [
 
 /** 我的资料（后端 /users/my-profile 返回结构，字段按需取用） */
 interface MyProfileLite {
-  streakDays?: number
-  totalStudyDays?: number
-  dailyTargetCount?: number
-  totalQuestionsDone?: number
-  totalCorrectCount?: number
-  lastStudyDate?: string
   avatar?: string
   realName?: string
   englishName?: string
@@ -156,13 +142,6 @@ const load = async () => {
     const profile = unwrap<MyProfileLite>(prof)
     if (profile) {
       myProfile.value = profile
-      streakDays.value = profile.streakDays ?? 0
-      totalStudyDays.value = profile.totalStudyDays ?? 0
-      dailyTargetCount.value = profile.dailyTargetCount ?? 10
-      profileTotalQuestions.value = profile.totalQuestionsDone ?? 0
-      profileTotalCorrect.value = profile.totalCorrectCount ?? 0
-      const lastDate = profile.lastStudyDate
-      isCheckedIn.value = !!lastDate && lastDate === new Date().toISOString().split('T')[0]
     }
   } finally { loading.value = false }
 }
@@ -214,23 +193,7 @@ const scoreMiniOption = computed(() => {
   }
 })
 
-const doCheckIn = async () => {
-  if (isCheckedIn.value || checkInLoading.value) return
-  checkInLoading.value = true
-  try {
-    const res = await checkIn()
-    if (res && res.data) {
-      streakDays.value = res.data.streakDays || streakDays.value
-      totalStudyDays.value = res.data.totalStudyDays || totalStudyDays.value
-      isCheckedIn.value = true
-      ElMessage.success('打卡成功！继续保持！')
-    }
-  } catch {
-    ElMessage.error('打卡失败')
-  } finally {
-    checkInLoading.value = false
-  }
-}
+// [2026-10-27 删除] doCheckIn()：/users/check-in 接口与 sys_user 打卡字段已整体下线
 
 const examStatus = (e: AvailableExam) => {
   const now = Date.now()
@@ -261,18 +224,16 @@ const avatarInitial = computed(() => {
   return name.slice(0, 1).toUpperCase()
 })
 
-/** 累计做题 = 练习作答 + 考试作答（statistics 真实计数，profile 兜底） */
+/** 累计做题 = 练习作答 + 考试作答（statistics 真实计数） */
 const totalQuestionsDone = computed(() => {
   const st = stats.value
-  const fromStats = (st?.practiceQuestionCount ?? 0) + (st?.examCorrectCount ?? 0) + (st?.examWrongCount ?? 0)
-  return fromStats > 0 ? fromStats : profileTotalQuestions.value
+  return (st?.practiceQuestionCount ?? 0) + (st?.examCorrectCount ?? 0) + (st?.examWrongCount ?? 0)
 })
 
 /** 累计答对 = 练习答对 + 考试答对 */
 const totalCorrectCount = computed(() => {
   const st = stats.value
-  const fromStats = (st?.practiceCorrectCount ?? 0) + (st?.examCorrectCount ?? 0)
-  return fromStats > 0 ? fromStats : profileTotalCorrect.value
+  return (st?.practiceCorrectCount ?? 0) + (st?.examCorrectCount ?? 0)
 })
 
 /** 累计总正确率 */
@@ -287,7 +248,6 @@ const studyMetrics = computed(() => [
   { label: '累计做题', value: `${totalQuestionsDone.value}`, suffix: '题', color: '#409eff' },
   { label: '累计答对', value: `${totalCorrectCount.value}`, suffix: '题', color: '#67c23a' },
   { label: '累计正确率', value: `${totalAccuracy.value}`, suffix: '%', color: accuracyColor(totalAccuracy.value) },
-  { label: '每日目标', value: `${dailyTargetCount.value}`, suffix: '题', color: '#e6a23c' },
 ])
 
 /** 趋势数据：优先取成绩曲线（含班级平均），无则退回最近考试记录 */
@@ -374,20 +334,7 @@ const sortedExams = computed(() => {
           <h2>你好，{{ authStore.userInfo?.displayName || authStore.userInfo?.username || '同学' }} 👋</h2>
           <p class="hero-sub">坚持每天练习，语法能力会越来越强！</p>
         </div>
-        <!-- [2026-09-26 下线] 学习打卡入口（06 清单 §8.3 O 档：论文 grep「打卡」0 命中）
-             原代码整体保留备查，仅加 v-if="false" 隐藏；如需恢复，删掉该 v-if 即可。 -->
-        <div class="hero-checkin" v-if="false">
-          <div v-if="!isCheckedIn" class="checkin-btn-wrap">
-            <el-button type="primary" @click="doCheckIn" :loading="checkInLoading" class="checkin-btn">
-              <el-icon><Calendar /></el-icon>今日打卡
-            </el-button>
-          </div>
-          <div v-else class="checkin-success">
-            <el-icon color="#67c23a"><Check /></el-icon>
-            <span>今日已打卡</span>
-            <span class="streak-badge">🔥 连续 {{ streakDays }} 天</span>
-          </div>
-        </div>
+        <!-- [2026-10-27 删除] 学习打卡入口与连续天数徽标：/users/check-in 与 sys_user 打卡字段已下线 -->
       </div>
 
       <!-- ====== Stats Row ====== -->
@@ -430,21 +377,8 @@ const sortedExams = computed(() => {
         </el-col>
       </el-row>
 
-      <!-- ====== 学习目标与打卡统计 ====== -->
+      <!-- ====== 学习统计（[2026-10-27] 连续学习天数/累计学习天数/每日目标题数 三卡随 sys_user 字段下线移除） ====== -->
       <el-row :gutter="16" class="stat-row">
-        <!-- [2026-09-26 下线] 连续学习天数（打卡派生指标，06 §8.3 O 档）；原代码保留备查 -->
-        <el-col :span="4" v-if="false">
-          <div class="mini-stat">
-            <div class="mini-num" style="color:#e6a23c">{{ streakDays }}</div>
-            <div class="mini-label">连续学习天数</div>
-          </div>
-        </el-col>
-        <el-col :span="4">
-          <div class="mini-stat">
-            <div class="mini-num" style="color:#9c27b0">{{ totalStudyDays }}</div>
-            <div class="mini-label">累计学习天数</div>
-          </div>
-        </el-col>
         <el-col :span="4">
           <div class="mini-stat">
             <div class="mini-num" style="color:#409eff">{{ totalQuestionsDone }}</div>
@@ -461,12 +395,6 @@ const sortedExams = computed(() => {
           <div class="mini-stat">
             <div class="mini-num" style="color:#f56c6c">{{ totalQuestionsDone > 0 ? ((totalCorrectCount / totalQuestionsDone) * 100).toFixed(1) : '0' }}%</div>
             <div class="mini-label">总正确率</div>
-          </div>
-        </el-col>
-        <el-col :span="4">
-          <div class="mini-stat">
-            <div class="mini-num" style="color:#10b981">{{ dailyTargetCount }}</div>
-            <div class="mini-label">每日目标题数</div>
           </div>
         </el-col>
       </el-row>

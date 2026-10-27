@@ -22,6 +22,7 @@ import {
   CopyDocument,
   Tickets,
   ArrowDown,
+  EditPen,
 } from '@element-plus/icons-vue'
 import {
   listAdminQuestions,
@@ -70,6 +71,26 @@ const categories = ref<Category[]>([])
 const tagOptions = ref<Array<{ id: number; tagName: string }>>([])
 const selected = ref<Question[]>([])
 
+/** 知识点可选池：汇总考点标签、当前列表已有知识点以及经典语法核心考点，供下拉点选 */
+const existingKnowledgePoints = computed(() => {
+  const set = new Set<string>()
+  tagOptions.value.forEach((t) => {
+    if (t.tagName) set.add(t.tagName)
+  })
+  list.value.forEach((q) => {
+    (q.knowledgePoints || []).forEach((kp) => {
+      if (kp) set.add(kp)
+    })
+  })
+  const commonKp = [
+    '一般现在时', '一般过去时', '现在进行时', '现在完成时', '过去完成时', '一般将来时',
+    '被动语态', '定语从句', '状语从句', '宾语从句', '非谓语动词', '动名词', '现在分词', '过去分词',
+    '动词不定式', '主谓一致', '倒装句', '虚拟语气', '情态动词', '比较级与最高级'
+  ]
+  commonKp.forEach((k) => set.add(k))
+  return Array.from(set)
+})
+
 const normalTypeOptions: { label: string; value: QuestionType }[] = [
   { label: '单选题', value: 'SINGLE' },
   { label: '多选题', value: 'MULTIPLE' },
@@ -108,20 +129,6 @@ const diffLabel = (d?: Difficulty) =>
   diffOptions.find((o) => o.value === d)?.label ?? String(d)
 const diffTagType = (d?: Difficulty) =>
   d === 1 ? 'success' : d === 2 ? 'warning' : 'danger'
-
-/** 来源列：库里取值历史上有中英混杂（MANUAL / 系统 / SEED_READING…），认得的翻成中文，认得的原文兜底 */
-const SOURCE_LABELS: Record<string, string> = {
-  MANUAL: '人工录入',
-  AI: 'AI 生成',
-  AI_STUDENT: '学生错题变式',
-  IMPORT: '批量导入',
-  SEED_READING: '阅读题库',
-  系统: '系统内置',
-}
-const sourceLabel = (s?: string) => {
-  if (!s) return '-'
-  return SOURCE_LABELS[s] ?? s
-}
 
 /** 更新时间只到分钟，列表里够用来判断新旧 */
 const fmtDate = (s?: string) => {
@@ -668,16 +675,29 @@ const doValidate = async () => {
 }
 
 /* ---------- 弹窗打开/关闭 ---------- */
-/** 编辑态锁题型：改题型会让历史作答记录失去意义，只能停用后另建（后端同步拒绝） */
-const typeLocked = computed(() => editMode.value === 'edit')
 const isReadingEdit = computed(
   () => activeTab.value === 'READING' && editMode.value === 'edit'
 )
-/** 编辑态拦下 tab 切换：题型不能改，切换前先说明为什么改不了 */
-const lockTabsIfEditing = () => {
-  if (!typeLocked.value) return true
-  ElMessage.warning('编辑态不能切换题型，如需换题型请用「复制新建」另存一题')
-  return false
+
+/** 新增试题时在弹窗内切换题型，联动初始化题目选项 */
+const onTypeTabChangeInDialog = (tab: string | number) => {
+  const t = tab as TabType
+  activeTab.value = t
+  if (t === 'READING') {
+    loadPassages()
+    if (!readingForm.subQuestions.length) {
+      for (let i = 0; i < 5; i++) addSubQuestion()
+    }
+  } else if (t === 'JUDGE' || t === 'FILL' || t === 'FILL_HINT') {
+    normalForm.options = []
+  } else if (!normalForm.options.length) {
+    normalForm.options = [
+      { optionLabel: 'A', optionContent: '', sortNo: 1 },
+      { optionLabel: 'B', optionContent: '', sortNo: 2 },
+      { optionLabel: 'C', optionContent: '', sortNo: 3 },
+      { optionLabel: 'D', optionContent: '', sortNo: 4 },
+    ]
+  }
 }
 
 const dialogTitle = computed(() => {
@@ -705,14 +725,12 @@ const openCreate = (tab: TabType = 'SINGLE') => {
 }
 
 const openEdit = (row: Question) => {
-  editMode.value = 'edit'
+  activeTab.value = row.questionType
   resetNormalForm()
   resetReadingForm()
   validationResult.value = null
   activeSubIndex.value = -1
-
-  // 设置活动标签页
-  activeTab.value = row.questionType
+  editMode.value = 'edit'
 
   if (row.questionType === 'READING') {
     // 阅读题必须用阅读编辑器打开：一道题离不开它的那篇文章
@@ -728,27 +746,30 @@ const openEdit = (row: Question) => {
   normalForm.defaultScore = row.defaultScore ?? 2
   normalForm.status = (row.status ?? 1) as 0 | 1
   normalForm.analysis = row.analysis || ''
-  normalForm.knowledgePoints = row.knowledgePoints || []
-  normalForm.tagIds = row.tagIds || []
+  normalForm.knowledgePoints = row.knowledgePoints ? [...row.knowledgePoints] : []
+  normalForm.tagIds = row.tagIds ? [...row.tagIds] : []
   normalForm.primaryTagId = row.primaryTagId || undefined
   normalForm.options = row.options?.length
     ? row.options.map((o) => ({ ...o }))
-    : normalForm.options
+    : []
 
-  const a = row.standardAnswer || ''
+  const a = (row.standardAnswer || '').trim()
   if (row.questionType === 'MULTIPLE') {
-    normalForm.answerMulti = a.split(',').map((s) => s.trim()).filter(Boolean)
+    const ansList =
+      a.includes(',') || a.includes(' ') || a.includes('、')
+        ? a.split(/[,、\s]+/).map((s) => s.trim().toUpperCase()).filter(Boolean)
+        : a.toUpperCase().split('').filter(Boolean)
+    normalForm.answerMulti = ansList
   } else if (row.questionType === 'JUDGE') {
-    normalForm.answerJudge = (a.toUpperCase() === 'TRUE'
+    const up = a.toUpperCase()
+    normalForm.answerJudge = (up === 'TRUE' || up === 'T' || up === '对' || up === '正确'
       ? 'TRUE'
-      : a.toUpperCase() === 'FALSE'
-        ? 'FALSE'
-        : '') as 'TRUE' | 'FALSE' | ''
+      : (up === 'FALSE' || up === 'F' || up === '错' || up === '错误' ? 'FALSE' : ''))
   } else if (row.questionType === 'FILL_HINT' || row.questionType === 'FILL') {
     normalForm.answerFill = a
     normalForm.answerFormat = row.answerFormat || 'CASE_INSENSITIVE'
   } else {
-    normalForm.answerSingle = a
+    normalForm.answerSingle = a.toUpperCase()
   }
 
   dialogVisible.value = true
@@ -1093,19 +1114,117 @@ const revealAll = () => {
 }
 
 /**
- * 卡片视图里高亮正确选项 —— 只在答案已展开时高亮，
- * 否则遮罩就白做了（阅读题多空答案形如 "A,C"，逐项比对而不是整串相等）。
+ * 卡片视图与详情抽屉中高亮正确选项 —— 只在答案已展开时高亮，
+ * 支持多选题 "A,C"、"A, C"、"AC" 等各种紧凑或逗号分隔格式。
  */
-const isRightOption = (q: Question, label: string) => {
-  if (!isRevealed(q.id)) return false
-  const a = (q.standardAnswer || '').toUpperCase()
+const isRightOption = (q: Question | null, label: string) => {
+  if (!q || !isRevealed(q.id)) return false
+  const a = (q.standardAnswer || '').trim().toUpperCase()
   if (!a || q.questionType === 'JUDGE' || q.questionType === 'FILL' || q.questionType === 'FILL_HINT') {
     return false
   }
-  return a
-    .split(',')
-    .map((s) => s.trim())
-    .includes(label.toUpperCase())
+  const cleanLabel = label.trim().toUpperCase()
+  if (a.includes(',') || a.includes(' ') || a.includes('、')) {
+    return a.split(/[,、\s]+/).map((s) => s.trim()).includes(cleanLabel)
+  }
+  return a.split('').includes(cleanLabel)
+}
+
+/**
+ * 标准答案展示格式化：
+ * 1. 判断题：TRUE/T/正确 -> "对"，FALSE/F/错误 -> "错"
+ * 2. 填空题：保持自然大小写，不强制转大写/全小写
+ * 3. 多选题：如为紧凑格式 "AC"，美化为 "A, C"
+ */
+const formatAnswerDisplay = (q?: { questionType?: QuestionType; standardAnswer?: string } | null) => {
+  if (!q || !q.standardAnswer) return '-'
+  const ans = q.standardAnswer.trim()
+  if (q.questionType === 'JUDGE') {
+    const up = ans.toUpperCase()
+    if (up === 'TRUE' || up === 'T' || up === '对' || up === '正确') return '对'
+    if (up === 'FALSE' || up === 'F' || up === '错' || up === '错误') return '错'
+    return ans
+  }
+  if (q.questionType === 'MULTIPLE') {
+    if (!ans.includes(',') && !ans.includes(' ') && !ans.includes('、') && ans.length > 1) {
+      return ans.split('').join(', ')
+    }
+    return ans
+  }
+  return ans
+}
+
+/**
+ * 快速补充内容（出题）：
+ * 根据当前选择的 tab 题型，填入一套真实、典型、规范的英语语法试题示例数据，
+ * 方便管理员/教师快速体验出题、测试 AI 验证功能或作为修改模板。
+ */
+const fillQuickSample = () => {
+  const currentTab = activeTab.value
+  if (!normalForm.categoryId && categories.value.length > 0) {
+    const firstCat = categories.value[0]
+    if (firstCat) {
+      const firstChild = firstCat.children && firstCat.children.length > 0 ? firstCat.children[0] : null
+      normalForm.categoryId = firstChild ? firstChild.id : firstCat.id
+    }
+  }
+  normalForm.difficulty = 2
+  normalForm.defaultScore = 2
+  normalForm.status = 1
+
+  if (tagOptions.value.length > 0 && (!normalForm.tagIds || normalForm.tagIds.length === 0)) {
+    const firstTag = tagOptions.value[0]
+    if (firstTag) {
+      normalForm.tagIds = [firstTag.id]
+    }
+  }
+
+  if (currentTab === 'SINGLE') {
+    normalForm.stem = 'Neither the teacher nor the students _____ present at the meeting yesterday.'
+    normalForm.options = [
+      { optionLabel: 'A', optionContent: 'was', sortNo: 1 },
+      { optionLabel: 'B', optionContent: 'were', sortNo: 2 },
+      { optionLabel: 'C', optionContent: 'is', sortNo: 3 },
+      { optionLabel: 'D', optionContent: 'are', sortNo: 4 },
+    ]
+    normalForm.answerSingle = 'B'
+    normalForm.analysis = '考查主谓一致。neither...nor...连接两个主语时，谓语动词遵循就近原则。此处靠近谓语的是复数名词students，且由yesterday可知为一般过去时，故谓语动词用were。'
+    normalForm.knowledgePoints = ['主谓一致', '就近原则', '一般过去时']
+  } else if (currentTab === 'MULTIPLE') {
+    normalForm.stem = 'Which of the following sentences contain a subjunctive mood (虚拟语气)?'
+    normalForm.options = [
+      { optionLabel: 'A', optionContent: 'If I were you, I would accept the invitation.', sortNo: 1 },
+      { optionLabel: 'B', optionContent: 'I will call you as soon as I arrive at Beijing.', sortNo: 2 },
+      { optionLabel: 'C', optionContent: 'I suggest that we should take an umbrella with us.', sortNo: 3 },
+      { optionLabel: 'D', optionContent: 'The sun rises in the east and sets in the west.', sortNo: 4 },
+    ]
+    normalForm.answerMulti = ['A', 'C']
+    normalForm.analysis = 'A选项为对现在情况假设的条件虚拟语气；C选项在表示建议的动词suggest后接宾语从句时，使用(should) + 动词原形的虚拟语气。B项为条件状语从句主将从现，D项为客观事实一般现在时。'
+    normalForm.knowledgePoints = ['虚拟语气', '宾语从句', '条件从句']
+  } else if (currentTab === 'JUDGE') {
+    normalForm.stem = 'In English, transitive verbs can be used in passive voice, while intransitive verbs cannot.'
+    normalForm.options = []
+    normalForm.answerJudge = 'TRUE'
+    normalForm.analysis = '判断正确。及物动词有受动客体（宾语），能够转换为主语构成被动语态；不及物动词没有宾语，不能直接转化为被动语态。'
+    normalForm.knowledgePoints = ['被动语态', '及物动词', '不及物动词']
+  } else if (currentTab === 'FILL') {
+    normalForm.stem = 'By the end of next month, we _____ [BLANK] our graduation project.'
+    normalForm.options = []
+    normalForm.answerFill = 'will have finished'
+    normalForm.answerFormat = 'CASE_INSENSITIVE'
+    normalForm.analysis = '考查将来完成时。由时间状语“by the end of next month（到下个月底为止）”可知，动作将在未来某一时间之前完成，故使用将来完成时 will have finished。'
+    normalForm.knowledgePoints = ['将来完成时', '时态搭配']
+  } else if (currentTab === 'FILL_HINT') {
+    normalForm.stem = 'Look! The children _____ (play) football happily on the playground now.'
+    normalForm.options = []
+    normalForm.fillHint = 'play'
+    normalForm.answerFill = 'are playing'
+    normalForm.answerFormat = 'CASE_INSENSITIVE'
+    normalForm.analysis = '考查现在进行时。由标志词“Look!”和“now”可知，动作正在发生，主语The children为复数，故填are playing。'
+    normalForm.knowledgePoints = ['现在进行时', '主谓一致']
+  }
+
+  ElMessage.success(`已快速填入【${typeLabel(currentTab)}】示例数据，可直接点击AI验证或保存`)
 }
 
 /* ---------- 详情抽屉 ---------- */
@@ -1635,7 +1754,7 @@ onMounted(async () => {
           <template #default="{ row }">
             <div class="answer-cell">
               <span class="answer-text" :class="{ masked: !isRevealed(row.id) }">
-                {{ row.standardAnswer || '-' }}
+                {{ formatAnswerDisplay(row) }}
               </span>
               <el-button
                 link
@@ -1678,11 +1797,6 @@ onMounted(async () => {
               +{{ row.knowledgePoints.length - 3 }}
             </span>
             <span v-if="!(row.knowledgePoints || []).length" class="empty-dash">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="来源" width="86" align="center">
-          <template #default="{ row }">
-            <span class="source-text">{{ sourceLabel(row.source) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="创建人" width="92" show-overflow-tooltip>
@@ -1769,12 +1883,6 @@ onMounted(async () => {
               <span class="meta-label">分值</span>
               <span class="meta-value">{{ item.defaultScore ?? 2 }} 分</span>
             </span>
-            <span class="meta-item">
-              <span class="meta-label">来源</span>
-              <span class="meta-value">
-                {{ sourceLabel(item.source) }}
-              </span>
-            </span>
           </div>
           <div class="card-passage" v-if="item.questionType === 'READING' && item.passageTitle">
             <el-tag size="small" type="warning" effect="plain">
@@ -1806,7 +1914,7 @@ onMounted(async () => {
             <span class="answer-hint">
               答案：
               <span class="answer-text" :class="{ masked: !isRevealed(item.id) }">
-                {{ item.standardAnswer || '-' }}
+                {{ formatAnswerDisplay(item) }}
               </span>
               <el-button link size="small" @click.stop="toggleReveal(item.id)">
                 <el-icon><Hide v-if="isRevealed(item.id)" /><View v-else /></el-icon>
@@ -1861,439 +1969,34 @@ onMounted(async () => {
       top="5vh"
       class="question-dialog"
     >
-      <!-- 编辑态提示：题型决定作答组件与判分方式，改题型会让历史作答记录失去意义 -->
-      <el-alert
-        v-if="typeLocked"
-        class="type-lock-tip"
-        type="info"
-        :closable="false"
-        show-icon
-        title="编辑态已锁定题型"
-        :description="
-          activeTab === 'READING'
-            ? '正在按题组编辑：上方是本组文章，下方是共用这篇文章的全部题目。'
-            : '需要改成别的题型时，请关闭本窗口用「复制新建」另存一道，原题可停用。'
-        "
-      />
+      <!-- 新增模式题型切换条：仅在【新增试题】时展示，供教师切换题型 -->
+      <div v-if="editMode === 'create'" class="create-type-bar">
+        <el-tabs
+          v-model="activeTab"
+          type="card"
+          @tab-change="onTypeTabChangeInDialog"
+        >
+          <el-tab-pane
+            v-for="op in tabOptions"
+            :key="op.value"
+            :label="op.label"
+            :name="op.value"
+          />
+        </el-tabs>
+      </div>
 
-      <!-- 题型标签页切换 -->
-      <el-tabs
-        v-model="activeTab"
-        type="card"
-        :before-leave="lockTabsIfEditing"
-        @tab-change="(tab: TabType) => {
-          if (tab === 'READING') loadPassages()
-          // 切换题型时初始化选项
-          if (tab === 'JUDGE' || tab === 'FILL_HINT' || tab === 'FILL') {
-            normalForm.options = []
-          } else if (!normalForm.options.length) {
-            normalForm.options = [
-              { optionLabel: 'A', optionContent: '', sortNo: 1 },
-              { optionLabel: 'B', optionContent: '', sortNo: 2 },
-              { optionLabel: 'C', optionContent: '', sortNo: 3 },
-              { optionLabel: 'D', optionContent: '', sortNo: 4 },
-            ]
-          }
-        }"
-      >
-        <!-- 单选题 -->
-        <el-tab-pane label="单选题" name="SINGLE">
-          <el-form ref="formRef" :model="normalForm" :rules="rules" label-width="90px">
-            <el-row :gutter="12">
-              <el-col :span="12">
-                <el-form-item label="分类" prop="categoryId">
-                  <el-cascader
-                    v-model="normalForm.categoryId"
-                    :options="categories"
-                    :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
-                    clearable
-                    style="width: 100%"
-                  />
-                </el-form-item>
-              </el-col>
-              <el-col :span="6">
-                <el-form-item label="难度" prop="difficulty">
-                  <el-select v-model="normalForm.difficulty" style="width: 100%">
-                    <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col :span="6">
-                <el-form-item label="默认分值">
-                  <el-input-number v-model="normalForm.defaultScore" :min="0.5" :max="100" :step="0.5" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-form-item label="状态">
-              <el-radio-group v-model="normalForm.status">
-                <el-radio :value="1">启用</el-radio>
-                <el-radio :value="0">停用</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="考点标签">
-              <el-select v-model="normalForm.tagIds" multiple clearable style="width: 100%" placeholder="请选择考点标签">
-                <el-option v-for="tag in tagOptions" :key="tag.id" :label="tag.tagName" :value="tag.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="题干" prop="stem">
-              <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干" />
-            </el-form-item>
-            <el-form-item label="选项">
-              <div class="opt-list">
-                <div v-for="(op, idx) in normalForm.options" :key="idx" class="opt-row">
-                  <el-tag class="opt-key">{{ op.optionLabel }}</el-tag>
-                  <el-input v-model="op.optionContent" placeholder="选项内容" />
-                  <el-button link type="danger" size="small" @click="removeOption(idx)">
-                    <el-icon><Delete /></el-icon>
-                  </el-button>
-                </div>
-                <el-button size="small" @click="addOption"><el-icon><Plus /></el-icon>添加选项</el-button>
-              </div>
-            </el-form-item>
-            <el-form-item label="正确答案">
-              <el-radio-group v-model="normalForm.answerSingle">
-                <el-radio v-for="op in normalForm.options" :key="op.optionLabel" :value="op.optionLabel">
-                  {{ op.optionLabel }}
-                </el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="解析">
-              <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
-            </el-form-item>
-            <el-form-item label="知识点">
-              <el-select v-model="normalForm.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入知识点标签后按回车添加" style="width: 100%" />
-            </el-form-item>
-            <div v-if="validationResult" class="validation-result" :class="{ 'validation-success': validationResult.isValid, 'validation-fail': !validationResult.isValid }">
-              <div class="validation-header">
-                <el-icon><CircleCheck v-if="validationResult.isValid" /><Warning v-else /></el-icon>
-                <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
-                <span class="validation-confidence">置信度：{{ validationResult.confidence }}%</span>
-              </div>
-              <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
-                <div class="suggestions-title">💡 修改建议：</div>
-                <ul><li v-for="(s, idx) in validationResult.suggestions" :key="idx">{{ s }}</li></ul>
-              </div>
-              <div v-if="validationResult.correctedAnswer" class="validation-corrected">
-                <span>修正答案：</span><span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
-              </div>
-              <div v-if="validationResult.improvedAnalysis" class="validation-improved">
-                <span>优化解析：</span><span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
-              </div>
-            </div>
-          </el-form>
-        </el-tab-pane>
+      <!-- 编辑态专属题型展示栏（锁定当前题型，完全不展示题型页签切换） -->
+      <div v-else class="edit-type-header">
+        <span class="type-title-prefix">当前题型：</span>
+        <el-tag size="large" :type="activeTab === 'READING' ? 'warning' : 'primary'" effect="dark">
+          {{ typeLabel(activeTab) }}
+        </el-tag>
+        <span class="type-lock-notice">题型已固定，不可跨题型修改（如需更换题型请关闭弹窗使用「复制新建」）</span>
+      </div>
 
-        <!-- 多选题 -->
-        <el-tab-pane label="多选题" name="MULTIPLE">
-          <el-form ref="formRef" :model="normalForm" :rules="rules" label-width="90px">
-            <el-row :gutter="12">
-              <el-col :span="12">
-                <el-form-item label="分类" prop="categoryId">
-                  <el-cascader
-                    v-model="normalForm.categoryId"
-                    :options="categories"
-                    :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
-                    clearable
-                    style="width: 100%"
-                  />
-                </el-form-item>
-              </el-col>
-              <el-col :span="6">
-                <el-form-item label="难度" prop="difficulty">
-                  <el-select v-model="normalForm.difficulty" style="width: 100%">
-                    <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col :span="6">
-                <el-form-item label="默认分值">
-                  <el-input-number v-model="normalForm.defaultScore" :min="0.5" :max="100" :step="0.5" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-form-item label="状态">
-              <el-radio-group v-model="normalForm.status">
-                <el-radio :value="1">启用</el-radio>
-                <el-radio :value="0">停用</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="题干" prop="stem">
-              <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干" />
-            </el-form-item>
-            <el-form-item label="选项">
-              <div class="opt-list">
-                <div v-for="(op, idx) in normalForm.options" :key="idx" class="opt-row">
-                  <el-tag class="opt-key">{{ op.optionLabel }}</el-tag>
-                  <el-input v-model="op.optionContent" placeholder="选项内容" />
-                  <el-button link type="danger" size="small" @click="removeOption(idx)">
-                    <el-icon><Delete /></el-icon>
-                  </el-button>
-                </div>
-                <el-button size="small" @click="addOption"><el-icon><Plus /></el-icon>添加选项</el-button>
-              </div>
-              <span class="fill-hint">提示：多选题至少需要 2 个选项</span>
-            </el-form-item>
-            <el-form-item label="正确答案">
-              <el-checkbox-group v-model="normalForm.answerMulti">
-                <el-checkbox v-for="op in normalForm.options" :key="op.optionLabel" :value="op.optionLabel">
-                  {{ op.optionLabel }}
-                </el-checkbox>
-                <span v-if="normalForm.answerMulti.length > 0" class="multi-hint">
-                  已选 {{ normalForm.answerMulti.length }} 个答案
-                </span>
-              </el-checkbox-group>
-            </el-form-item>
-            <el-form-item label="解析">
-              <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
-            </el-form-item>
-            <el-form-item label="知识点">
-              <el-select v-model="normalForm.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入知识点标签后按回车添加" style="width: 100%" />
-            </el-form-item>
-            <div v-if="validationResult" class="validation-result" :class="{ 'validation-success': validationResult.isValid, 'validation-fail': !validationResult.isValid }">
-              <div class="validation-header">
-                <el-icon><CircleCheck v-if="validationResult.isValid" /><Warning v-else /></el-icon>
-                <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
-                <span class="validation-confidence">置信度：{{ validationResult.confidence }}%</span>
-              </div>
-              <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
-                <div class="suggestions-title">💡 修改建议：</div>
-                <ul><li v-for="(s, idx) in validationResult.suggestions" :key="idx">{{ s }}</li></ul>
-              </div>
-              <div v-if="validationResult.correctedAnswer" class="validation-corrected">
-                <span>修正答案：</span><span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
-              </div>
-              <div v-if="validationResult.improvedAnalysis" class="validation-improved">
-                <span>优化解析：</span><span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
-              </div>
-            </div>
-          </el-form>
-        </el-tab-pane>
-
-        <!-- 判断题 -->
-        <el-tab-pane label="判断题" name="JUDGE">
-          <el-form ref="formRef" :model="normalForm" :rules="rules" label-width="90px">
-            <el-row :gutter="12">
-              <el-col :span="12">
-                <el-form-item label="分类" prop="categoryId">
-                  <el-cascader
-                    v-model="normalForm.categoryId"
-                    :options="categories"
-                    :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
-                    clearable
-                    style="width: 100%"
-                  />
-                </el-form-item>
-              </el-col>
-              <el-col :span="6">
-                <el-form-item label="难度" prop="difficulty">
-                  <el-select v-model="normalForm.difficulty" style="width: 100%">
-                    <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col :span="6">
-                <el-form-item label="默认分值">
-                  <el-input-number v-model="normalForm.defaultScore" :min="0.5" :max="100" :step="0.5" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-form-item label="状态">
-              <el-radio-group v-model="normalForm.status">
-                <el-radio :value="1">启用</el-radio>
-                <el-radio :value="0">停用</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="题干" prop="stem">
-              <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干" />
-            </el-form-item>
-            <el-form-item label="正确答案">
-              <el-radio-group v-model="normalForm.answerJudge">
-                <el-radio value="TRUE">正确</el-radio>
-                <el-radio value="FALSE">错误</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="解析">
-              <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
-            </el-form-item>
-            <el-form-item label="知识点">
-              <el-select v-model="normalForm.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入知识点标签后按回车添加" style="width: 100%" />
-            </el-form-item>
-            <div v-if="validationResult" class="validation-result" :class="{ 'validation-success': validationResult.isValid, 'validation-fail': !validationResult.isValid }">
-              <div class="validation-header">
-                <el-icon><CircleCheck v-if="validationResult.isValid" /><Warning v-else /></el-icon>
-                <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
-                <span class="validation-confidence">置信度：{{ validationResult.confidence }}%</span>
-              </div>
-              <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
-                <div class="suggestions-title">💡 修改建议：</div>
-                <ul><li v-for="(s, idx) in validationResult.suggestions" :key="idx">{{ s }}</li></ul>
-              </div>
-              <div v-if="validationResult.correctedAnswer" class="validation-corrected">
-                <span>修正答案：</span><span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
-              </div>
-              <div v-if="validationResult.improvedAnalysis" class="validation-improved">
-                <span>优化解析：</span><span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
-              </div>
-            </div>
-          </el-form>
-        </el-tab-pane>
-
-        <!-- 填空题 -->
-        <el-tab-pane label="填空题" name="FILL">
-          <el-form ref="formRef" :model="normalForm" :rules="rules" label-width="90px">
-            <el-row :gutter="12">
-              <el-col :span="12">
-                <el-form-item label="分类" prop="categoryId">
-                  <el-cascader
-                    v-model="normalForm.categoryId"
-                    :options="categories"
-                    :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
-                    clearable
-                    style="width: 100%"
-                  />
-                </el-form-item>
-              </el-col>
-              <el-col :span="6">
-                <el-form-item label="难度" prop="difficulty">
-                  <el-select v-model="normalForm.difficulty" style="width: 100%">
-                    <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col :span="6">
-                <el-form-item label="默认分值">
-                  <el-input-number v-model="normalForm.defaultScore" :min="0.5" :max="100" :step="0.5" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-form-item label="状态">
-              <el-radio-group v-model="normalForm.status">
-                <el-radio :value="1">启用</el-radio>
-                <el-radio :value="0">停用</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="题干" prop="stem">
-              <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干，使用 [BLANK] 或 __ 表示填空位置" />
-            </el-form-item>
-            <el-form-item label="填空答案">
-              <el-input v-model="normalForm.answerFill" placeholder="填空答案，如 GETS / ARE PLAYING / Paris" />
-              <span class="fill-hint">默认忽略大小写判分；选「区分大小写」后学生必须原样输入</span>
-            </el-form-item>
-            <el-form-item label="答案格式">
-              <el-select v-model="normalForm.answerFormat" style="width: 100%">
-                <el-option label="忽略大小写（默认，推荐）" value="CASE_INSENSITIVE" />
-                <el-option label="区分大小写（专有名词等必须照抄）" value="CASE_SENSITIVE" />
-                <el-option label="仅单词（答案不含空格）" value="WORD_ONLY" />
-                <el-option label="整句作答（允许空格与标点）" value="SENTENCE" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="解析">
-              <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
-            </el-form-item>
-            <el-form-item label="知识点">
-              <el-select v-model="normalForm.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入知识点标签后按回车添加" style="width: 100%" />
-            </el-form-item>
-            <div v-if="validationResult" class="validation-result" :class="{ 'validation-success': validationResult.isValid, 'validation-fail': !validationResult.isValid }">
-              <div class="validation-header">
-                <el-icon><CircleCheck v-if="validationResult.isValid" /><Warning v-else /></el-icon>
-                <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
-                <span class="validation-confidence">置信度：{{ validationResult.confidence }}%</span>
-              </div>
-              <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
-                <div class="suggestions-title">💡 修改建议：</div>
-                <ul><li v-for="(s, idx) in validationResult.suggestions" :key="idx">{{ s }}</li></ul>
-              </div>
-              <div v-if="validationResult.correctedAnswer" class="validation-corrected">
-                <span>修正答案：</span><span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
-              </div>
-              <div v-if="validationResult.improvedAnalysis" class="validation-improved">
-                <span>优化解析：</span><span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
-              </div>
-            </div>
-          </el-form>
-        </el-tab-pane>
-
-        <!-- 带提示填空 -->
-        <el-tab-pane label="带提示填空" name="FILL_HINT">
-          <el-form ref="formRef" :model="normalForm" :rules="rules" label-width="90px">
-            <el-row :gutter="12">
-              <el-col :span="12">
-                <el-form-item label="分类" prop="categoryId">
-                  <el-cascader
-                    v-model="normalForm.categoryId"
-                    :options="categories"
-                    :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
-                    clearable
-                    style="width: 100%"
-                  />
-                </el-form-item>
-              </el-col>
-              <el-col :span="6">
-                <el-form-item label="难度" prop="difficulty">
-                  <el-select v-model="normalForm.difficulty" style="width: 100%">
-                    <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
-                  </el-select>
-                </el-form-item>
-              </el-col>
-              <el-col :span="6">
-                <el-form-item label="默认分值">
-                  <el-input-number v-model="normalForm.defaultScore" :min="0.5" :max="100" :step="0.5" />
-                </el-form-item>
-              </el-col>
-            </el-row>
-            <el-form-item label="状态">
-              <el-radio-group v-model="normalForm.status">
-                <el-radio :value="1">启用</el-radio>
-                <el-radio :value="0">停用</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="题干" prop="stem">
-              <el-input v-model="normalForm.stem" type="textarea" :rows="3" placeholder="请输入题干，使用 [BLANK] 或 __ 表示填空位置" />
-            </el-form-item>
-            <el-form-item label="提示词">
-              <el-input v-model="normalForm.fillHint" placeholder="括号内的提示词，如：verb, noun, past tense" />
-            </el-form-item>
-            <el-form-item label="填空答案">
-              <el-input v-model="normalForm.answerFill" placeholder="填空答案，如 GETS / ARE PLAYING / Paris" />
-              <span class="fill-hint">默认忽略大小写判分；选「区分大小写」后学生必须原样输入</span>
-            </el-form-item>
-            <el-form-item label="答案格式">
-              <el-select v-model="normalForm.answerFormat" style="width: 100%">
-                <el-option label="忽略大小写（默认，推荐）" value="CASE_INSENSITIVE" />
-                <el-option label="区分大小写（专有名词等必须照抄）" value="CASE_SENSITIVE" />
-                <el-option label="仅单词（答案不含空格）" value="WORD_ONLY" />
-                <el-option label="整句作答（允许空格与标点）" value="SENTENCE" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="解析">
-              <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
-            </el-form-item>
-            <el-form-item label="知识点">
-              <el-select v-model="normalForm.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入知识点标签后按回车添加" style="width: 100%" />
-            </el-form-item>
-            <div v-if="validationResult" class="validation-result" :class="{ 'validation-success': validationResult.isValid, 'validation-fail': !validationResult.isValid }">
-              <div class="validation-header">
-                <el-icon><CircleCheck v-if="validationResult.isValid" /><Warning v-else /></el-icon>
-                <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
-                <span class="validation-confidence">置信度：{{ validationResult.confidence }}%</span>
-              </div>
-              <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
-                <div class="suggestions-title">💡 修改建议：</div>
-                <ul><li v-for="(s, idx) in validationResult.suggestions" :key="idx">{{ s }}</li></ul>
-              </div>
-              <div v-if="validationResult.correctedAnswer" class="validation-corrected">
-                <span>修正答案：</span><span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
-              </div>
-              <div v-if="validationResult.improvedAnalysis" class="validation-improved">
-                <span>优化解析：</span><span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
-              </div>
-            </div>
-          </el-form>
-        </el-tab-pane>
-
-        <!-- 阅读理解 -->
-        <el-tab-pane label="阅读理解" name="READING">
-          <div class="reading-form" v-loading="groupLoading">
+      <!-- 阅读理解专门表单（文章 + 子题目列表） -->
+      <div v-if="activeTab === 'READING'" class="reading-section">
+        <div class="reading-form" v-loading="groupLoading">
             <el-form label-width="90px">
               <el-row :gutter="12">
                 <el-col :span="10">
@@ -2516,7 +2219,23 @@ onMounted(async () => {
                     <el-input v-model="q.analysis" type="textarea" :rows="2" placeholder="答案解析" />
                   </el-form-item>
                   <el-form-item label="知识点" :label-width="60">
-                    <el-select v-model="q.knowledgePoints" multiple collapse-tags allow-create filterable placeholder="输入后回车添加" style="width: 100%" />
+                    <el-select
+                      v-model="q.knowledgePoints"
+                      multiple
+                      collapse-tags
+                      allow-create
+                      filterable
+                      default-first-option
+                      placeholder="请选择或输入后回车添加"
+                      style="width: 100%"
+                    >
+                      <el-option
+                        v-for="kp in existingKnowledgePoints"
+                        :key="kp"
+                        :label="kp"
+                        :value="kp"
+                      />
+                    </el-select>
                   </el-form-item>
                 </div>
 
@@ -2524,11 +2243,226 @@ onMounted(async () => {
               </div>
             </el-form>
           </div>
-        </el-tab-pane>
-      </el-tabs>
+      </div>
+
+      <!-- 普通题型统一表单（单选 / 多选 / 判断 / 纯填空 / 带提示填空） -->
+      <div v-else class="normal-form-box">
+        <el-form ref="formRef" :model="normalForm" :rules="rules" label-width="90px">
+          <!-- 1. 分类 / 难度 / 默认分值 -->
+          <el-row :gutter="12">
+            <el-col :span="12">
+              <el-form-item label="分类" prop="categoryId">
+                <el-cascader
+                  v-model="normalForm.categoryId"
+                  :options="categories"
+                  :props="{ value: 'id', label: 'categoryName', children: 'children', checkStrictly: true, emitPath: false }"
+                  clearable
+                  style="width: 100%"
+                />
+              </el-form-item>
+            </el-col>
+            <el-col :span="6">
+              <el-form-item label="难度" prop="difficulty">
+                <el-select v-model="normalForm.difficulty" style="width: 100%">
+                  <el-option v-for="op in diffOptions" :key="op.value" :label="op.label" :value="op.value" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :span="6">
+              <el-form-item label="默认分值">
+                <el-input-number v-model="normalForm.defaultScore" :min="0.5" :max="100" :step="0.5" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+
+          <!-- 2. 状态 -->
+          <el-form-item label="状态">
+            <el-radio-group v-model="normalForm.status">
+              <el-radio :value="1">启用</el-radio>
+              <el-radio :value="0">停用</el-radio>
+            </el-radio-group>
+          </el-form-item>
+
+          <!-- 3. 考点标签 -->
+          <el-form-item label="考点标签">
+            <el-select v-model="normalForm.tagIds" multiple clearable style="width: 100%" placeholder="请选择考点标签">
+              <el-option v-for="tag in tagOptions" :key="tag.id" :label="tag.tagName" :value="tag.id" />
+            </el-select>
+          </el-form-item>
+
+          <!-- 4. 题干 -->
+          <el-form-item label="题干" prop="stem">
+            <el-input
+              v-model="normalForm.stem"
+              type="textarea"
+              :rows="3"
+              :placeholder="
+                activeTab === 'FILL' || activeTab === 'FILL_HINT'
+                  ? '请输入题干，使用 [BLANK] 或 __ 表示填空位置'
+                  : '请输入题干'
+              "
+            />
+          </el-form-item>
+
+          <!-- 5. 作答区：按当前题型精准渲染，彻底杜绝组件错位 -->
+
+          <!-- (1) 单选题作答区 -->
+          <template v-if="activeTab === 'SINGLE'">
+            <el-form-item label="选项">
+              <div class="opt-list">
+                <div v-for="(op, idx) in normalForm.options" :key="idx" class="opt-row">
+                  <el-tag class="opt-key">{{ op.optionLabel }}</el-tag>
+                  <el-input v-model="op.optionContent" placeholder="选项内容" />
+                  <el-button link type="danger" size="small" @click="removeOption(idx)">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
+                <el-button size="small" @click="addOption"><el-icon><Plus /></el-icon>添加选项</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item label="正确答案">
+              <el-radio-group v-model="normalForm.answerSingle">
+                <el-radio v-for="op in normalForm.options" :key="op.optionLabel" :value="op.optionLabel">
+                  {{ op.optionLabel }}
+                </el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </template>
+
+          <!-- (2) 多选题作答区：checkbox-group 多选复选框 -->
+          <template v-else-if="activeTab === 'MULTIPLE'">
+            <el-form-item label="选项">
+              <div class="opt-list">
+                <div v-for="(op, idx) in normalForm.options" :key="idx" class="opt-row">
+                  <el-tag class="opt-key">{{ op.optionLabel }}</el-tag>
+                  <el-input v-model="op.optionContent" placeholder="选项内容" />
+                  <el-button link type="danger" size="small" @click="removeOption(idx)">
+                    <el-icon><Delete /></el-icon>
+                  </el-button>
+                </div>
+                <el-button size="small" @click="addOption"><el-icon><Plus /></el-icon>添加选项</el-button>
+              </div>
+              <span class="fill-hint">提示：多选题至少需要 2 个选项</span>
+            </el-form-item>
+            <el-form-item label="正确答案">
+              <el-checkbox-group v-model="normalForm.answerMulti">
+                <el-checkbox
+                  v-for="op in normalForm.options"
+                  :key="op.optionLabel"
+                  :label="op.optionLabel"
+                  :value="op.optionLabel"
+                >
+                  {{ op.optionLabel }}
+                </el-checkbox>
+                <span v-if="normalForm.answerMulti.length > 0" class="multi-hint">
+                  已选 {{ normalForm.answerMulti.length }} 个答案
+                </span>
+              </el-checkbox-group>
+            </el-form-item>
+          </template>
+
+          <!-- (3) 判断题作答区：对 / 错 -->
+          <template v-else-if="activeTab === 'JUDGE'">
+            <el-form-item label="正确答案">
+              <el-radio-group v-model="normalForm.answerJudge">
+                <el-radio value="TRUE">对</el-radio>
+                <el-radio value="FALSE">错</el-radio>
+              </el-radio-group>
+            </el-form-item>
+          </template>
+
+          <!-- (4) 纯填空题作答区 -->
+          <template v-else-if="activeTab === 'FILL'">
+            <el-form-item label="填空答案">
+              <el-input v-model="normalForm.answerFill" placeholder="填空答案，如 gets / are playing / finished" />
+              <span class="fill-hint">默认忽略大小写判分；选「区分大小写」后学生必须原样输入</span>
+            </el-form-item>
+            <el-form-item label="答案格式">
+              <el-select v-model="normalForm.answerFormat" style="width: 100%">
+                <el-option label="忽略大小写（默认，推荐）" value="CASE_INSENSITIVE" />
+                <el-option label="区分大小写（专有名词等必须照抄）" value="CASE_SENSITIVE" />
+                <el-option label="仅单词（答案不含空格）" value="WORD_ONLY" />
+                <el-option label="整句作答（允许空格与标点）" value="SENTENCE" />
+              </el-select>
+            </el-form-item>
+          </template>
+
+          <!-- (5) 带提示填空题作答区 -->
+          <template v-else-if="activeTab === 'FILL_HINT'">
+            <el-form-item label="提示词">
+              <el-input v-model="normalForm.fillHint" placeholder="括号内的提示词，如：verb, noun, past tense" />
+            </el-form-item>
+            <el-form-item label="填空答案">
+              <el-input v-model="normalForm.answerFill" placeholder="填空答案，如 gets / are playing / finished" />
+              <span class="fill-hint">默认忽略大小写判分；选「区分大小写」后学生必须原样输入</span>
+            </el-form-item>
+            <el-form-item label="答案格式">
+              <el-select v-model="normalForm.answerFormat" style="width: 100%">
+                <el-option label="忽略大小写（默认，推荐）" value="CASE_INSENSITIVE" />
+                <el-option label="区分大小写（专有名词等必须照抄）" value="CASE_SENSITIVE" />
+                <el-option label="仅单词（答案不含空格）" value="WORD_ONLY" />
+                <el-option label="整句作答（允许空格与标点）" value="SENTENCE" />
+              </el-select>
+            </el-form-item>
+          </template>
+
+          <!-- 6. 解析 -->
+          <el-form-item label="解析">
+            <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
+          </el-form-item>
+
+          <!-- 7. 知识点 -->
+          <el-form-item label="知识点">
+            <el-select
+              v-model="normalForm.knowledgePoints"
+              multiple
+              collapse-tags
+              allow-create
+              filterable
+              default-first-option
+              placeholder="请选择或输入知识点按回车添加"
+              style="width: 100%"
+            >
+              <el-option
+                v-for="kp in existingKnowledgePoints"
+                :key="kp"
+                :label="kp"
+                :value="kp"
+              />
+            </el-select>
+          </el-form-item>
+
+          <!-- 8. AI 验证结果反馈 -->
+          <div v-if="validationResult" class="validation-result" :class="{ 'validation-success': validationResult.isValid, 'validation-fail': !validationResult.isValid }">
+            <div class="validation-header">
+              <el-icon><CircleCheck v-if="validationResult.isValid" /><Warning v-else /></el-icon>
+              <span>{{ validationResult.isValid ? 'AI验证通过' : 'AI验证未通过' }}</span>
+              <span class="validation-confidence">置信度：{{ validationResult.confidence }}%</span>
+            </div>
+            <div v-if="validationResult.suggestions?.length" class="validation-suggestions">
+              <div class="suggestions-title">💡 修改建议：</div>
+              <ul><li v-for="(s, idx) in validationResult.suggestions" :key="idx">{{ s }}</li></ul>
+            </div>
+            <div v-if="validationResult.correctedAnswer" class="validation-corrected">
+              <span>修正答案：</span><span class="corrected-value">{{ validationResult.correctedAnswer }}</span>
+            </div>
+            <div v-if="validationResult.improvedAnalysis" class="validation-improved">
+              <span>优化解析：</span><span class="improved-value">{{ validationResult.improvedAnalysis }}</span>
+            </div>
+          </div>
+        </el-form>
+      </div>
 
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button
+          v-if="editMode === 'create' && activeTab !== 'READING'"
+          type="success"
+          plain
+          @click="fillQuickSample"
+        >
+          <el-icon><EditPen /></el-icon>快速填入示例
+        </el-button>
         <el-button
           v-if="activeTab !== 'READING'"
           type="primary"
@@ -2569,11 +2503,10 @@ onMounted(async () => {
           <el-descriptions-item label="分类">{{ detail.categoryName || '-' }}</el-descriptions-item>
           <el-descriptions-item label="分值">{{ detail.defaultScore ?? 2 }} 分</el-descriptions-item>
           <el-descriptions-item label="被引用">{{ detail.usageCount ?? 0 }} 次</el-descriptions-item>
-          <el-descriptions-item label="标准答案">{{ detail.standardAnswer || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="标准答案">{{ formatAnswerDisplay(detail) }}</el-descriptions-item>
           <el-descriptions-item label="作答位">
             {{ detail.multiAnswer ? '多个（复选）' : '单个' }}
           </el-descriptions-item>
-          <el-descriptions-item label="来源">{{ sourceLabel(detail.source) }}</el-descriptions-item>
           <el-descriptions-item label="创建人">{{ detail.createByName || '-' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间" :span="2">
             {{ fmtDate(detail.createTime) }}
@@ -2604,6 +2537,22 @@ onMounted(async () => {
               </span>
               <template v-else>{{ seg.text }}</template>
             </template>
+          </div>
+        </div>
+
+        <!-- 判断题答案呈现 -->
+        <div class="detail-block" v-if="detail.questionType === 'JUDGE'">
+          <div class="detail-label">判断题判定</div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-top: 6px;">
+            <span style="font-weight: 600; color: #475569;">标准答案：</span>
+            <el-tag
+              :type="formatAnswerDisplay(detail) === '对' ? 'success' : 'danger'"
+              size="large"
+              effect="dark"
+              style="font-size: 15px; padding: 0 16px; font-weight: bold;"
+            >
+              {{ formatAnswerDisplay(detail) === '对' ? '✓ 正确 (对)' : '✗ 错误 (错)' }}
+            </el-tag>
           </div>
         </div>
 
@@ -3467,5 +3416,35 @@ onMounted(async () => {
 .batch-hint {
   font-size: 12px;
   color: #909399;
+}
+
+.hide-tabs-header :deep(.el-tabs__header),
+.hide-tabs-header > .el-tabs__header {
+  display: none !important;
+}
+
+.edit-type-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  background-color: #ecf5ff;
+  border: 1px solid #d9ecff;
+  border-radius: 6px;
+
+  .type-title-prefix {
+    font-weight: 600;
+    font-size: 14px;
+    color: #303133;
+  }
+
+  .type-lock-notice {
+    font-size: 13px;
+    color: #909399;
+  }
+}
+.create-type-bar {
+  margin-bottom: 16px;
 }
 </style>

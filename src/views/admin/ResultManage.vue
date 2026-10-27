@@ -149,8 +149,13 @@ const doRegrade = async () => {
 const typeLabel = (t: QuestionType) =>
   ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL: '填空', FILL_HINT: '填空', READING: '阅读理解' } as Record<QuestionType, string>)[t] || t
 
-const answerText = (a: string | undefined | null) => {
+const answerText = (a: string | undefined | null, type?: QuestionType) => {
   if (a === undefined || a === null || a === '') return '（未作答）'
+  if (type === 'JUDGE') {
+    const up = a.trim().toUpperCase()
+    if (up === 'TRUE' || up === 'T' || up === '对' || up === '正确') return '对'
+    if (up === 'FALSE' || up === 'F' || up === '错' || up === '错误') return '错'
+  }
   return a
 }
 
@@ -507,8 +512,8 @@ onMounted(load)
                 <el-tag size="small" type="info">{{ a.obtainedScore ?? 0 }} 分</el-tag>
               </div>
               <div class="stem">{{ a.stem }}</div>
-              <div class="row"><span class="lbl">你的答案：</span><span :class="a.isCorrect === 1 ? 'ok-text' : 'ng-text'">{{ answerText(a.userAnswer) }}</span></div>
-              <div class="row"><span class="lbl">正确答案：</span><span class="ok-text">{{ answerText(a.standardAnswer) }}</span></div>
+              <div class="row"><span class="lbl">你的答案：</span><span :class="a.isCorrect === 1 ? 'ok-text' : 'ng-text'">{{ answerText(a.userAnswer, a.questionType) }}</span></div>
+              <div class="row"><span class="lbl">正确答案：</span><span class="ok-text">{{ answerText(a.standardAnswer, a.questionType) }}</span></div>
               <div class="row" v-if="a.analysis"><span class="lbl">解析：</span><span>{{ a.analysis }}</span></div>
             </div>
           </div>

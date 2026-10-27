@@ -49,11 +49,6 @@ export interface StudentStatistics {
 
   // tag 按考点标签错题分布（Top 20 最薄弱考点）
   tagStats?: TagStat[]
-
-  // training 训练时间设置
-  trainingSchedule?: TrainingSchedule
-  trainedDays?: number
-  daysRemaining?: number
 }
 
 export interface CategoryStat {
@@ -81,30 +76,6 @@ export interface TagStat {
   wrong: number
   /** 错误率 0-100 */
   errorRate: number
-}
-
-/** 训练时间设置（对齐后端 TrainingScheduleVO / TrainingScheduleRequest）
- * 同时用作请求与响应: 可选字段放宽 undefined 以便直接回填表单后提交,
- * 读取侧仍得到 `T | undefined`, 需显式收窄。 */
-export interface TrainingSchedule {
-  /** 训练计划开始日期，如 "2026-01-01" */
-  trainingStartDate?: string | undefined
-  /** 实际训练开始日期（老师/学生可手动改，如学生只能周末训练则改为最近周六） */
-  actualStartDate?: string | undefined
-  /** 训练计划结束日期 */
-  trainingEndDate?: string | undefined
-  /** 可训练星期（1-7 逗号分隔，如 "6,7" 表示仅周末可训练）*/
-  trainingDays?: string | undefined
-  /** 可训练星期中文名列表（后端直接返回，前端用来展示） */
-  trainingDayNames?: string[] | undefined
-  /** 每日训练时段-起 HH:mm */
-  trainingTimeFrom?: string | undefined
-  /** 每日训练时段-止 HH:mm */
-  trainingTimeTo?: string | undefined
-  /** 训练目标总时长（小时数） */
-  trainingTargetHours?: number | undefined
-  /** 训练备注 */
-  trainingNotes?: string | undefined
 }
 
 /* ============================================================ *

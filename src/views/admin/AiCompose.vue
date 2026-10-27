@@ -1016,7 +1016,6 @@ onMounted(async () => {
               <el-tag size="small">{{ typeLabel(q.questionType) }}</el-tag>
               <el-tag size="small" :type="diffTagType(q.difficulty)">{{ diffLabel(q.difficulty) }}</el-tag>
               <el-tag v-if="q.categoryName" size="small" type="info">{{ q.categoryName }}</el-tag>
-              <el-tag v-if="q.hasTrap" size="small" type="danger" effect="plain">⚠ 陷阱</el-tag>
             </div>
             <div class="q-stem">{{ q.stem }}</div>
             <div v-if="q.options?.length" class="q-opts">
@@ -1027,7 +1026,6 @@ onMounted(async () => {
             <div class="q-meta">
               <span class="ans">正确答案：<b>{{ answerText(q) }}</b></span>
               <span v-if="q.analysis" class="ana">解析：{{ q.analysis }}</span>
-              <span v-if="q.trapNote" class="ana" style="color:#f56c6c">陷阱说明：{{ q.trapNote }}</span>
             </div>
           </div>
         </div>

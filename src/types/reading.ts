@@ -33,7 +33,6 @@ export interface ReadingPassage {
   isTemp?: boolean
   createBy?: number
   createByName?: string
-  aiPrompt?: string
   createTime?: string
   updateTime?: string
   questions?: Question[]
@@ -59,7 +58,6 @@ export interface ReadingPassageForm {
   knowledgePoints?: string[] | undefined
   status?: 0 | 1 | undefined
   isTemp?: boolean | undefined
-  aiPrompt?: string | undefined
   questions?: ReadingQuestionItem[] | undefined
 }
 

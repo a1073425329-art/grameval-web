@@ -27,7 +27,6 @@ const { viewMode, toggleViewMode } = useViewMode('paper_manage')
 
 const query = reactive({
   paperName: '',
-  aiGenerated: undefined as boolean | undefined,
   minQuestionCount: undefined as number | undefined,
   maxQuestionCount: undefined as number | undefined,
   minTotalScore: undefined as number | undefined,
@@ -50,7 +49,6 @@ const load = async () => {
       pageNum: query.pageNum,
       pageSize: query.pageSize,
       paperName: query.paperName || undefined,
-      aiGenerated: query.aiGenerated,
       minQuestionCount: query.minQuestionCount,
       maxQuestionCount: query.maxQuestionCount,
       minTotalScore: query.minTotalScore,
@@ -66,7 +64,6 @@ const load = async () => {
 const search = () => { query.pageNum = 1; load() }
 const reset = () => {
   query.paperName = ''
-  query.aiGenerated = undefined
   query.minQuestionCount = undefined
   query.maxQuestionCount = undefined
   query.minTotalScore = undefined
@@ -497,10 +494,6 @@ onMounted(async () => {
             <el-input v-model="query.paperName" clearable placeholder="试卷名称" style="width:200px" />
           </el-form-item>
           <el-form-item label="AI 生成">
-            <el-select v-model="query.aiGenerated" clearable placeholder="全部" style="width:120px">
-              <el-option label="是" :value="true" />
-              <el-option label="否" :value="false" />
-            </el-select>
           </el-form-item>
           <el-form-item label="题量范围">
             <el-input-number v-model="query.minQuestionCount" :min="0" placeholder="最低" controls-position="right" style="width:100px" />
@@ -543,12 +536,6 @@ onMounted(async () => {
         <el-table-column type="index" label="#" width="60" />
         <el-table-column prop="paperName" label="试卷名称" min-width="180" show-overflow-tooltip />
         <el-table-column prop="description" label="描述" min-width="180" show-overflow-tooltip />
-        <el-table-column label="AI 生成" width="100" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.aiGenerated" type="warning" size="small" effect="light">是</el-tag>
-            <span v-else style="color:#c0c4cc">-</span>
-          </template>
-        </el-table-column>
         <el-table-column label="题量" width="80" align="center">
           <template #default="{ row }">{{ row.questionCount ?? 0 }}</template>
         </el-table-column>
@@ -595,7 +582,6 @@ onMounted(async () => {
           <div class="card-header">
             <span class="paper-id">#{{ item.id }}</span>
             <el-tag :type="statusType(item.status)" size="small">{{ statusText(item.status) }}</el-tag>
-            <el-tag v-if="item.aiGenerated" type="warning" size="small" effect="light">AI 生成</el-tag>
             <el-tag v-if="item.archiveStatus === 1" type="info" size="small">已归档</el-tag>
           </div>
           <div class="card-title">{{ item.paperName }}</div>

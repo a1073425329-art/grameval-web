@@ -68,10 +68,6 @@ export interface Question {
   passageQuestionOrder?: number
   /** 题目来源：MANUAL / AI / IMPORT / SEED_READING … */
   source?: string
-  hasTrap?: boolean
-  aiGenerated?: boolean
-  targetUserId?: number
-  trapNote?: string
   hintText?: string
   createTime?: string
   updateTime?: string
@@ -97,8 +93,6 @@ export interface QuestionForm {
   defaultScore?: number | undefined
   status?: 0 | 1 | undefined
   passageId?: number | undefined
-  hasTrap?: boolean | undefined
-  trapNote?: string | undefined
   /** 括号提示词（FILL_HINT） */
   hintText?: string | undefined
   /** 阅读子题型（仅 READING 有意义） */

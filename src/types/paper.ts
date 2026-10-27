@@ -41,8 +41,6 @@ export interface Paper {
   /** 0草稿 / 1启用 / 2停用 */
   status: 0 | 1 | 2
   createBy?: number
-  aiGenerated?: boolean
-  targetUserId?: number
   createTime?: string
   updateTime?: string
   questions?: PaperQuestionVO[]

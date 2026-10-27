@@ -85,10 +85,6 @@ export interface PreviewQuestion {
   standardAnswer?: string
   /** 解析 */
   analysis?: string
-  /** 是否陷阱题 */
-  hasTrap?: boolean
-  /** 陷阱说明 */
-  trapNote?: string
   /** 阅读理解题：所属文章 tempId（关联 passages[].tempId） */
   passageTempId?: string
   /** 选择题选项（预览态无 optionId） */

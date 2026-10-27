@@ -25,7 +25,6 @@ import type {
 import type {
   StudentStatistics,
   DimensionAnalysis,
-  TrainingSchedule,
 } from '@/types/stats'
 import type { LearningProgress } from '@/types/progress'
 import type { MessageNotification, UnreadCount, MessageQuery, NotificationPreference, UnreadCountByCategory } from '@/types/notification'
@@ -254,16 +253,9 @@ export const getStudentStatistics = (id: number, include?: string) =>
  * 单场考试多维度对错分析 —— GET /api/students/exams/{examId}/dimension-analysis
  * 返回该场考试按考点标签/语法大类/难度/题型 的对错统计。
  */
+/** 查询该场考试按考点标签/语法大类/难度/题型 的对错统计。 */
 export const getDimensionAnalysis = (examId: number) =>
   request.get<ApiResponse<DimensionAnalysis>>(`/students/exams/${examId}/dimension-analysis`)
-
-/** 查询学生的训练时间设置 */
-export const getTrainingSchedule = (id: number) =>
-  request.get<ApiResponse<TrainingSchedule>>(`/students/${id}/training-schedule`)
-
-/** 修改学生的训练时间设置（只传变更字段） */
-export const updateTrainingSchedule = (id: number, data: Partial<TrainingSchedule>) =>
-  request.put<ApiResponse<TrainingSchedule>>(`/students/${id}/training-schedule`, data)
 
 /* ============================================================ *
  *  7. 学习进度

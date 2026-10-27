@@ -10,7 +10,6 @@ export interface ExamMonitorEvent {
   eventTime: string
   durationSeconds?: number
   clientInfo?: string
-  screenshotPath?: string
   detail?: string
   handled: boolean
   handledBy?: number

@@ -54,16 +54,6 @@ export interface UserDetail {
   createTime: string
   updateTime?: string | undefined
 
-  // ===== 学生训练信息（仅 STUDENT 角色返回） =====
-  /** 训练计划开始日期，如 "2026-01-01" */
-  trainingStartDate?: string | undefined
-  /** 实际训练开始日期（可手动修改） */
-  actualStartDate?: string | undefined
-  /** 训练计划结束日期 */
-  trainingEndDate?: string | undefined
-  /** 可训练星期（逗号分隔 1-7） */
-  trainingDays?: string | undefined
-
   // ===== 所属老师信息（仅 STUDENT 角色返回） =====
   teacher?: TeacherInfo | undefined
 }

@@ -89,7 +89,6 @@ export interface AdminQuestionQuery extends PageQuery {
   status?: number | undefined
   minUsageCount?: number | undefined
   maxUsageCount?: number | undefined
-  hasTrap?: boolean | undefined
   total?: number | undefined
 }
 
@@ -136,7 +135,6 @@ export interface PaperListQuery extends PageQuery {
   paperName?: string | undefined
   status?: number | undefined
   createBy?: number | undefined
-  aiGenerated?: boolean | undefined
   minQuestionCount?: number | undefined
   maxQuestionCount?: number | undefined
   minTotalScore?: number | undefined
@@ -409,9 +407,6 @@ export interface ClassStudent {
   phone?: string
   status?: number
   lastLoginTime?: string
-  trainingDays?: string
-  trainingStartDate?: string
-  actualStartDate?: string
   /** 学习概览（与后端学生列表同口径，供「按班级」Tab 渲染） */
   examCount?: number
   recentScore?: number

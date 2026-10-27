@@ -132,7 +132,6 @@ const form = reactive({
   source: 'MANUAL',
   status: 1 as 0 | 1,
   isTemp: false,
-  aiPrompt: '',
   questions: [] as SubQuestion[],
 })
 
@@ -183,7 +182,6 @@ const resetForm = () => {
   form.source = 'MANUAL'
   form.status = 1
   form.isTemp = false
-  form.aiPrompt = ''
   form.questions = []
 }
 
@@ -229,7 +227,6 @@ const openEdit = async (row: ReadingPassage) => {
   form.source = r.source ?? 'MANUAL'
   form.status = (r.status ?? 1) as 0 | 1
   form.isTemp = !!r.isTemp
-  form.aiPrompt = r.aiPrompt ?? ''
   form.questions = (r.questions ?? []).map((q) => ({
     id: q.id,
     stem: q.stem,
@@ -296,7 +293,6 @@ const aiGeneratePassage = async () => {
       form.translation = data.translation
     }
     form.source = 'AI'
-    form.aiPrompt = `AI 生成：主题 ${form.topic || '综合'}，类型 ${typeLabel(form.passageType) || '通用'}，难度 ${diffLabel(form.difficulty)}`
     // 后端生成的配套题目带 options，映射为表单子题结构
     if (data.questions?.length) {
       form.questions = data.questions.map((q) => ({
@@ -343,7 +339,6 @@ const submit = async () => {
       knowledgePoints: form.knowledgePoints.length ? form.knowledgePoints : undefined,
       status: form.status,
       isTemp: form.isTemp,
-      aiPrompt: form.aiPrompt || undefined,
       questions: form.questions.map((q) => ({
         stem: q.stem,
         standardAnswer: q.standardAnswer,

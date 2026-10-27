@@ -102,12 +102,6 @@ onMounted(load)
 
 // ===== Helpers =====
 const accuracyColor = (v?: number) => { if (v == null) return '#909399'; if (v >= 80) return '#67c23a'; if (v >= 60) return '#e6a23c'; return '#f56c6c' }
-const weekDayNames: Record<string, string> = { '1': '周一', '2': '周二', '3': '周三', '4': '周四', '5': '周五', '6': '周六', '7': '周日' }
-const trainingDaysText = computed(() => {
-  const td = stats.value?.trainingSchedule?.trainingDays
-  if (!td) return '未设置'
-  return td.split(',').map(d => weekDayNames[d.trim()] || d).join('、')
-})
 
 // ===== 图表配置 =====
 
@@ -600,24 +594,12 @@ const scoreDistributionSummary = computed(() => {
         </el-col>
       </el-row>
 
-      <!-- ====== 考点弱点 + 训练计划 ====== -->
+      <!-- ====== 考点弱点 ====== -->
       <el-row :gutter="16">
-        <el-col v-if="tagChartOption.series" :span="14">
+        <el-col v-if="tagChartOption.series" :span="24">
           <el-card shadow="never" class="section-card">
             <template #header>⚠️ 考点弱点排行（Top {{ Math.min(stats.tagStats?.length ?? 0, 15) }}）</template>
             <VChart :option="tagChartOption" autoresize style="height:340px" />
-          </el-card>
-        </el-col>
-        <el-col :span="tagChartOption.series ? 10 : 24">
-          <el-card v-if="stats.trainingSchedule || stats.trainedDays != null" shadow="never" class="section-card">
-            <template #header>📅 训练计划</template>
-            <div class="training-grid">
-              <div class="tg-item"><div class="tg-label">训练日</div><div class="tg-value">{{ trainingDaysText }}</div></div>
-              <div class="tg-item" v-if="stats.trainingSchedule?.trainingTimeFrom"><div class="tg-label">每日时段</div><div class="tg-value">{{ stats.trainingSchedule.trainingTimeFrom }} ~ {{ stats.trainingSchedule.trainingTimeTo }}</div></div>
-              <div class="tg-item" v-if="stats.trainingSchedule?.trainingTargetHours"><div class="tg-label">目标时长</div><div class="tg-value">{{ stats.trainingSchedule.trainingTargetHours }} 小时</div></div>
-              <div class="tg-item"><div class="tg-label">已训练</div><div class="tg-value">{{ stats.trainedDays ?? 0 }} 天</div></div>
-              <div class="tg-item"><div class="tg-label">剩余</div><div class="tg-value" style="color:#e6a23c">{{ stats.daysRemaining ?? '-' }} 天</div></div>
-            </div>
           </el-card>
         </el-col>
       </el-row>

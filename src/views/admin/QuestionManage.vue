@@ -57,7 +57,6 @@ const query = reactive({
   questionType: undefined as QuestionType | undefined,
   difficulty: undefined as Difficulty | undefined,
   status: undefined as number | undefined,
-  hasTrap: undefined as boolean | undefined,
   minUsageCount: undefined as number | undefined,
   maxUsageCount: undefined as number | undefined,
   pageNum: 1,
@@ -146,7 +145,6 @@ const load = async () => {
       questionType: query.questionType,
       difficulty: query.difficulty,
       status: query.status,
-      hasTrap: query.hasTrap,
       minUsageCount: query.minUsageCount,
       maxUsageCount: query.maxUsageCount,
     })
@@ -166,7 +164,6 @@ const reset = () => {
   query.questionType = undefined
   query.difficulty = undefined
   query.status = undefined
-  query.hasTrap = undefined
   query.minUsageCount = undefined
   query.maxUsageCount = undefined
   query.pageNum = 1
@@ -205,8 +202,6 @@ type NormalForm = {
   options: QuestionOption[]
   defaultScore: number
   status: 0 | 1
-  hasTrap: boolean
-  trapNote: string
   answerSingle: string
   answerMulti: string[]
   answerJudge: 'TRUE' | 'FALSE' | ''
@@ -235,8 +230,6 @@ const normalForm = reactive<NormalForm>({
   ],
   defaultScore: 2.0,
   status: 1,
-  hasTrap: false,
-  trapNote: '',
   answerSingle: '',
   answerMulti: [],
   answerJudge: '',
@@ -269,8 +262,6 @@ const resetNormalForm = () => {
     ],
     defaultScore: 2.0,
     status: 1,
-    hasTrap: false,
-    trapNote: '',
     answerSingle: '',
     answerMulti: [],
     answerJudge: '',
@@ -736,8 +727,6 @@ const openEdit = (row: Question) => {
   normalForm.stem = row.stem
   normalForm.defaultScore = row.defaultScore ?? 2
   normalForm.status = (row.status ?? 1) as 0 | 1
-  normalForm.hasTrap = !!row.hasTrap
-  normalForm.trapNote = row.trapNote || ''
   normalForm.analysis = row.analysis || ''
   normalForm.knowledgePoints = row.knowledgePoints || []
   normalForm.tagIds = row.tagIds || []
@@ -984,8 +973,6 @@ const submit = async () => {
       difficulty: normalForm.difficulty,
       defaultScore: normalForm.defaultScore,
       status: normalForm.status,
-      hasTrap: normalForm.hasTrap,
-      trapNote: normalForm.trapNote,
       passageId: normalForm.passageId,
       tagIds: normalForm.tagIds,
       primaryTagId: normalForm.primaryTagId,
@@ -1313,7 +1300,7 @@ const exportCsv = () => {
   }
   exporting.value = true
   try {
-    const headers = ['ID', '题干', '分类', '题型', '难度', '默认分值', '状态', '引用次数', '陷阱', 'AI生成', '标准答案', '知识点']
+    const headers = ['ID', '题干', '分类', '题型', '难度', '默认分值', '状态', '引用次数', '标准答案', '知识点']
     const rows = list.value.map((q) => [
       q.id,
       q.stem,
@@ -1323,8 +1310,6 @@ const exportCsv = () => {
       q.defaultScore ?? '',
       q.status === 1 ? '启用' : '停用',
       q.usageCount ?? 0,
-      q.hasTrap ? '是' : '否',
-      q.aiGenerated ? '是' : '否',
       q.standardAnswer ?? '',
       (q.knowledgePoints ?? []).join(';'),
     ].map(escapeCsv).join(','))
@@ -1492,17 +1477,6 @@ onMounted(async () => {
             >
               <el-option label="启用" :value="1" />
               <el-option label="停用" :value="0" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="陷阱题">
-            <el-select
-              v-model="query.hasTrap"
-              clearable
-              placeholder="全部"
-              style="width: 100px"
-            >
-              <el-option label="是" :value="true" />
-              <el-option label="否" :value="false" />
             </el-select>
           </el-form-item>
           <el-form-item label="引用次数">
@@ -1708,8 +1682,7 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="来源" width="86" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.aiGenerated" type="primary" size="small" effect="light">AI</el-tag>
-            <span v-else class="source-text">{{ sourceLabel(row.source) }}</span>
+            <span class="source-text">{{ sourceLabel(row.source) }}</span>
           </template>
         </el-table-column>
         <el-table-column label="创建人" width="92" show-overflow-tooltip>
@@ -1720,12 +1693,6 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="引用" width="62" align="center">
           <template #default="{ row }">{{ row.usageCount ?? 0 }}</template>
-        </el-table-column>
-        <el-table-column label="陷阱" width="62" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.hasTrap" type="danger" size="small" effect="light">是</el-tag>
-            <span v-else style="color: #c0c4cc">-</span>
-          </template>
         </el-table-column>
         <el-table-column label="操作" width="188" align="center" fixed="right">
           <template #default="{ row }">
@@ -1805,7 +1772,7 @@ onMounted(async () => {
             <span class="meta-item">
               <span class="meta-label">来源</span>
               <span class="meta-value">
-                {{ item.aiGenerated ? 'AI 生成' : sourceLabel(item.source) }}
+                {{ sourceLabel(item.source) }}
               </span>
             </span>
           </div>
@@ -1990,10 +1957,6 @@ onMounted(async () => {
                 </el-radio>
               </el-radio-group>
             </el-form-item>
-            <el-form-item label="陷阱干扰">
-              <el-switch v-model="normalForm.hasTrap" />
-              <el-input v-if="normalForm.hasTrap" v-model="normalForm.trapNote" placeholder="陷阱说明（可选）" style="margin-top: 6px" />
-            </el-form-item>
             <el-form-item label="解析">
               <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
             </el-form-item>
@@ -2080,10 +2043,6 @@ onMounted(async () => {
                 </span>
               </el-checkbox-group>
             </el-form-item>
-            <el-form-item label="陷阱干扰">
-              <el-switch v-model="normalForm.hasTrap" />
-              <el-input v-if="normalForm.hasTrap" v-model="normalForm.trapNote" placeholder="陷阱说明（可选）" style="margin-top: 6px" />
-            </el-form-item>
             <el-form-item label="解析">
               <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
             </el-form-item>
@@ -2152,10 +2111,6 @@ onMounted(async () => {
                 <el-radio value="TRUE">正确</el-radio>
                 <el-radio value="FALSE">错误</el-radio>
               </el-radio-group>
-            </el-form-item>
-            <el-form-item label="陷阱干扰">
-              <el-switch v-model="normalForm.hasTrap" />
-              <el-input v-if="normalForm.hasTrap" v-model="normalForm.trapNote" placeholder="陷阱说明（可选）" style="margin-top: 6px" />
             </el-form-item>
             <el-form-item label="解析">
               <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
@@ -2231,10 +2186,6 @@ onMounted(async () => {
                 <el-option label="仅单词（答案不含空格）" value="WORD_ONLY" />
                 <el-option label="整句作答（允许空格与标点）" value="SENTENCE" />
               </el-select>
-            </el-form-item>
-            <el-form-item label="陷阱干扰">
-              <el-switch v-model="normalForm.hasTrap" />
-              <el-input v-if="normalForm.hasTrap" v-model="normalForm.trapNote" placeholder="陷阱说明（可选）" style="margin-top: 6px" />
             </el-form-item>
             <el-form-item label="解析">
               <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
@@ -2313,10 +2264,6 @@ onMounted(async () => {
                 <el-option label="仅单词（答案不含空格）" value="WORD_ONLY" />
                 <el-option label="整句作答（允许空格与标点）" value="SENTENCE" />
               </el-select>
-            </el-form-item>
-            <el-form-item label="陷阱干扰">
-              <el-switch v-model="normalForm.hasTrap" />
-              <el-input v-if="normalForm.hasTrap" v-model="normalForm.trapNote" placeholder="陷阱说明（可选）" style="margin-top: 6px" />
             </el-form-item>
             <el-form-item label="解析">
               <el-input v-model="normalForm.analysis" type="textarea" :rows="3" placeholder="题目解析（可选）" />
@@ -2615,8 +2562,6 @@ onMounted(async () => {
           <el-tag :type="detail.status === 1 ? 'success' : 'info'" size="small">
             {{ detail.status === 1 ? '启用' : '停用' }}
           </el-tag>
-          <el-tag v-if="detail.hasTrap" type="danger" size="small" effect="light">陷阱题</el-tag>
-          <el-tag v-if="detail.aiGenerated" type="primary" size="small" effect="light">AI</el-tag>
         </div>
 
         <el-descriptions :column="2" size="small" border class="detail-desc">
@@ -2693,11 +2638,6 @@ onMounted(async () => {
             <div>{{ detail.hintText }}</div>
           </div>
         </template>
-
-        <div class="detail-block" v-if="detail.trapNote">
-          <div class="detail-label">陷阱说明</div>
-          <div class="trap-note">{{ detail.trapNote }}</div>
-        </div>
 
         <div class="detail-block" v-if="detail.analysis">
           <div class="detail-label">解析</div>

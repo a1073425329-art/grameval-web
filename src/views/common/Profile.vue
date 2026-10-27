@@ -1,18 +1,16 @@
 <script setup lang="ts">
 /**
  * 个人资料页 —— 学生/管理员共用。
- * 展示：头像 + 角色 + 完整基本信息 + 学生专属（训练计划 + 所属老师）
+ * 展示：头像 + 角色 + 完整基本信息 + 学生专属（所属老师）
  * 编辑：realName / gender / email / phone / idCard / avatar
- * 修改密码 + 修改训练计划（学生）
+ * 修改密码
  */
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { getMyProfile, updateMyProfile, changeMyPassword } from '@/api/user'
-import { getTrainingSchedule, updateTrainingSchedule } from '@/api/student'
 import { useAuthStore } from '@/stores/auth'
 import type { UserDetail, UserUpdateForm, PasswordChangeForm } from '@/types/user'
-import type { TrainingSchedule } from '@/types/stats'
 import { FormLimits } from '@/utils/formLimits'
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024
@@ -50,12 +48,6 @@ const pwdRules: FormRules = {
   ],
 }
 
-/** 训练计划 */
-const training = ref<TrainingSchedule | null>(null)
-const editingTraining = ref(false)
-const trainingForm = reactive<TrainingSchedule>({
-  actualStartDate: '', trainingDays: '', trainingTimeFrom: '', trainingTimeTo: '', trainingTargetHours: undefined,
-})
 
 /* ============================================================ *
  *  Load
@@ -72,13 +64,6 @@ const load = async () => {
       email: user.email || '', phone: user.phone || '',
       idCard: user.idCard || '', avatar: user.avatar || '',
     })
-    // 学生拉训练计划
-    if (user.role === 'STUDENT') {
-      try {
-        const t = await getTrainingSchedule(user.id)
-        training.value = t.data
-      } catch { /* 可能未设置训练计划 */ }
-    }
   } finally { loading.value = false }
 }
 
@@ -113,33 +98,6 @@ const doChangePwd = async () => {
     if (!valid) return
     try { await changeMyPassword(detail.value!.id, { oldPassword: pwdForm.oldPassword, newPassword: pwdForm.newPassword }); pwdVisible.value = false; ElMessage.success('密码修改成功') } catch { /* handled */ }
   })
-}
-
-/* ============================================================ *
- *  编辑训练计划
- * ============================================================ */
-const startEditTraining = () => {
-  if (training.value) {
-    Object.assign(trainingForm, {
-      actualStartDate: training.value.actualStartDate || '',
-      trainingDays: training.value.trainingDays || '',
-      trainingTimeFrom: training.value.trainingTimeFrom || '',
-      trainingTimeTo: training.value.trainingTimeTo || '',
-      trainingTargetHours: training.value.trainingTargetHours,
-    })
-  }
-  editingTraining.value = true
-}
-const cancelEditTraining = () => { editingTraining.value = false }
-const saveTraining = async () => {
-  if (!detail.value) return
-  submitting.value = true
-  try {
-    const res = await updateTrainingSchedule(detail.value.id, trainingForm)
-    training.value = res.data
-    editingTraining.value = false
-    ElMessage.success('训练计划已更新')
-  } finally { submitting.value = false }
 }
 
 /* ============================================================ *
@@ -218,16 +176,6 @@ const avatarUrl = (u: UserDetail | null) => {
   if (u.username === 'student01') return '/avatars/student01.jpg'
   return u.role === 'ADMIN' ? '/avatars/admin.jpeg' : '/avatars/student.jpg'
 }
-const weekDayNames: Record<string, string> = { '1': '周一', '2': '周二', '3': '周三', '4': '周四', '5': '周五', '6': '周六', '7': '周日' }
-const trainingDaysLabel = (td?: string) => {
-  if (!td) return '未设置'
-  return td.split(',').map(d => weekDayNames[d.trim()] || d).join('、')
-}
-/** 训练日字符串 ↔ 数组互转 */
-const trainingDaysArr = computed({
-  get: () => trainingForm.trainingDays ? trainingForm.trainingDays.split(',').map(s => s.trim()).filter(Boolean) : [],
-  set: (arr: string[]) => { trainingForm.trainingDays = arr.join(',') },
-})
 
 onMounted(load)
 </script>
@@ -302,47 +250,6 @@ onMounted(load)
             </div>
           </div>
         </el-form-item>
-      </el-form>
-    </el-card>
-
-    <!-- ==================== 学生专属：训练计划 ==================== -->
-    <el-card v-if="detail?.role === 'STUDENT'" shadow="never">
-      <template #header>
-        <div class="card-head-between">
-          <div class="card-head"><el-icon><Calendar /></el-icon><span>训练计划</span></div>
-          <el-button v-if="!editingTraining" size="small" type="primary" link @click="startEditTraining">编辑</el-button>
-          <template v-else>
-            <div style="display:flex;gap:8px">
-              <el-button size="small" type="success" :loading="submitting" @click="saveTraining">保存</el-button>
-              <el-button size="small" @click="cancelEditTraining">取消</el-button>
-            </div>
-          </template>
-        </div>
-      </template>
-
-      <!-- 查看模式 -->
-      <el-descriptions v-if="!editingTraining" :column="3" border>
-        <el-descriptions-item label="计划开始">{{ detail?.trainingStartDate || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="实际开始">{{ detail?.actualStartDate || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="计划结束">{{ detail?.trainingEndDate || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="可训练日">{{ trainingDaysLabel(detail?.trainingDays) }}</el-descriptions-item>
-        <el-descriptions-item label="每日时段">{{ training?.trainingTimeFrom || '--' }} ~ {{ training?.trainingTimeTo || '--' }}</el-descriptions-item>
-        <el-descriptions-item label="目标时长">{{ training?.trainingTargetHours ? training.trainingTargetHours + ' 小时' : '-' }}</el-descriptions-item>
-      </el-descriptions>
-
-      <!-- 编辑模式 -->
-      <el-form v-else :model="trainingForm" label-width="100px" style="max-width:640px">
-        <el-form-item label="实际开始日期">
-          <el-date-picker v-model="trainingForm.actualStartDate" type="date" placeholder="选择日期" value-format="YYYY-MM-DD" style="width:100%" />
-        </el-form-item>
-        <el-form-item label="可训练星期">
-          <el-select v-model="trainingDaysArr" multiple placeholder="不选 = 每天" style="width:100%">
-            <el-option v-for="(name, key) in weekDayNames" :key="key" :label="name" :value="key" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="时段-起"><el-time-picker v-model="trainingForm.trainingTimeFrom" format="HH:mm" value-format="HH:mm" placeholder="开始时间" style="width:100%" /></el-form-item>
-        <el-form-item label="时段-止"><el-time-picker v-model="trainingForm.trainingTimeTo" format="HH:mm" value-format="HH:mm" placeholder="结束时间" style="width:100%" /></el-form-item>
-        <el-form-item label="目标时长"><el-input-number v-model="trainingForm.trainingTargetHours" :min="1" :max="999" /> 小时</el-form-item>
       </el-form>
     </el-card>
 

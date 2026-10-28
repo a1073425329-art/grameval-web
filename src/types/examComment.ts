@@ -12,8 +12,6 @@ export interface ExamComment {
   ratingLevel?: number
   isRead: boolean
   readTime?: string
-  parentCommentId?: number
-  replies?: ExamComment[]
   createTime: string
   updateTime?: string
 }
@@ -23,5 +21,4 @@ export interface ExamCommentForm {
   commentType: string
   content: string
   ratingLevel?: number | undefined
-  parentCommentId?: number | undefined
 }

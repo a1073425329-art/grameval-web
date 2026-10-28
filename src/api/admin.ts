@@ -87,8 +87,7 @@ export interface AdminQuestionQuery extends PageQuery {
   difficulty?: Difficulty | undefined
   keyword?: string | undefined
   status?: number | undefined
-  minUsageCount?: number | undefined
-  maxUsageCount?: number | undefined
+  // [2026-10-28] 后端 question.usage_count 列已清除，且这两个「引用次数区间」参数后端从来不认（失效筛选），已删除
   total?: number | undefined
 }
 
@@ -327,7 +326,6 @@ export interface ReadingPassageQuery extends PageQuery {
   difficulty?: Difficulty | undefined
   passageType?: string | undefined
   topic?: string | undefined
-  source?: string | undefined
   status?: number | undefined
   includeTemp?: boolean | undefined
   includeQuestions?: boolean | undefined

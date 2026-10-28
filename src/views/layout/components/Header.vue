@@ -13,13 +13,18 @@ const authStore = useAuthStore()
 const permissionStore = usePermissionStore()
 
 /** 头像下拉快捷入口 */
-const dropdownLinks = computed(() => {
+const dropdownLinks = computed<{ path: string; icon: string; label: string; superOnly?: boolean }[]>(() => {
+  // [2026-10-28 调整] 「我的学生 / 班级管理 / 操作日志」从侧边栏收进这里（路由 meta 加 hidden: true）。
+  //   班级管理与操作日志的路由 meta.superOnly=true，非超管账号连路由都不会注册，
+  //   所以下拉项必须用同一个 authStore.isSuperAdmin 过滤，否则点了就是 404 死链。
   if (authStore.role === 'ADMIN') return [
     { path: '/dashboard', icon: 'HomeFilled', label: '工作台' },
     { path: '/admin/profile', icon: 'User', label: '个人资料' },
     { path: '/admin/messages', icon: 'Bell', label: '消息中心' },
-    { path: '/admin/operation-logs', icon: 'Document', label: '操作日志' },
-  ]
+    { path: '/admin/my-students', icon: 'Avatar', label: '我的学生' },
+    { path: '/admin/classes', icon: 'School', label: '班级管理', superOnly: true },
+    { path: '/admin/operation-logs', icon: 'Document', label: '操作日志', superOnly: true },
+  ].filter((l) => !l.superOnly || authStore.isSuperAdmin)
   return [
     { path: '/student/home', icon: 'HomeFilled', label: '首页' },
     { path: '/student/messages', icon: 'Bell', label: '消息中心' },

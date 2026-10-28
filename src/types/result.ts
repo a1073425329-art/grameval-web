@@ -70,8 +70,7 @@ export interface ResultDetail {
   totalCount?: number
   /** 交卷时剩余秒数（>0 表示提前交卷） */
   remainingSeconds?: number
-  /** 断点续考次数 */
-  resumeCount?: number
+  // [2026-10-28] 后端 exam_record.resume_count 列已清除（「断点续考 N 次」元信息连功能一起砍），原同名字段删除
   /** 正确率（后端已按百分比给出） */
   correctRate?: number
   clientIp?: string

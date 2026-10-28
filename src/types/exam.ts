@@ -73,7 +73,8 @@ export interface ExamPaperView {
   duration: number
   deadline: string
   remainingSeconds: number
-  resumeCount: number
+  // [2026-10-28 清除] 后端 exam_record.resume_count 列已删除，续考次数与「第 N 次进入」提示一并砍掉。
+  //   原字段 resumeCount 移除；ExamRoom.vue 的「重新同步」按钮显示条件同步改为常显。
   answeredCount: number
   /** 普通题数 + 阅读组内子题数 */
   questionCount: number
@@ -155,7 +156,7 @@ export interface ExamRecord {
   submitStatus: 0 | 1 | 2
   submitStatusText?: string
   remainingSeconds?: number
-  resumeCount?: number
+  // [2026-10-28] 后端 exam_record.resume_count 列已清除（「第 N 次进入」提示连功能一起砍），原同名字段删除
   totalScore?: number
   scorePercentage?: number
   correctCount?: number
@@ -201,10 +202,7 @@ export interface AnswerDetail {
   difficulty?: Difficulty
   questionScore?: number
   questionOrder?: number
-  /** 答题用时（秒） */
-  spentTimeSeconds?: number
-  /** 是否标记：1已标记，0未标记 */
-  markedFlag?: 0 | 1
-  /** 修改次数 */
-  modifyCount?: number
+  // [2026-10-28] 原「答题用时（秒）」字段对应后端 answer_record.spent_time_seconds，该列无写入点恒 NULL ⇒ 删除
+  // [2026-10-28] 原「是否标记」字段对应后端 answer_record.marked_flag，该列无写入点恒 0 ⇒ 删除
+  // [2026-10-28] 后端 answer_record.modify_count 列已清除且无替代来源（决策 D-C：删展示而非改算），原同名字段删除
 }

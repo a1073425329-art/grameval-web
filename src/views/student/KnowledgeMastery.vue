@@ -349,16 +349,9 @@ const proficiencyColor = (score: number) => {
         <el-table-column label="答题/正确" width="90">
           <template #default="{ row }">{{ row.totalAnswers }} / {{ row.correctCount }}</template>
         </el-table-column>
-        <el-table-column label="连续正确" width="90">
-          <template #default="{ row }">
-            <el-tooltip v-if="row.maxConsecutiveCorrect > 0" :content="`历史最高：连续${row.maxConsecutiveCorrect}次正确`" placement="top" effect="light">
-              <span :style="{ color: row.consecutiveCorrect >= 5 ? '#67C23A' : '#606266', fontWeight: 600, cursor: 'help' }">
-                {{ row.consecutiveCorrect }}
-              </span>
-            </el-tooltip>
-            <span v-else>{{ row.consecutiveCorrect }}</span>
-          </template>
-        </el-table-column>
+        <!-- [2026-10-28 清除] 「连续正确」列随 knowledge_mastery.consecutive_correct /
+             max_consecutive_correct 两列一起删除（用户拍板：算不出来的统计连功能一起砍）。
+             原列体：row.consecutiveCorrect + 历史最高 maxConsecutiveCorrect 的 tooltip。 -->
         <el-table-column prop="weakPointCount" label="薄弱标记" width="90">
           <template #default="{ row }">
             <span v-if="row.weakPointCount > 0" style="color:#F56C6C;font-weight:600">{{ row.weakPointCount }}次</span>

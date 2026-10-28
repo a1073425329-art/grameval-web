@@ -114,7 +114,7 @@ const paperForm = reactive({
   paperName: '',
   description: '',
   passScore: 60 as number | undefined,
-  shuffleQuestions: false,
+  // [2026-10-28] 原「随机乱序」初值：后端 exam_paper.shuffle_questions 在取题排序里不读，假开关 ⇒ 删除
   status: 0 as 0 | 1 | 2,
 })
 
@@ -147,7 +147,7 @@ const baseRules: FormRules = {
 }
 
 const resetPaperForm = () => {
-  Object.assign(paperForm, { id: 0, paperName: '', description: '', passScore: 60, shuffleQuestions: false, status: 0 })
+  Object.assign(paperForm, { id: 0, paperName: '', description: '', passScore: 60, status: 0 })
   picked.value = []
   step.value = 0
 }
@@ -165,7 +165,7 @@ const openEdit = async (row: Paper) => {
   paperForm.paperName = row.paperName
   paperForm.description = row.description || ''
   paperForm.passScore = row.passScore
-  paperForm.shuffleQuestions = !!row.shuffleQuestions
+  // [2026-10-28] 原此行把详情里的 shuffle_questions 回填到表单开关；该列后端不读（假开关），表单已无该项 ⇒ 删除
   paperForm.status = row.status
   dialogVisible.value = true
   try {
@@ -367,7 +367,7 @@ const submit = async () => {
     paperName: paperForm.paperName,
     description: paperForm.description,
     passScore: paperForm.passScore,
-    shuffleQuestions: paperForm.shuffleQuestions,
+    // [2026-10-28] 原此对象多带一个 shuffle_questions 提交项，后端不读该列（假开关），随表单一并删除
     status: paperForm.status,
     questionUnits,
   }
@@ -555,9 +555,8 @@ onMounted(async () => {
         <el-table-column label="及格分" width="80" align="center">
           <template #default="{ row }">{{ row.passScore ?? 60 }}</template>
         </el-table-column>
-        <el-table-column label="建议时长" width="100" align="center">
-          <template #default="{ row }">{{ row.suggestedDuration ? row.suggestedDuration + ' 分钟' : '-' }}</template>
-        </el-table-column>
+        <!-- [2026-10-28] 原「建议时长」列：后端 exam_paper.suggested_duration 无写入点恒 NULL，
+             该列实际恒渲染「-」，属空白列 ⇒ 整列删除 -->
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
@@ -609,10 +608,8 @@ onMounted(async () => {
               <span class="stat-num">{{ item.passScore ?? 60 }}</span>
               <span class="stat-label">及格分</span>
             </div>
-            <div class="stat-item">
-              <span class="stat-num">{{ item.suggestedDuration ? item.suggestedDuration + '分' : '-' }}</span>
-              <span class="stat-label">建议时长</span>
-            </div>
+            <!-- [2026-10-28] 原「建议时长」统计位：读的是 exam_paper.suggested_duration（无写入点恒 NULL），
+                 卡片上恒显示「-」⇒ 删除，避免留下一格假数据 -->
           </div>
           <div class="card-footer">
             <span class="create-time">{{ item.createTime || '-' }}</span>
@@ -664,9 +661,8 @@ onMounted(async () => {
           <el-form-item label="及格分">
             <el-input-number v-model="paperForm.passScore" :min="0" :max="1000" />
           </el-form-item>
-          <el-form-item label="随机乱序">
-            <el-switch v-model="paperForm.shuffleQuestions" />
-          </el-form-item>
+          <!-- [2026-10-28] 原「随机乱序」el-form-item + el-switch 已删除：
+               后端 exam_paper.shuffle_questions 在取题排序里完全不被读取，该开关拨了也不生效，属假功能 -->
           <el-form-item label="状态">
             <el-radio-group v-model="paperForm.status">
               <el-radio :value="0">草稿</el-radio>
@@ -732,7 +728,7 @@ onMounted(async () => {
             <el-descriptions-item label="题量">{{ pickedQuestionCount }}</el-descriptions-item>
             <el-descriptions-item label="总分">{{ totalScore }}</el-descriptions-item>
             <el-descriptions-item label="及格分">{{ paperForm.passScore ?? '-' }}</el-descriptions-item>
-            <el-descriptions-item label="随机乱序">{{ paperForm.shuffleQuestions ? '是' : '否' }}</el-descriptions-item>
+            <!-- [2026-10-28] 原「随机乱序」预览行恒显示「否」（后端不读该列），随表单开关删除 -->
             <el-descriptions-item label="状态">{{ statusText(paperForm.status) }}</el-descriptions-item>
             <el-descriptions-item label="描述" :span="2">{{ paperForm.description || '-' }}</el-descriptions-item>
           </el-descriptions>

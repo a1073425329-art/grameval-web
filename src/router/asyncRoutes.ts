@@ -204,17 +204,19 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '用户管理', icon: 'UserFilled', roles: ['ADMIN'], group: '系统管理', superOnly: true },
   },
   {
+    // [2026-10-28 调整] 入口收进头像下拉，故 meta 加 hidden —— 侧边栏不渲染，路由仍注册、直达 /admin/my-students 可用
     path: 'admin/my-students',
     name: 'AdminMyStudents',
     component: () => import('@/views/admin/MyStudents.vue'),
-    meta: { title: '我的学生', icon: 'Avatar', roles: ['ADMIN'], group: '系统管理' },
+    meta: { title: '我的学生', icon: 'Avatar', roles: ['ADMIN'], group: '系统管理', hidden: true },
   },
   // 系统管理
   {
+    // [2026-10-28 调整] 入口收进头像下拉，故 meta 加 hidden —— 侧边栏不渲染，路由仍注册、直达 /admin/classes 可用
     path: 'admin/classes',
     name: 'AdminClasses',
     component: () => import('@/views/admin/ClassManage.vue'),
-    meta: { title: '班级管理', icon: 'School', roles: ['ADMIN'], group: '系统管理', superOnly: true },
+    meta: { title: '班级管理', icon: 'School', roles: ['ADMIN'], group: '系统管理', superOnly: true, hidden: true },
   },
   {
     // 【已禁用】工作流编排 —— 非主流程
@@ -224,10 +226,11 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '工作流编排', icon: 'Connection', roles: ['ADMIN'], group: '题库管理', disabled: true },
   },
   {
+    // [2026-10-28 调整] 入口收进头像下拉，故 meta 加 hidden —— 侧边栏不渲染，路由仍注册、直达 /admin/operation-logs 可用
     path: 'admin/operation-logs',
     name: 'AdminOperationLogs',
     component: () => import('@/views/admin/OperationLogs.vue'),
-    meta: { title: '操作日志', icon: 'Document', roles: ['ADMIN'], group: '系统管理', superOnly: true },
+    meta: { title: '操作日志', icon: 'Document', roles: ['ADMIN'], group: '系统管理', superOnly: true, hidden: true },
   },
   {
     path: 'admin/system-settings',

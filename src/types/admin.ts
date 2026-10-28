@@ -230,7 +230,7 @@ export interface QuestionAnalyticsRow {
   attemptCount: number
   correctCount: number
   accuracy: number
-  usageCount?: number
+  // [2026-10-28] 后端 question.usage_count 列已清除，本行项目原带同名字段（页面零消费），已删除
 }
 
 /** 操作日志 */
@@ -248,8 +248,6 @@ export interface OperationLog {
   detail?: string
   requestUri?: string
   requestParams?: string
-  requestBody?: string
-  responseBody?: string
   clientIp?: string
   userAgent?: string
   referer?: string

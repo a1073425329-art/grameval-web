@@ -39,11 +39,11 @@ const statsCards = computed(() => {
     { title: '考试场次', value: stats.value.sessionCount, icon: 'Calendar', color: '#909399' },
     // 今日指标
     { title: '今日活跃', value: stats.value.todayActiveStudents ?? 0, icon: 'Sunny', color: '#e040fb' },
-    { title: '今日提交', value: stats.value.todayExamSubmissions ?? 0, icon: 'Send', color: '#79bbff' },
+    { title: '今日提交', value: stats.value.todayExamSubmissions ?? 0, icon: 'Promotion', color: '#79bbff' },
     { title: '总正确率', value: (stats.value.overallAccuracy ?? 0).toFixed(1) + '%', icon: 'Odometer', color: '#00bcd4' },
-    { title: '平均分', value: (stats.value.averageScore ?? 0).toFixed(1), icon: 'Scoreboard', color: '#9c27b0' },
-    { title: '及格率', value: (stats.value.passRate ?? 0).toFixed(1) + '%', icon: 'CheckCircle', color: '#8bc34a' },
-    { title: '阅读文章', value: stats.value.passageCount ?? 0, icon: 'BookOpen', color: '#ff9800' },
+    { title: '平均分', value: (stats.value.averageScore ?? 0).toFixed(1), icon: 'Trophy', color: '#9c27b0' },
+    { title: '及格率', value: (stats.value.passRate ?? 0).toFixed(1) + '%', icon: 'CircleCheck', color: '#8bc34a' },
+    { title: '阅读文章', value: stats.value.passageCount ?? 0, icon: 'Reading', color: '#ff9800' },
     { title: '错题总数', value: stats.value.totalWrongQuestions ?? 0, icon: 'Warning', color: '#f44336' },
     { title: '练习次数', value: stats.value.practiceCount, icon: 'DataAnalysis', color: '#607d8b' },
   ]
@@ -267,35 +267,7 @@ const wrongCategoryOption = computed(() => {
   }
 })
 
-/* ============================================================ *
- *  Chart 9: 错题掌握情况（饼图）
- * ============================================================ */
-const wrongMasteryOption = computed(() => {
-  const data = stats.value.wrongMasteryStat
-  if (!data) return {}
-
-  const items = [
-    { name: '未复习', value: data.notReviewed, color: '#f56c6c' },
-    { name: '待复习', value: data.pendingReview, color: '#e6a23c' },
-    { name: '已复习', value: data.reviewed, color: '#409eff' },
-    { name: '已掌握', value: data.mastered, color: '#67c23a' },
-  ].filter(d => d.value > 0)
-
-  if (!items.length) return {}
-
-  return {
-    tooltip: { trigger: 'item', formatter: '{b}: {c} 题 ({d}%)' },
-    legend: { orient: 'vertical', right: 10, top: 'center' },
-    series: [{
-      name: '错题掌握', type: 'pie', radius: ['45%', '75%'], center: ['40%', '50%'],
-      avoidLabelOverlap: false,
-      itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
-      label: { show: false },
-      emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } },
-      data: items.map(d => ({ name: d.name, value: d.value, itemStyle: { color: d.color } })),
-    }],
-  }
-})
+/* 原「复习状态分布」饼图（Chart 9）已下线：依赖 student_wrong_question.review_status，该表与字段已废弃、后端只返回占位 0，论文 12 表亦无复习状态依据，故按 D31「算不出来就连功能一起砍」整卡删除，不留空态占位 */
 
 /* ============================================================ *
  *  Chart 10: 学习进度概览（雷达图）
@@ -447,16 +419,11 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
       </el-col>
     </el-row>
 
-    <!-- ==================== Row 4: 错题掌握 + 优等生 + 待进步学生 ==================== -->
+    <!-- ==================== Row 4: 优等生 + 待进步学生 ==================== -->
+    <!-- [2026-10-28] 原第三张「错题掌握情况」卡已下线，本行两张改为 :span="12" 铺满，
+         避免 1920×1080 下右侧空出 1/3（AGENTS §7 判据②：卡片不折行错位、不留残缺行） -->
     <el-row :gutter="16" style="margin-top:16px">
-      <el-col :span="8">
-        <el-card shadow="hover" class="chart-card">
-          <template #header><div class="card-title">错题掌握情况</div></template>
-          <v-chart v-if="wrongMasteryOption.series" :option="wrongMasteryOption" :style="{ height: chartHeight + 'px' }" autoresize />
-          <el-empty v-else description="暂无数据" :image-size="80" />
-        </el-card>
-      </el-col>
-      <el-col :span="8">
+      <el-col :span="12">
         <el-card shadow="hover">
           <template #header><div class="card-title">🏆 优等生 Top 5</div></template>
           <el-table v-if="stats.topStudents?.length" :data="stats.topStudents" size="small">
@@ -477,7 +444,7 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
           <el-empty v-else description="暂无数据" :image-size="80" />
         </el-card>
       </el-col>
-      <el-col :span="8">
+      <el-col :span="12">
         <el-card shadow="hover">
           <template #header><div class="card-title">📈 待进步学生 Top 5</div></template>
           <el-table v-if="stats.bottomStudents?.length" :data="stats.bottomStudents" size="small">

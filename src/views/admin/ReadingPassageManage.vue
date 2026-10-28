@@ -30,7 +30,6 @@ const query = reactive({
   difficulty: undefined as Difficulty | undefined,
   passageType: undefined as string | undefined,
   topic: undefined as string | undefined,
-  source: undefined as string | undefined,
   status: undefined as number | undefined,
   includeTemp: false,
   pageNum: 1,
@@ -48,12 +47,6 @@ const difficultyOptions = [
   { label: '中等', value: 2 },
   { label: '困难', value: 3 },
 ]
-const sourceOptions = [
-  { label: 'AI生成', value: 'AI' },
-  { label: '人工录入', value: 'MANUAL' },
-  { label: '批量导入', value: 'IMPORT' },
-  { label: '临时出题', value: 'TEMP' },
-]
 const passageTypeOptions = [
   { label: '记叙文', value: 'NARRATIVE' },
   { label: '说明文', value: 'EXPOSITORY' },
@@ -64,8 +57,6 @@ const passageTypeOptions = [
 
 const diffLabel = (d?: Difficulty) =>
   difficultyOptions.find((o) => o.value === d)?.label ?? String(d)
-const sourceLabel = (s?: string) =>
-  sourceOptions.find((o) => o.value === s)?.label ?? s
 const typeLabel = (t?: string) =>
   passageTypeOptions.find((o) => o.value === t)?.label ?? t
 const diffTagType = (d?: Difficulty) =>
@@ -131,7 +122,6 @@ const reset = () => {
   query.difficulty = undefined
   query.passageType = undefined
   query.topic = undefined
-  query.source = undefined
   query.status = undefined
   query.includeTemp = false
   query.pageNum = 1
@@ -169,7 +159,6 @@ const form = reactive({
   difficulty: 2 as Difficulty,
   passageType: '',
   topic: '',
-  source: 'MANUAL',
   status: 1 as 0 | 1,
   isTemp: false,
   questions: [] as SubQuestion[],
@@ -219,7 +208,6 @@ const resetForm = () => {
   form.difficulty = 2
   form.passageType = ''
   form.topic = ''
-  form.source = 'MANUAL'
   form.status = 1
   form.isTemp = false
   form.questions = []
@@ -264,7 +252,6 @@ const openEdit = async (row: ReadingPassage) => {
   form.difficulty = r.difficulty
   form.passageType = r.passageType ?? ''
   form.topic = r.topic ?? ''
-  form.source = r.source ?? 'MANUAL'
   form.status = (r.status ?? 1) as 0 | 1
   form.isTemp = !!r.isTemp
   form.questions = (r.questions ?? []).map((q) => ({
@@ -332,7 +319,6 @@ const aiGeneratePassage = async () => {
     if (data.translation) {
       form.translation = data.translation
     }
-    form.source = 'AI'
     // 后端生成的配套题目带 options，映射为表单子题结构
     if (data.questions?.length) {
       form.questions = data.questions.map((q) => ({
@@ -372,7 +358,6 @@ const submit = async () => {
       difficulty: form.difficulty,
       passageType: form.passageType || undefined,
       topic: form.topic || undefined,
-      source: form.source,
       summary: form.summary,
       translation: form.translation || undefined,
       keyVocabulary: vocab.length ? vocab : undefined,
@@ -520,11 +505,6 @@ onMounted(async () => {
           <el-form-item label="主题标签">
             <el-input v-model="query.topic" placeholder="如：科技、环保" :maxlength="FormLimits.shortText.max" clearable style="width: 130px" />
           </el-form-item>
-          <el-form-item label="数据来源">
-            <el-select v-model="query.source" clearable placeholder="不限" style="width: 120px">
-              <el-option v-for="op in sourceOptions" :key="op.value" :label="op.label" :value="op.value" />
-            </el-select>
-          </el-form-item>
           <el-form-item label="启用状态">
             <el-select v-model="query.status" clearable placeholder="不限" style="width: 110px">
               <el-option label="已启用" :value="1" />
@@ -610,9 +590,6 @@ onMounted(async () => {
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="来源" width="100">
-          <template #default="{ row }">{{ sourceLabel(row.source) }}</template>
-        </el-table-column>
         <el-table-column label="题目数" width="90" align="center">
           <template #default="{ row }">
             <el-tag size="small" type="info" effect="plain">{{ row.questionCount ?? 0 }}</el-tag>
@@ -678,10 +655,6 @@ onMounted(async () => {
             <span class="meta-item">
               <span class="meta-label">题数</span>
               <span class="meta-value">{{ item.questionCount ?? 0 }} 道</span>
-            </span>
-            <span class="meta-item">
-              <span class="meta-label">来源</span>
-              <span class="meta-value">{{ sourceLabel(item.source) }}</span>
             </span>
             <span class="meta-item" v-if="item.translation">
               <span class="meta-label">翻译</span>
@@ -770,16 +743,9 @@ onMounted(async () => {
               <el-input v-model="form.title" :maxlength="FormLimits.paperTitle.max" show-word-limit placeholder="文章标题（可选）" />
             </el-form-item>
           </el-col>
-          <el-col :span="6">
+          <el-col :span="12">
             <el-form-item label="主题">
               <el-input v-model="form.topic" :maxlength="FormLimits.shortText.max" placeholder="如：科技、环保" />
-            </el-form-item>
-          </el-col>
-          <el-col :span="4">
-            <el-form-item label="来源">
-              <el-select v-model="form.source" style="width: 100%">
-                <el-option v-for="op in sourceOptions" :key="op.value" :label="op.label" :value="op.value" />
-              </el-select>
             </el-form-item>
           </el-col>
         </el-row>
@@ -953,7 +919,6 @@ onMounted(async () => {
               <el-tag size="small" :type="currentPassageDetail.status === 1 ? 'success' : 'info'">
                 {{ currentPassageDetail.status === 1 ? '已启用' : '已停用' }}
               </el-tag>
-              <el-tag size="small" type="info" effect="plain">{{ sourceLabel(currentPassageDetail.source) }}</el-tag>
             </div>
           </div>
           <el-descriptions :column="3" border size="small" class="pi-desc">

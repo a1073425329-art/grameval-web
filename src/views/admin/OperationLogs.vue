@@ -2,7 +2,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import {
   List, Grid, Search, Refresh, Delete, View, Warning,
-  Clock, Connection, Document, Monitor, Cpu, WarningFilled
+  Clock, Connection, Document, Monitor, WarningFilled
 } from '@element-plus/icons-vue'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { 
@@ -156,16 +156,6 @@ const handleClearAll = async () => {
   await clearAllOperationLogs()
   ElMessage.success('所有日志已清空')
   load()
-}
-
-/** 格式化JSON */
-const formatJson = (str?: string) => {
-  if (!str) return ''
-  try {
-    return JSON.stringify(JSON.parse(str), null, 2)
-  } catch {
-    return str
-  }
 }
 
 /** HTTP方法颜色 */
@@ -523,16 +513,8 @@ onMounted(async () => {
         </div>
 
         <!-- 请求体 -->
-        <div v-if="detailLog.requestBody" class="detail-section">
-          <h4><el-icon><Cpu /></el-icon>请求体</h4>
-          <pre class="code-block">{{ formatJson(detailLog.requestBody) }}</pre>
-        </div>
 
         <!-- 响应体 -->
-        <div v-if="detailLog.responseBody" class="detail-section">
-          <h4><el-icon><Cpu /></el-icon>响应体</h4>
-          <pre class="code-block">{{ formatJson(detailLog.responseBody) }}</pre>
-        </div>
 
         <!-- 错误信息 -->
         <div v-if="detailLog.errorMessage" class="detail-section error">

@@ -3,20 +3,18 @@ export interface MessageNotification {
   title: string; content?: string; summary?: string
   type: string; typeLabel?: string; category: string; categoryLabel?: string
   priority: number; priorityLabel?: string; icon?: string; color?: string
-  relatedId?: number; relatedType?: string; relatedId2?: number; relatedType2?: string
-  senderName?: string; senderAvatar?: string
+  relatedId?: number; relatedType?: string
+  senderName?: string
   isRead: boolean; readTime?: string
   isPinned: boolean; isStarred: boolean; isArchived: boolean; isDeleted: boolean
   isDismissed: boolean; isActedUpon: boolean
   actionUrl?: string; actionText?: string; actionType?: string
   secondaryActionUrl?: string; secondaryActionText?: string
-  clickCount: number
+  // [2026-10-28] 后端 message_notification.click_count 列已清除（通知点击计数功能砍掉），原同名字段删除
   deliveryChannels?: string; pushStatus?: string; emailStatus?: string
   expireTime?: string; isExpired?: boolean
-  groupKey?: string; threadId?: number; threadDepth?: number
-  tags?: string; attachmentUrl?: string; attachmentName?: string
-  imageUrls?: string; reaction?: string; userRating?: number; userFeedback?: string
-  extraData?: string; campaignName?: string
+  threadId?: number; threadDepth?: number
+  reaction?: string; userRating?: number; userFeedback?: string
   createTime: string; updateTime?: string
 }
 
@@ -31,12 +29,9 @@ export interface NotificationPreference {
   id?: number; userId?: number
   notificationEnabled: boolean; quietHoursEnabled: boolean
   quietStartTime?: string; quietEndTime?: string
-  inAppEnabled: boolean; pushEnabled: boolean; emailEnabled: boolean
-  smsEnabled: boolean; wechatEnabled: boolean
+  inAppEnabled: boolean
   categorySettings?: string; typeSettings?: string
   soundEnabled: boolean; desktopNotificationEnabled: boolean
-  pushDeviceToken?: string; pushDeviceType?: string
-  emailAddress?: string; phoneNumber?: string
 }
 
 export type MessageCategory = 'INFO' | 'ALERT' | 'REMIND' | 'ACHIEVEMENT' | 'INTERACTION' | 'SYSTEM'

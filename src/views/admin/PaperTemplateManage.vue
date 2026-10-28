@@ -432,9 +432,8 @@ const examTone = (v?: string) => {
             <span class="tag-src" :class="`src-${srcTone(row.generateSource)}`">{{ srcLabel(row.generateSource) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="使用" width="80" align="center">
-          <template #default="{ row }">{{ row.usageCount }}</template>
-        </el-table-column>
+        <!-- [2026-10-28] 后端 exam_paper_template.usage_count 列已清除 ⇒ 原「使用」列（N 次使用）整列删除。
+             题量列（questionCount，后端改由 question_config 解析）按契约保留。 -->
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <span class="tag-status" :class="row.status === 1 ? 'on' : 'off'">{{ statusMap[row.status] }}</span>
@@ -481,7 +480,7 @@ const examTone = (v?: string) => {
         <div class="tpl-stats">
           <div class="tpl-stat"><b>{{ row.questionCount }}</b><span>题</span></div>
           <div class="tpl-stat"><b>{{ row.totalScore }}</b><span>分</span></div>
-          <div class="tpl-stat"><b>{{ row.usageCount }}</b><span>次使用</span></div>
+          <!-- [2026-10-28] 后端 exam_paper_template.usage_count 列已清除 ⇒ 卡片视图原「N 次使用」统计项删除。 -->
           <div class="tpl-stat"><span class="tpl-dot" :class="row.status === 1 ? 'on' : 'off'" />{{ statusMap[row.status] }}</div>
         </div>
         <div class="tpl-actions">

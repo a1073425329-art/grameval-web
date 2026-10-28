@@ -13,7 +13,11 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
-import { ArrowLeft, CircleCheck, CircleClose, Clock, PriceTag, EditPen, Flag, Bell, Trophy, Aim } from '@element-plus/icons-vue'
+import { ArrowLeft, CircleCheck, CircleClose, Clock, PriceTag, Bell, Trophy, Aim } from '@element-plus/icons-vue'
+// [2026-10-28] 本行原还导入 EditPen 图标，随「修改 N 次」徽标一并移出（types 层 noUnusedLocals 会拦未使用导入）
+// [2026-10-28] 本行原还导入 Flag 图标，随「已标记」标签一并移出（同上）
+// [2026-10-28] 原「标记」相关展示整套下线：后端 answer_record.marked_flag 无写入点，恒为 0，
+//   该分支与控件永远不可能显示，属答辩现场会被点开的假功能。
 
 use([CanvasRenderer, BarChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
@@ -80,7 +84,7 @@ const typeLabel = (t: QuestionType) => ({ SINGLE: '单选', MULTIPLE: '多选', 
  *  成绩概览增强
  *  下面这些字段接口本来就返回，只是原页面没有展示：
  *  classRank / totalCount（班级排名）、remainingSeconds（提前交卷）、
- *  resumeCount（断点续考）、paperTotalScore / 题量（每题分值）。
+ *  断点续考次数（后端已清除该列，不再展示）、paperTotalScore / 题量（每题分值）。
  * ============================================================ */
 
 /** 班级排名：第 N 名 / 共 M 人 */
@@ -122,7 +126,7 @@ const overviewCells = computed(() =>
     no: i + 1,
     questionId: a.questionId,
     ok: a.isCorrect === 1,
-    marked: a.markedFlag === 1,
+    // [2026-10-28] 原 marked 取 answer_record.marked_flag（恒 0），随「标记题」整套下线
   })),
 )
 
@@ -134,12 +138,11 @@ const jumpToQuestion = (questionId: number) => {
   window.setTimeout(() => el.classList.remove('flash'), 1400)
 }
 
-/** 明细筛选：全部 / 仅错题 / 仅标记 */
-const answerFilter = ref<'ALL' | 'WRONG' | 'MARKED'>('ALL')
-const markedCount = computed(() => answerItems.value.filter((a) => a.markedFlag === 1).length)
+/** 明细筛选：全部 / 仅错题 */
+const answerFilter = ref<'ALL' | 'WRONG'>('ALL')
+// [2026-10-28] 原「标记题数」统计项（依赖 answer_record.marked_flag，该列恒 0）随筛选档位一并下线
 const visibleAnswers = computed(() => {
   if (answerFilter.value === 'WRONG') return answerItems.value.filter((a) => a.isCorrect === 0)
-  if (answerFilter.value === 'MARKED') return answerItems.value.filter((a) => a.markedFlag === 1)
   return answerItems.value
 })
 
@@ -195,12 +198,8 @@ const submitStatusLabel = computed(() => {
   return { text: '未提交', color: '#909399' }
 })
 
-const spentTimeText = (seconds?: number) => {
-  if (!seconds) return '-'
-  const mins = Math.floor(seconds / 60)
-  const secs = seconds % 60
-  return mins > 0 ? `${mins}分${secs}秒` : `${secs}秒`
-}
+// [2026-10-28] 原「逐题用时」格式化函数已删除（它渲染 answer_record.spent_time_seconds，该列无写入点恒 NULL）：
+//   本文件内确认无其它调用者后随「答题用时」整块下线。
 
 // 判断选项是否是用户选择的
 const isUserSelected = (optionLabel: string, userAnswer?: string, questionType?: QuestionType) => {
@@ -388,11 +387,8 @@ const dimDifficultyChartOption = computed(() => {
           <span class="meta-label">提前交卷：</span>
           <span class="meta-value early">{{ earlySubmitText }}</span>
         </span>
-        <span class="meta-item" v-if="detail.resumeCount">
-          <span class="meta-icon"><Clock /></span>
-          <span class="meta-label">断点续考：</span>
-          <span class="meta-value">{{ detail.resumeCount }} 次</span>
-        </span>
+        <!-- [2026-10-28] 后端 exam_record.resume_count 列已清除，原「断点续考：N 次」元信息整块删除
+             （该块带 v-if，字段消失后本就恒不渲染，删除属行为等价）。 -->
         <span class="meta-item" v-if="rankBeatPercent !== null">
           <span class="meta-icon"><Trophy /></span>
           <span class="meta-label">排名位置：</span>
@@ -408,7 +404,7 @@ const dimDifficultyChartOption = computed(() => {
         <div class="ov-legend">
           <span class="lg ok">正确 {{ correctCount }}</span>
           <span class="lg ng">错误 {{ wrongCount }}</span>
-          <span class="lg mk" v-if="markedCount">标记 {{ markedCount }}</span>
+          <!-- [2026-10-28] 原「标记 N」图例带 v-if="标记数"，而 answer_record.marked_flag 恒 0 ⇒ 该块永不渲染，整行删除 -->
         </div>
       </div>
 
@@ -419,8 +415,8 @@ const dimDifficultyChartOption = computed(() => {
               v-for="c in overviewCells"
               :key="c.questionId"
               class="ov-cell"
-              :class="{ ok: c.ok, ng: !c.ok, marked: c.marked }"
-              :title="`第 ${c.no} 题 · ${c.ok ? '正确' : '错误'}${c.marked ? ' · 已标记' : ''}（点击定位）`"
+              :class="{ ok: c.ok, ng: !c.ok }"
+              :title="`第 ${c.no} 题 · ${c.ok ? '正确' : '错误'}（点击定位）`"
               @click="jumpToQuestion(c.questionId)"
             >
               {{ c.no }}
@@ -456,16 +452,17 @@ const dimDifficultyChartOption = computed(() => {
           <el-radio-group v-model="answerFilter" size="small">
             <el-radio-button value="ALL">全部 {{ answerItems.length }}</el-radio-button>
             <el-radio-button value="WRONG">仅错题 {{ wrongCount }}</el-radio-button>
-            <el-radio-button value="MARKED" :disabled="!markedCount">仅标记 {{ markedCount }}</el-radio-button>
+            <!-- [2026-10-28] 原「仅标记」档位 :disabled 依赖恒 0 的 marked_flag 计数，按钮恒灰且永不生效，删除 -->
           </el-radio-group>
         </div>
       </div>
 
       <el-empty
         v-if="!visibleAnswers.length"
-        :description="answerFilter === 'MARKED' ? '本卷没有标记的题目' : '本场考试没有错题 🎉'"
+        description="本场考试没有错题 🎉"
         :image-size="90"
       />
+      <!-- [2026-10-28] 本行原为三元文案：筛选值为标记档时显示「本卷没有标记的题目」，随该档位删除 -->
 
       <div
         v-for="a in visibleAnswers"
@@ -485,9 +482,8 @@ const dimDifficultyChartOption = computed(() => {
             <el-tag size="small" class="q-difficulty" :style="{ backgroundColor: difficultyLabel(a.difficulty || 2).color + '15', color: difficultyLabel(a.difficulty || 2).color, borderColor: difficultyLabel(a.difficulty || 2).color + '30' }">
               {{ difficultyLabel(a.difficulty || 2).text }}
             </el-tag>
-            <el-tag size="small" type="warning" v-if="a.markedFlag === 1">
-              <el-icon :size="12"><Flag /></el-icon> 已标记
-            </el-tag>
+            <!-- [2026-10-28] 原此处渲染「已标记」warning 标签（v-if 判 answer_record.marked_flag === 1），
+                 该列后端无写入点恒 0 ⇒ 标签永不出现，整块删除 -->
           </div>
           <div class="q-right">
             <span class="q-loss" v-if="a.isCorrect === 0">失 {{ a.questionScore ?? 0 }} 分</span>
@@ -537,18 +533,16 @@ const dimDifficultyChartOption = computed(() => {
           <div class="compare-item">
             <span class="compare-label">你的答案：</span>
             <span :class="a.isCorrect === 1 ? 'ok-text' : 'ng-text'">{{ answerText(a.userAnswer, a.questionType) }}</span>
-            <span v-if="a.modifyCount && a.modifyCount > 0" class="modify-badge">
-              <el-icon :size="12"><EditPen /></el-icon> 修改{{ a.modifyCount }}次
-            </span>
+            <!-- [2026-10-28] 后端 answer_record.modify_count 列已清除且无替代来源（决策 D-C：删展示），
+                 原「修改 N 次」徽标整块删除。该块带 v-if>0 判据，字段消失后本就恒不渲染，属行为等价。
+                 对应样式 .modify-badge 按契约「不改样式」条款保留未删。 -->
           </div>
           <div class="compare-item">
             <span class="compare-label">正确答案：</span>
             <span class="ok-text">{{ answerText(a.standardAnswer, a.questionType) }}</span>
           </div>
-          <div class="compare-item" v-if="a.spentTimeSeconds">
-            <span class="compare-label">答题用时：</span>
-            <span class="time-text">{{ spentTimeText(a.spentTimeSeconds) }}</span>
-          </div>
+          <!-- [2026-10-28] 原此处另有「答题用时」compare-item（v-if 判 answer_record.spent_time_seconds，
+               随 spent_time_text 格式化函数一并删除）：该列后端无写入点恒 NULL ⇒ 整块永不渲染 -->
         </div>
 
         <!-- 解析 -->
@@ -755,7 +749,7 @@ const dimDifficultyChartOption = computed(() => {
   border: 1px solid transparent; transition: all 0.15s;
   &.ok { background: #f0f9eb; color: #529b2e; border-color: #c2e7b0; }
   &.ng { background: #fef0f0; color: #c45656; border-color: #fab6b6; }
-  &.marked { outline: 2px dashed #e6a23c; outline-offset: 1px; }
+  /* [2026-10-28] 原 &.marked 橙色虚线描边规则随标记题整套下线（对应类名不再产生） */
   &:hover { transform: translateY(-2px); box-shadow: 0 3px 8px rgba(0,0,0,0.12); }
 }
 

@@ -198,9 +198,11 @@ const load = async () => {
   try {
     const res = await getExamQuestions(examId)
     applyPaperView(res.data)
-    if (res.data.resumeCount && res.data.resumeCount > 0) {
-      ElMessage.info(`已恢复上次进度（第 ${res.data.resumeCount + 1} 次进入）`)
-    }
+    // [2026-10-28 清除] 原实现：if (res.data.resumeCount && res.data.resumeCount > 0)
+    //   ElMessage.info(`已恢复上次进度（第 ${res.data.resumeCount + 1} 次进入）`)
+    // resume_count 列已删，次数无从判定；把它改成无条件提示会在**首次进入**时误报「已恢复上次进度」，
+    //   比不提示更糟 ⇒ 按「假数据与不可靠陈述一并清除」处理，提示整体删除。断点续考能力本身保留
+    //   （服务端 doResume 与场次 allowResume 开关都不受影响）。
   } catch {
     ElMessage.error('试卷加载失败')
     router.replace('/student/exams')
@@ -209,7 +211,8 @@ const load = async () => {
   }
 }
 
-/** 手动断点续考（比 GET /questions 更准，同时会累加 resumeCount） */
+/** 手动断点续考（比 GET /questions 更准）
+ *  [2026-10-28] 原注释末句「同时会累加续考次数」已作废 —— 后端该计数列已清除。 */
 const doResume = async () => {
   try {
     const res = await resumeExam(examId)
@@ -527,7 +530,8 @@ const confirmSubmit = () => {
       <div class="left">
         <el-icon size="18"><EditPen /></el-icon>
         <span class="exam-title">{{ paperView?.sessionName || '考试中' }}</span>
-        <el-tag v-if="paperView?.resumeCount" size="small" type="warning">续考 {{ paperView.resumeCount }} 次</el-tag>
+        <!-- [2026-10-28] 后端 exam_record.resume_count 列已清除：顶栏原「续考 N 次」标签整块删除
+             （带 v-if，字段消失后本就恒不渲染，属行为等价）。「重新同步」按钮的显示条件按契约冲突项保留、已回报。 -->
       </div>
       <div class="middle">
         <span class="label">
@@ -568,7 +572,9 @@ const confirmSubmit = () => {
             <el-radio v-for="fs in fontSizes" :key="fs.value" :value="fs.value">{{ fs.label }}</el-radio>
           </el-radio-group>
         </div>
-        <el-button v-if="paperView?.resumeCount != null" size="small" @click="doResume">
+        <el-button size="small" @click="doResume">
+          <!-- [2026-10-28 清除] 原条件 v-if="paperView?.resumeCount != null" 随 resume_count 列删除：
+               该条件实际只对真续考过的记录成立，改成常显以免「重新同步」入口整体消失。 -->
           <el-icon><Refresh /></el-icon>重新同步
         </el-button>
         <el-tooltip content="本系统会检测切屏、复制粘贴等浏览器层面的异常行为。请自觉诚信考试。系统不能检测第二设备（手机）等物理作弊手段。" placement="bottom" effect="light">

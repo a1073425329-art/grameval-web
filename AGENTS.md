@@ -44,6 +44,11 @@ npm run dev                        # Vite dev server，端口 9000
 
 - **没有 Prettier**（无配置文件、无依赖、无 format 脚本）、**没有 CI**（无 `.github/`、无 husky/lint-staged/pre-commit）。唯一「CI」就是人自觉跑 `npm run build`。
 - **Playwright 不在默认门禁内**：`playwright.config.ts` 的 `testMatch` 只收 `e2e|api` 目录加 `tests/admin.test.ts`、`tests/student.test.ts`（`:6`），`baseURL: 9000`，`webServer.command: 'npm run dev'`，projects **只有 chromium**（`:20-25`）。`tests/admin.test.ts`、`tests/student.test.ts` 是 Playwright 用例（**需要后端**），不是 vitest 单测，别混进 `unit` 层理解。
+- **测试视口统一 1920×1080（2026-10-28 起；规则与判据正本在 [`../AGENTS.md` §7](../AGENTS.md)，本条只写怎么做）**：
+  - 现状实测（2026-10-28）：`playwright.config.ts` **不含 `viewport` 键**（`grep -n viewport playwright.config.ts` 0 命中），视口全部来自 `use: { ...devices['Desktop Chrome'] }`（`:23`）；用本机 `@playwright/test` **1.62.0** 实读该描述符得 `viewport: { width: 1280, height: 720 }`（`screen` 才是 1920×1080）⇒ **默认跑的就是 1280×720，不是 1920×1080**。`tests/**` 里 `setViewportSize` 亦 0 命中。要对齐规范须在 `use`（或 project）里显式加 `viewport: { width: 1920, height: 1080 }` —— **改代码，需另批，本条只记现状**。
+  - dev server：`npm run dev`（`vite.config.ts:40` 端口 9000，`/api` 代理到 9001）；跑 `npx playwright test` 时由 `webServer.command` 自动起，非 CI 下 `reuseExistingServer: true`（`playwright.config.ts:26-31`）。
+  - 设视口的三种口径：Playwright 用 `page.setViewportSize({ width: 1920, height: 1080 })`；puppeteer 脚本（`tools/ui-test/*.mjs`）用 `page.setViewport({ width: 1920, height: 1080 })`；纯手工只能把窗口拉到 1920×1080 并按 `Ctrl+0` 复位缩放，**得到的是近似值**（地址栏/滚动条占高），结论要与前两者分开表述。
+  - `tools/ui-test/` 现有 15 个脚本实测视口为 1600×900、1440×900/1000/1200/1600/1750、389×849，**无一个是 1920×1080**；复用它们做回归前先改这一行，否则等于在别的口径下截图。窄视口那几个（389×849）是专门复现通知重叠 bug 的，不要当成回归口径。
 
 ## 3. 端口、代理与产物（`vite.config.ts` 实测）
 

@@ -43,6 +43,8 @@ export interface Question {
   createBy?: number
   /** 创建人姓名（后端已按 realName → username 归一） */
   createByName?: string
+  // [2026-10-28] 后端 question.usage_count 列已清除：**列表接口不再填值，单题详情接口仍返回实时计数**，
+  // 故本字段按契约 #02 第 10 条保留（详情抽屉「引用 N 次」与详情弹窗「被引用 N 次」仍读它）。
   usageCount?: number
   /** 阅读理解题：所属文章 ID */
   passageId?: number
@@ -58,16 +60,13 @@ export interface Question {
   passageKeyVocabulary?: string
   /** 需要对多个作答位（多选、或多空阅读题）—— 决定渲染单选框还是复选框 */
   multiAnswer?: boolean
-  /** 作答位数量（由标准答案形态得出） */
-  blankCount?: number
+  // [2026-10-28] 后端 question.blank_count 列已清除，原同名字段删除（值由 AnswerJudge 从标准答案形态现算）
   /** 计分方式：FULL(全对才给分) / PARTIAL(多空按答对空数比例给分) */
   scoreType?: string
   /** 阅读子题型：DETAIL/MAIN_IDEA/INFERENCE/VOCABULARY/ATTITUDE */
   questionSubtype?: string
   /** 本题在所属文章题组中的题序 */
   passageQuestionOrder?: number
-  /** 题目来源：MANUAL / AI / IMPORT / SEED_READING … */
-  source?: string
   hintText?: string
   createTime?: string
   updateTime?: string

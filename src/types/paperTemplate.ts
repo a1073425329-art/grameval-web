@@ -14,7 +14,7 @@ export interface PaperTemplate {
   questionCount: number
   createBy: number
   creatorName?: string
-  usageCount: number
+  // [2026-10-28] 后端 exam_paper_template.usage_count 列已清除（模板「N 次使用」展示功能砍掉），原同名字段删除
   lastUsedTime?: string
   status: 0 | 1
   createTime: string

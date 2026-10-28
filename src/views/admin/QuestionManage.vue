@@ -58,8 +58,7 @@ const query = reactive({
   questionType: undefined as QuestionType | undefined,
   difficulty: undefined as Difficulty | undefined,
   status: undefined as number | undefined,
-  minUsageCount: undefined as number | undefined,
-  maxUsageCount: undefined as number | undefined,
+  // [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间的两个查询状态项删除
   pageNum: 1,
   pageSize: 50,
 })
@@ -152,8 +151,7 @@ const load = async () => {
       questionType: query.questionType,
       difficulty: query.difficulty,
       status: query.status,
-      minUsageCount: query.minUsageCount,
-      maxUsageCount: query.maxUsageCount,
+      // [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间的两个传参删除（后端从来不认）
     })
     list.value = res.data.records ?? []
     total.value = res.data.total ?? 0
@@ -171,8 +169,7 @@ const reset = () => {
   query.questionType = undefined
   query.difficulty = undefined
   query.status = undefined
-  query.minUsageCount = undefined
-  query.maxUsageCount = undefined
+  // [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间的两项重置删除
   query.pageNum = 1
   typeTab.value = 'ALL'
   load()
@@ -411,7 +408,7 @@ type ReadingForm = {
   passageType: string
   topic: string
   summary: string
-  source: string
+  saveMode: 'TEMP' | 'MANUAL'
   subQuestions: ReadingSubQ[]
 }
 
@@ -425,7 +422,7 @@ const readingForm = reactive<ReadingForm>({
   passageType: '',
   topic: '',
   summary: '',
-  source: 'TEMP',
+  saveMode: 'TEMP',
   subQuestions: [],
 })
 
@@ -440,7 +437,7 @@ const resetReadingForm = () => {
     passageType: '',
     topic: '',
     summary: '',
-    source: 'TEMP',
+  saveMode: 'TEMP',
     subQuestions: [],
   })
 }
@@ -580,7 +577,7 @@ const aiGenerateReading = async () => {
         defaultScore: 2,
       }
     })
-    readingForm.source = 'AI'
+    readingForm.saveMode = 'MANUAL'
     ElMessage.success('AI 生成成功')
   } catch {
     /* handled by global interceptor */
@@ -800,7 +797,7 @@ const loadReadingGroup = async (row: Question) => {
     readingForm.summary = p.summary ?? ''
     readingForm.categoryId = p.categoryId ?? row.categoryId
     readingForm.difficulty = p.difficulty ?? row.difficulty
-    readingForm.source = p.source ?? 'MANUAL'
+    readingForm.saveMode = p.isTemp ? 'TEMP' : 'MANUAL'
     groupWordCount.value = p.wordCount ?? 0
     const rows = (p.questions ?? []).slice().sort(
       (a, b) =>
@@ -1055,10 +1052,9 @@ const submitReadingBatch = async () => {
         difficulty: readingForm.difficulty,
         passageType: readingForm.passageType || undefined,
         topic: readingForm.topic || undefined,
-        source: readingForm.source,
         summary: readingForm.summary,
         status: 1,
-        isTemp: readingForm.source === 'TEMP',
+        isTemp: readingForm.saveMode === 'TEMP',
         questions: readingForm.subQuestions.map(readingItemPayload),
       })
       passageId = passageRes.data.id
@@ -1304,7 +1300,7 @@ const openCopy = async (row: Question) => {
         summary: p.summary ?? '',
         categoryId: p.categoryId ?? row.categoryId,
         difficulty: p.difficulty ?? row.difficulty,
-        source: p.source ?? 'MANUAL',
+        saveMode: p.isTemp ? 'TEMP' : 'MANUAL',
       })
     }
     ElMessage.info('已复制本题：保存后作为同组新题入库')
@@ -1419,7 +1415,8 @@ const exportCsv = () => {
   }
   exporting.value = true
   try {
-    const headers = ['ID', '题干', '分类', '题型', '难度', '默认分值', '状态', '引用次数', '标准答案', '知识点']
+    // [2026-10-28] 后端 question.usage_count 列已清除：表头第 8 项与数据行第 8 项**同时删除**，保持一一对应
+    const headers = ['ID', '题干', '分类', '题型', '难度', '默认分值', '状态', '标准答案', '知识点']
     const rows = list.value.map((q) => [
       q.id,
       q.stem,
@@ -1428,7 +1425,6 @@ const exportCsv = () => {
       q.difficulty,
       q.defaultScore ?? '',
       q.status === 1 ? '启用' : '停用',
-      q.usageCount ?? 0,
       q.standardAnswer ?? '',
       (q.knowledgePoints ?? []).join(';'),
     ].map(escapeCsv).join(','))
@@ -1598,23 +1594,8 @@ onMounted(async () => {
               <el-option label="停用" :value="0" />
             </el-select>
           </el-form-item>
-          <el-form-item label="引用次数">
-            <el-input-number
-              v-model="query.minUsageCount"
-              :min="0"
-              placeholder="最低"
-              controls-position="right"
-              style="width: 100px"
-            />
-            <span style="margin: 0 4px; color: #909399">~</span>
-            <el-input-number
-              v-model="query.maxUsageCount"
-              :min="0"
-              placeholder="最高"
-              controls-position="right"
-              style="width: 100px"
-            />
-          </el-form-item>
+          <!-- [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间筛选框整块删除（后端从来不认该参数，属失效筛选）。
+               保留记录：el-form-item 内两个 el-input-number（最低 ~ 最高），绑定 query 的同名 min/max 状态项。 -->
           <el-form-item>
             <el-button type="primary" @click="search">
               <el-icon><Search /></el-icon>查询
@@ -1805,9 +1786,8 @@ onMounted(async () => {
         <el-table-column label="更新" width="112" align="center">
           <template #default="{ row }">{{ fmtDate(row.updateTime || row.createTime) }}</template>
         </el-table-column>
-        <el-table-column label="引用" width="62" align="center">
-          <template #default="{ row }">{{ row.usageCount ?? 0 }}</template>
-        </el-table-column>
+        <!-- [2026-10-28] 后端 question.usage_count 列已清除，列表接口不再填该值 ⇒ 原「引用」列（恒显示 0）整列删除。
+             实时计数只在单题详情里展示（详情弹窗「被引用」项）。 -->
         <el-table-column label="操作" width="188" align="center" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="openDetail(row)">
@@ -1875,10 +1855,10 @@ onMounted(async () => {
               <span class="meta-label">分类</span>
               <span class="meta-value">{{ item.categoryName || '-' }}</span>
             </span>
-            <span class="meta-item">
-              <span class="meta-label">引用</span>
-              <span class="meta-value">{{ item.usageCount ?? 0 }} 次</span>
-            </span>
+            <!-- [2026-10-28 清除] 「引用 N 次」随 question.usage_count 列删除：后端只在**单题详情**接口
+                 实时统计引用数，列表链路不再返回该值，若保留这里会恒显「引用 0 次」（假数据）。
+                 原块：<span class="meta-item"><span class="meta-label">引用</span>
+                 <span class="meta-value">{{ item.usageCount ?? 0 }} 次</span></span> -->
             <span class="meta-item">
               <span class="meta-label">分值</span>
               <span class="meta-value">{{ item.defaultScore ?? 2 }} 分</span>
@@ -2096,10 +2076,9 @@ onMounted(async () => {
               <!-- 临时创建的入库方式与 AI 生成 -->
               <template v-if="!isReadingEdit && readingForm.passageMode === 'create'">
                 <el-form-item label="入库方式">
-                  <el-radio-group v-model="readingForm.source">
+                  <el-radio-group v-model="readingForm.saveMode">
                     <el-radio value="TEMP">仅临时出题（不入库）</el-radio>
                     <el-radio value="MANUAL">存入文章库</el-radio>
-                    <el-radio value="AI">AI 生成</el-radio>
                   </el-radio-group>
                 </el-form-item>
                 <div class="ai-btn-row">
@@ -3216,10 +3195,6 @@ onMounted(async () => {
   color: #909399;
 }
 
-.source-text {
-  font-size: 12px;
-  color: #606266;
-}
 
 .danger-item {
   color: #f56c6c;

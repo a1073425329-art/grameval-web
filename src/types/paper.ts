@@ -37,15 +37,14 @@ export interface Paper {
   totalScore: number
   passScore?: number
   questionCount: number
-  shuffleQuestions?: boolean
+  // [2026-10-28] 原「随机乱序」字段对应后端 exam_paper.shuffle_questions：取题排序代码完全不读该列，属假开关 ⇒ 删除
   /** 0草稿 / 1启用 / 2停用 */
   status: 0 | 1 | 2
   createBy?: number
   createTime?: string
   updateTime?: string
   questions?: PaperQuestionVO[]
-  /** 建议考试时长（分钟） */
-  suggestedDuration?: number
+  // [2026-10-28] 原「建议考试时长（分钟）」字段对应后端 exam_paper.suggested_duration：无写入点恒 NULL ⇒ 删除
   /** 归档状态：0未归档，1已归档 */
   archiveStatus?: number
 }
@@ -67,7 +66,7 @@ export interface PaperForm {
   paperName: string
   description?: string | undefined
   passScore?: number | undefined
-  shuffleQuestions?: boolean | undefined
+  // [2026-10-28] 原「随机乱序」提交项：后端不读该列（假开关），随表单开关一并删除
   status?: 0 | 1 | 2 | undefined
   questionUnits: PaperQuestionUnitForm[]
 }

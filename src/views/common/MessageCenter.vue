@@ -336,11 +336,6 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
           </el-form-item>
           <el-divider />
           <el-form-item label="站内信"><el-switch v-model="prefs.inAppEnabled" /></el-form-item>
-          <el-form-item label="App推送"><el-switch v-model="prefs.pushEnabled" /></el-form-item>
-          <el-form-item label="邮件通知"><el-switch v-model="prefs.emailEnabled" /></el-form-item>
-          <el-form-item v-if="prefs.emailEnabled" label="邮箱地址"><el-input v-model="prefs.emailAddress" placeholder="your@email.com" /></el-form-item>
-          <el-form-item label="短信通知"><el-switch v-model="prefs.smsEnabled" /></el-form-item>
-          <el-form-item v-if="prefs.smsEnabled" label="手机号"><el-input v-model="prefs.phoneNumber" placeholder="手机号" /></el-form-item>
           <el-divider />
           <el-form-item label="声音提醒"><el-switch v-model="prefs.soundEnabled" /></el-form-item>
           <el-form-item label="桌面通知"><el-switch v-model="prefs.desktopNotificationEnabled" /></el-form-item>

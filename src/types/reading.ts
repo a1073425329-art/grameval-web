@@ -18,7 +18,6 @@ export interface ReadingPassage {
   difficulty: Difficulty
   passageType?: string
   topic?: string
-  source?: string
   summary?: string
   /** 全文中文翻译（可选） */
   translation?: string
@@ -28,7 +27,7 @@ export interface ReadingPassage {
   knowledgePoints?: string[]
   questionCount?: number
   totalScore?: number
-  usageCount?: number
+  // [2026-10-28] 后端 reading_passage.usage_count 列已清除，原同名字段删除（删除保护已改实时查引用）
   status?: 0 | 1
   isTemp?: boolean
   createBy?: number
@@ -50,8 +49,7 @@ export interface ReadingPassageForm {
   content: string
   difficulty: Difficulty
   passageType?: string | undefined
-  topic?: string | undefined
-  source?: string | undefined
+  topic?: string | undefined | undefined
   summary?: string | undefined
   translation?: string | undefined
   keyVocabulary?: VocabularyItem[] | undefined

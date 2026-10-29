@@ -90,13 +90,13 @@ const passRateOption = computed(() => {
       <h3 class="page-title">场次统计 · {{ stat?.sessionName || '' }}</h3>
       <div class="page-header-actions">
         <el-button
-          size="small"
+         
           type="primary"
           @click="router.push(`/admin/exams/${sessionId}/monitor`)"
         >
           <el-icon><View /></el-icon>实时监控
         </el-button>
-        <el-button type="primary" size="small" @click="$router.push('/admin/ai-compose')">
+        <el-button type="primary" @click="$router.push('/admin/ai-compose')">
           <el-icon><Cpu /></el-icon>AI考试分析
         </el-button>
       </div>

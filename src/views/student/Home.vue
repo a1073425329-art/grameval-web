@@ -480,7 +480,7 @@ const sortedExams = computed(() => {
                 <el-link type="primary" :underline="false" @click="router.push('/student/results')">全部 →</el-link>
               </div>
             </template>
-            <el-table v-if="recentResults.length" :data="recentResults" size="small">
+            <el-table v-if="recentResults.length" :data="recentResults">
               <el-table-column prop="sessionName" label="考试" min-width="140" show-overflow-tooltip />
               <el-table-column label="提交时间" width="160">
                 <template #default="{ row }">{{ row.submitTime?.slice(0, 16) || '-' }}</template>
@@ -495,7 +495,7 @@ const sortedExams = computed(() => {
               </el-table-column>
               <el-table-column label="操作" width="80" align="center">
                 <template #default="{ row }">
-                  <el-button size="small" type="primary" link @click="router.push(`/student/results/${row.id}`)">详情</el-button>
+                  <el-button type="primary" link @click="router.push(`/student/results/${row.id}`)">详情</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -536,7 +536,7 @@ const sortedExams = computed(() => {
             </template>
             <div v-if="availableExams.length" class="exam-mini-list">
               <div v-for="e in availableExams.slice(0, 3)" :key="e.id" class="exam-mini-row" @click="router.push(`/student/exam-room/${e.id}`)">
-                <el-tag :type="examStatus(e).type" size="small">{{ examStatus(e).text }}</el-tag>
+                <el-tag :type="examStatus(e).type">{{ examStatus(e).text }}</el-tag>
                 <span class="em-name">{{ e.sessionName }}</span>
                 <span class="em-meta">{{ e.duration }}分钟 · {{ e.startTime?.slice(5, 16) }}</span>
               </div>
@@ -700,7 +700,7 @@ const sortedExams = computed(() => {
               <div class="sh-handoff-title">想看正确率、薄弱考点和难度分布？</div>
               <div class="sh-handoff-desc">这些属于诊断分析，统一在学习分析页按维度查看，避免和首页重复。</div>
             </div>
-            <el-button type="primary" plain size="small" @click="router.push('/student/stats')">
+            <el-button type="primary" plain @click="router.push('/student/stats')">
               去学习分析 →
             </el-button>
           </div>
@@ -719,7 +719,7 @@ const sortedExams = computed(() => {
           <div v-if="sortedExams.length" class="sh-exam-grid">
             <div v-for="e in sortedExams" :key="e.id" class="sh-exam-card" @click="router.push(`/student/exam-room/${e.id}`)">
               <div class="sh-exam-top">
-                <el-tag :type="examStatus(e).type" size="small" effect="dark">{{ examStatus(e).text }}</el-tag>
+                <el-tag :type="examStatus(e).type" effect="dark">{{ examStatus(e).text }}</el-tag>
                 <span class="sh-exam-duration">{{ e.duration }} 分钟</span>
               </div>
               <div class="sh-exam-name">{{ e.sessionName }}</div>
@@ -727,7 +727,7 @@ const sortedExams = computed(() => {
                 <el-icon><Calendar /></el-icon>
                 <span>{{ e.startTime?.slice(0, 16) }} ~ {{ e.endTime?.slice(5, 16) }}</span>
               </div>
-              <el-button class="sh-exam-btn" size="small" type="primary" plain>进入考试</el-button>
+              <el-button class="sh-exam-btn" type="primary" plain>进入考试</el-button>
             </div>
           </div>
           <el-empty v-else description="暂无可参加的考试" :image-size="80" />

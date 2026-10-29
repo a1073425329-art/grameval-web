@@ -449,7 +449,7 @@ const dimDifficultyChartOption = computed(() => {
       <div class="answers-header">
         <h4 class="answers-title">📝 答题明细</h4>
         <div class="answers-tools">
-          <el-radio-group v-model="answerFilter" size="small">
+          <el-radio-group v-model="answerFilter">
             <el-radio-button value="ALL">全部 {{ answerItems.length }}</el-radio-button>
             <el-radio-button value="WRONG">仅错题 {{ wrongCount }}</el-radio-button>
             <!-- [2026-10-28] 原「仅标记」档位 :disabled 依赖恒 0 的 marked_flag 计数，按钮恒灰且永不生效，删除 -->
@@ -478,8 +478,8 @@ const dimDifficultyChartOption = computed(() => {
               <el-icon><CircleCheck v-if="a.isCorrect === 1" /><CircleClose v-else /></el-icon>
               第 {{ numberOf(a) }} 题
             </span>
-            <el-tag size="small" class="q-type">{{ typeLabel(a.questionType) }}</el-tag>
-            <el-tag size="small" class="q-difficulty" :style="{ backgroundColor: difficultyLabel(a.difficulty || 2).color + '15', color: difficultyLabel(a.difficulty || 2).color, borderColor: difficultyLabel(a.difficulty || 2).color + '30' }">
+            <el-tag class="q-type">{{ typeLabel(a.questionType) }}</el-tag>
+            <el-tag class="q-difficulty" :style="{ backgroundColor: difficultyLabel(a.difficulty || 2).color + '15', color: difficultyLabel(a.difficulty || 2).color, borderColor: difficultyLabel(a.difficulty || 2).color + '30' }">
               {{ difficultyLabel(a.difficulty || 2).text }}
             </el-tag>
             <!-- [2026-10-28] 原此处渲染「已标记」warning 标签（v-if 判 answer_record.marked_flag === 1），
@@ -582,7 +582,7 @@ const dimDifficultyChartOption = computed(() => {
 
       <el-card shadow="never" class="dim-card" v-if="dim.byQuestionType?.length" style="margin-top:14px">
         <template #header>按题型</template>
-        <el-table :data="dim.byQuestionType" size="small">
+        <el-table :data="dim.byQuestionType">
           <el-table-column prop="questionTypeLabel" label="题型" width="140" />
           <el-table-column prop="total" label="总题数" width="100" align="center" />
           <el-table-column prop="correct" label="答对" width="80" align="center">
@@ -606,7 +606,7 @@ const dimDifficultyChartOption = computed(() => {
       <!-- 阅读子题型：看清「细节找得到但主旨推不出」这类结构性弱点（只统计带子题型的阅读题） -->
       <el-card shadow="never" class="dim-card" v-if="dim.bySubtype?.length" style="margin-top:14px">
         <template #header>阅读子题型</template>
-        <el-table :data="dim.bySubtype" size="small">
+        <el-table :data="dim.bySubtype">
           <el-table-column prop="subtypeLabel" label="子题型" width="140" />
           <el-table-column prop="total" label="总题数" width="100" align="center" />
           <el-table-column prop="correct" label="答对" width="80" align="center">

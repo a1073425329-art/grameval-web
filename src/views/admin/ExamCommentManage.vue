@@ -259,7 +259,7 @@ const handlePageChange = () => load()
         <el-form-item>
           <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
           <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-          <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+          <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'">
             <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
             {{ viewMode === 'card' ? '表格' : '卡片' }}
           </el-button>
@@ -284,28 +284,28 @@ const handlePageChange = () => load()
         <el-table-column label="老师" width="120" prop="teacherName" sortable />
         <el-table-column label="类型" width="110" align="center" prop="commentType" sortable :sort-method="sortByType">
           <template #default="{ row }">
-            <el-tag :type="getTypeColor(row.commentType)" size="small">{{ getTypeLabel(row.commentType) }}</el-tag>
+            <el-tag :type="getTypeColor(row.commentType)">{{ getTypeLabel(row.commentType) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="评分" width="160" prop="ratingLevel" sortable>
           <template #default="{ row }">
-            <el-rate v-model="row.ratingLevel" :max="5" disabled size="small" show-score />
+            <el-rate v-model="row.ratingLevel" :max="5" disabled show-score />
           </template>
         </el-table-column>
         <el-table-column prop="content" label="评语内容" min-width="280" show-overflow-tooltip />
         <el-table-column label="阅读" width="80" align="center" prop="isRead" sortable :sort-method="sortByRead">
           <template #default="{ row }">
-            <el-tag :type="row.isRead ? 'success' : 'danger'" size="small">{{ row.isRead ? '已读' : '未读' }}</el-tag>
+            <el-tag :type="row.isRead ? 'success' : 'danger'">{{ row.isRead ? '已读' : '未读' }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="170" sortable />
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="!row.isRead" size="small" type="success" link @click="handleMarkRead(row.id)">
+            <el-button v-if="!row.isRead" type="success" link @click="handleMarkRead(row.id)">
               <el-icon><Check /></el-icon>已读
             </el-button>
-            <el-button size="small" type="primary" link @click="openEdit(row)"><el-icon><Edit /></el-icon>编辑</el-button>
-            <el-button size="small" type="danger" link @click="handleDelete(row.id)"><el-icon><Delete /></el-icon>删除</el-button>
+            <el-button type="primary" link @click="openEdit(row)"><el-icon><Edit /></el-icon>编辑</el-button>
+            <el-button type="danger" link @click="handleDelete(row.id)"><el-icon><Delete /></el-icon>删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -330,9 +330,9 @@ const handlePageChange = () => load()
         class="comment-card"
       >
         <div class="card-head">
-          <el-tag :type="getTypeColor(c.commentType)" size="small">{{ getTypeLabel(c.commentType) }}</el-tag>
-          <el-rate v-model="c.ratingLevel" :max="5" disabled size="small" show-score />
-          <el-tag :type="c.isRead ? 'success' : 'danger'" size="small" effect="plain">
+          <el-tag :type="getTypeColor(c.commentType)">{{ getTypeLabel(c.commentType) }}</el-tag>
+          <el-rate v-model="c.ratingLevel" :max="5" disabled show-score />
+          <el-tag :type="c.isRead ? 'success' : 'danger'" effect="plain">
             {{ c.isRead ? '已读' : '未读' }}
           </el-tag>
         </div>
@@ -347,11 +347,11 @@ const handlePageChange = () => load()
         </div>
         <div class="card-time">{{ c.createTime }}</div>
         <div class="card-actions">
-          <el-button v-if="!c.isRead" size="small" type="success" @click="handleMarkRead(c.id)">
+          <el-button v-if="!c.isRead" type="success" @click="handleMarkRead(c.id)">
             <el-icon><Check /></el-icon>标记已读
           </el-button>
-          <el-button size="small" type="primary" @click="openEdit(c)"><el-icon><Edit /></el-icon>编辑</el-button>
-          <el-button size="small" type="danger" @click="handleDelete(c.id)"><el-icon><Delete /></el-icon>删除</el-button>
+          <el-button type="primary" @click="openEdit(c)"><el-icon><Edit /></el-icon>编辑</el-button>
+          <el-button type="danger" @click="handleDelete(c.id)"><el-icon><Delete /></el-icon>删除</el-button>
         </div>
       </el-card>
 

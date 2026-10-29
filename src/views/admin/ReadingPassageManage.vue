@@ -524,7 +524,7 @@ onMounted(async () => {
             <el-button
               @click="toggleViewMode"
               :type="viewMode === 'card' ? 'primary' : 'default'"
-              size="small"
+             
             >
               <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
               {{ viewMode === 'card' ? '表格' : '卡片' }}
@@ -576,7 +576,7 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="难度" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="diffTagType(row.difficulty)" size="small" effect="light">{{ diffLabel(row.difficulty) }}</el-tag>
+            <el-tag :type="diffTagType(row.difficulty)" effect="light">{{ diffLabel(row.difficulty) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="体裁" width="100">
@@ -584,15 +584,15 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="附加信息" width="120" align="center">
           <template #default="{ row }">
-            <el-tooltip v-if="row.translation" content="含中文翻译"><el-tag size="small" type="success" effect="plain">译</el-tag></el-tooltip>
+            <el-tooltip v-if="row.translation" content="含中文翻译"><el-tag type="success" effect="plain">译</el-tag></el-tooltip>
             <el-tooltip v-if="row.keyVocabulary?.length" :content="`${row.keyVocabulary.length} 条重点词汇`">
-              <el-tag size="small" type="warning" effect="plain">词{{ row.keyVocabulary.length }}</el-tag>
+              <el-tag type="warning" effect="plain">词{{ row.keyVocabulary.length }}</el-tag>
             </el-tooltip>
           </template>
         </el-table-column>
         <el-table-column label="题目数" width="90" align="center">
           <template #default="{ row }">
-            <el-tag size="small" type="info" effect="plain">{{ row.questionCount ?? 0 }}</el-tag>
+            <el-tag type="info" effect="plain">{{ row.questionCount ?? 0 }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="词数" width="80" align="center">
@@ -600,18 +600,18 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">{{
+            <el-tag :type="row.status === 1 ? 'success' : 'info'">{{
               row.status === 1 ? '启用' : '停用'
             }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="220" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button type="success" size="small" plain @click="openPassageDetail(row)">
+            <el-button type="success" plain @click="openPassageDetail(row)">
               <el-icon><View /></el-icon>题目详情
             </el-button>
-            <el-button type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button type="danger" size="small" @click="confirmDelete(row)">删除</el-button>
+            <el-button type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button type="danger" @click="confirmDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -635,11 +635,11 @@ onMounted(async () => {
               @click.stop
             />
             <span class="p-id">#{{ item.id }}</span>
-            <el-tag :type="item.status === 1 ? 'success' : 'info'" size="small">{{
+            <el-tag :type="item.status === 1 ? 'success' : 'info'">{{
               item.status === 1 ? '启用' : '停用'
             }}</el-tag>
-            <el-tag :type="diffTagType(item.difficulty)" size="small">{{ diffLabel(item.difficulty) }}</el-tag>
-            <el-tag size="small" type="info">{{ typeLabel(item.passageType) }}</el-tag>
+            <el-tag :type="diffTagType(item.difficulty)">{{ diffLabel(item.difficulty) }}</el-tag>
+            <el-tag type="info">{{ typeLabel(item.passageType) }}</el-tag>
           </div>
           <div class="card-title">{{ item.title || '(无标题)' }}</div>
           <div class="card-content">{{ item.content }}</div>
@@ -668,13 +668,13 @@ onMounted(async () => {
           <div class="card-footer">
             <span v-if="item.topic" class="topic-tag">🏷️ {{ item.topic }}</span>
             <div class="actions">
-              <el-button type="success" size="small" plain @click.stop="openPassageDetail(item)">
+              <el-button type="success" plain @click.stop="openPassageDetail(item)">
                 <el-icon><View /></el-icon>题目详情
               </el-button>
-              <el-button type="primary" size="small" @click.stop="openEdit(item)">
+              <el-button type="primary" @click.stop="openEdit(item)">
                 <el-icon><Edit /></el-icon>编辑
               </el-button>
-              <el-button type="danger" size="small" @click.stop="confirmDelete(item)">
+              <el-button type="danger" @click.stop="confirmDelete(item)">
                 <el-icon><Delete /></el-icon>删除
               </el-button>
             </div>
@@ -816,7 +816,7 @@ onMounted(async () => {
         <el-form-item label="重点词汇">
           <div class="vocab-editor">
             <div v-if="!form.keyVocabulary.length" class="vocab-empty">
-              <el-text type="info" size="small">暂无词汇，点击下方按钮添加；学生端会在文章详情展示</el-text>
+              <el-text type="info">暂无词汇，点击下方按钮添加；学生端会在文章详情展示</el-text>
             </div>
             <div v-for="(v, vi) in form.keyVocabulary" :key="vi" class="vocab-row">
               <el-input v-model="v.word" placeholder="单词/短语 *" :maxlength="FormLimits.shortText.max" class="vocab-word" />
@@ -824,7 +824,7 @@ onMounted(async () => {
               <el-input v-model="v.meaning" placeholder="中文释义 *" :maxlength="FormLimits.shortText.max" class="vocab-meaning" />
               <el-button link type="danger" @click="removeVocabRow(vi)"><el-icon><Delete /></el-icon></el-button>
             </div>
-            <el-button size="small" type="primary" plain @click="addVocabRow">
+            <el-button type="primary" plain @click="addVocabRow">
               <el-icon><Plus /></el-icon>添加词汇
             </el-button>
           </div>
@@ -835,14 +835,14 @@ onMounted(async () => {
         </el-divider>
 
         <div class="questions-section">
-          <el-button size="small" type="primary" plain @click="addSubQuestion">
+          <el-button type="primary" plain @click="addSubQuestion">
             <el-icon><Plus /></el-icon>添加题目
           </el-button>
 
           <div v-for="(q, qIdx) in form.questions" :key="qIdx" class="sub-question-item">
             <div class="sub-q-header">
               <span class="sub-q-num">第 {{ qIdx + 1 }} 题</span>
-              <el-button link type="danger" size="small" @click="removeSubQuestion(qIdx)">移除</el-button>
+              <el-button link type="danger" @click="removeSubQuestion(qIdx)">移除</el-button>
             </div>
             <el-form-item label="题干" :label-width="60">
               <el-input v-model="q.stem" :maxlength="FormLimits.questionStem.max" placeholder="题目题干（完形填空可写：第 1 空应填…）" />
@@ -856,7 +856,7 @@ onMounted(async () => {
               <div class="sub-options">
                 <div v-for="(opt, oIdx) in q.options" :key="oIdx" class="sub-opt-row">
                   <el-tag class="opt-key">{{ opt.optionLabel }}</el-tag>
-                  <el-input v-model="opt.optionContent" :maxlength="FormLimits.optionContent.max" placeholder="选项内容" size="small" />
+                  <el-input v-model="opt.optionContent" :maxlength="FormLimits.optionContent.max" placeholder="选项内容" />
                 </div>
               </div>
             </el-form-item>
@@ -867,7 +867,7 @@ onMounted(async () => {
                 </el-radio>
               </el-radio-group>
               <span style="margin-left: 20px">分值：</span>
-              <el-input-number v-model="q.defaultScore" :min="0.5" :max="20" :step="0.5" size="small" />
+              <el-input-number v-model="q.defaultScore" :min="0.5" :max="20" :step="0.5" />
             </el-form-item>
             <el-form-item label="解析" :label-width="60">
               <el-input v-model="q.analysis" type="textarea" :rows="2" :maxlength="FormLimits.analysis.max" show-word-limit placeholder="答案解析" />
@@ -914,14 +914,14 @@ onMounted(async () => {
           <div class="pi-header">
             <span class="pi-title">{{ currentPassageDetail.title || '(无标题文章)' }}</span>
             <div class="pi-tags">
-              <el-tag size="small" type="primary">{{ typeLabel(currentPassageDetail.passageType) }}</el-tag>
-              <el-tag size="small" :type="diffTagType(currentPassageDetail.difficulty)">{{ diffLabel(currentPassageDetail.difficulty) }}</el-tag>
-              <el-tag size="small" :type="currentPassageDetail.status === 1 ? 'success' : 'info'">
+              <el-tag type="primary">{{ typeLabel(currentPassageDetail.passageType) }}</el-tag>
+              <el-tag :type="diffTagType(currentPassageDetail.difficulty)">{{ diffLabel(currentPassageDetail.difficulty) }}</el-tag>
+              <el-tag :type="currentPassageDetail.status === 1 ? 'success' : 'info'">
                 {{ currentPassageDetail.status === 1 ? '已启用' : '已停用' }}
               </el-tag>
             </div>
           </div>
-          <el-descriptions :column="3" border size="small" class="pi-desc">
+          <el-descriptions :column="3" border class="pi-desc">
             <el-descriptions-item label="分类">{{ currentPassageDetail.categoryName || '-' }}</el-descriptions-item>
             <el-descriptions-item label="词数">{{ currentPassageDetail.wordCount ?? 0 }} 词</el-descriptions-item>
             <el-descriptions-item label="配套题目">{{ currentPassageDetail.questions?.length ?? currentPassageDetail.questionCount ?? 0 }} 道</el-descriptions-item>
@@ -967,14 +967,14 @@ onMounted(async () => {
             <div class="section-title">
               📚 配套试题列表（共 {{ currentPassageDetail.questions?.length ?? 0 }} 题）
             </div>
-            <el-button size="small" type="primary" plain @click="openEditFromDetail">
+            <el-button type="primary" plain @click="openEditFromDetail">
               <el-icon><Edit /></el-icon>编辑试题
             </el-button>
           </div>
 
           <div v-if="!currentPassageDetail.questions?.length" class="empty-questions">
             <el-empty description="该文章暂未录入配套题目">
-              <el-button type="primary" size="small" @click="openEditFromDetail">
+              <el-button type="primary" @click="openEditFromDetail">
                 <el-icon><Plus /></el-icon>立即添加题目
               </el-button>
             </el-empty>
@@ -989,8 +989,8 @@ onMounted(async () => {
               <div class="qvc-header">
                 <div class="qvc-title">
                   <span class="q-order">第 {{ qIndex + 1 }} 题</span>
-                  <el-tag size="small" type="info" effect="dark">{{ subtypeLabel(q.questionSubtype) }}</el-tag>
-                  <el-tag size="small" :type="diffTagType(q.difficulty)">{{ diffLabel(q.difficulty) }}</el-tag>
+                  <el-tag type="info" effect="dark">{{ subtypeLabel(q.questionSubtype) }}</el-tag>
+                  <el-tag :type="diffTagType(q.difficulty)">{{ diffLabel(q.difficulty) }}</el-tag>
                   <span class="q-score">分值：{{ q.defaultScore ?? 2 }} 分</span>
                 </div>
                 <div class="qvc-id">#{{ q.id }}</div>
@@ -1010,7 +1010,7 @@ onMounted(async () => {
                   <span class="opt-text">{{ opt.optionContent }}</span>
                   <el-tag
                     v-if="isSubOptionRight(q, opt.optionLabel)"
-                    size="small"
+                   
                     type="success"
                     effect="dark"
                     class="opt-right-tag"
@@ -1038,7 +1038,7 @@ onMounted(async () => {
                 <el-tag
                   v-for="kp in q.knowledgePoints"
                   :key="kp"
-                  size="small"
+                 
                   type="info"
                   class="kp-tag"
                 >

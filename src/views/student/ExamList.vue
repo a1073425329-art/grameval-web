@@ -271,7 +271,7 @@ const fmtTime = (v: string) => (v || '').slice(0, 16)
     <!-- ============================ 页头 ============================ -->
     <div class="page-header">
       <h3 class="page-title">在线考试</h3>
-      <el-button size="small" @click="refresh"><el-icon><Refresh /></el-icon>刷新</el-button>
+      <el-button @click="refresh"><el-icon><Refresh /></el-icon>刷新</el-button>
     </div>
 
     <!-- ============================ 汇总统计 ============================ -->
@@ -374,15 +374,15 @@ const fmtTime = (v: string) => (v || '').slice(0, 16)
               <div class="card-head">
                 <h4 class="exam-name" :title="e.sessionName">{{ e.sessionName }}</h4>
                 <div class="head-tags">
-                  <el-tag v-if="isResume(e)" :type="e.allowResume === false ? 'danger' : 'warning'" size="small">
+                  <el-tag v-if="isResume(e)" :type="e.allowResume === false ? 'danger' : 'warning'">
                     {{ e.allowResume === false ? '严格·不可续考' : '未完成' }}
                   </el-tag>
                   <el-tag
                     v-if="e.submitStatus != null && !isResume(e)"
                     :type="attendedStatusInfo(e).type"
-                    size="small"
+                   
                   >{{ attendedStatusInfo(e).text }}</el-tag>
-                  <el-tag v-else :type="statusInfo(e).type" size="small">{{ statusInfo(e).text }}</el-tag>
+                  <el-tag v-else :type="statusInfo(e).type">{{ statusInfo(e).text }}</el-tag>
                 </div>
               </div>
               <div class="card-body">
@@ -461,7 +461,7 @@ const fmtTime = (v: string) => (v || '').slice(0, 16)
               <div class="card-head">
                 <h4 class="exam-name" :title="e.sessionName">{{ e.sessionName }}</h4>
                 <div class="head-tags">
-                  <el-tag :type="statusInfo(e).type" size="small">{{ statusInfo(e).text }}</el-tag>
+                  <el-tag :type="statusInfo(e).type">{{ statusInfo(e).text }}</el-tag>
                 </div>
               </div>
               <div class="card-body">
@@ -519,7 +519,7 @@ const fmtTime = (v: string) => (v || '').slice(0, 16)
               <div class="card-head">
                 <h4 class="exam-name" :title="e.sessionName">{{ e.sessionName }}</h4>
                 <div class="head-tags">
-                  <el-tag :type="e.allowResume === false ? 'danger' : 'warning'" size="small">
+                  <el-tag :type="e.allowResume === false ? 'danger' : 'warning'">
                     {{ e.allowResume === false ? '严格·不可续考' : '未完成' }}
                   </el-tag>
                 </div>
@@ -574,7 +574,7 @@ const fmtTime = (v: string) => (v || '').slice(0, 16)
               <div class="card-head">
                 <h4 class="exam-name" :title="e.sessionName">{{ e.sessionName }}</h4>
                 <div class="head-tags">
-                  <el-tag :type="attendedStatusInfo(e).type" size="small">{{ attendedStatusInfo(e).text }}</el-tag>
+                  <el-tag :type="attendedStatusInfo(e).type">{{ attendedStatusInfo(e).text }}</el-tag>
                 </div>
               </div>
               <div class="card-body">

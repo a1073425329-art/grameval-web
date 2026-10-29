@@ -191,8 +191,8 @@ onMounted(load)
         <div class="header-info">
           <h2 class="username">{{ detail?.realName || detail?.username || '-' }}</h2>
           <div class="tags">
-            <el-tag :type="detail?.role === 'ADMIN' ? 'danger' : 'success'" size="small">{{ roleText(detail?.role) }}</el-tag>
-            <el-tag :type="statusType(detail?.status)" size="small" effect="plain">{{ statusText(detail?.status) }}</el-tag>
+            <el-tag :type="detail?.role === 'ADMIN' ? 'danger' : 'success'">{{ roleText(detail?.role) }}</el-tag>
+            <el-tag :type="statusType(detail?.status)" effect="plain">{{ statusText(detail?.status) }}</el-tag>
           </div>
           <div class="sub">用户名：{{ detail?.username }} · ID：{{ detail?.id }}</div>
         </div>
@@ -265,7 +265,7 @@ onMounted(load)
           <div class="teacher-meta">
             <span v-if="detail.teacher.phone"><el-icon><Phone /></el-icon> {{ detail.teacher.phone }}</span>
             <span v-if="detail.teacher.email"><el-icon><Message /></el-icon> {{ detail.teacher.email }}</span>
-            <el-tag size="small" type="warning">老师</el-tag>
+            <el-tag type="warning">老师</el-tag>
           </div>
         </div>
       </div>

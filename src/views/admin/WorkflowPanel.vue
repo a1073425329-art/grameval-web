@@ -262,7 +262,7 @@ const execSuccessRate = computed(() => {
           <span class="m-div">|</span>
           <el-badge :value="connCount" type="success"><span class="m-txt">已连</span></el-badge>
           <span v-if="orphanCount" class="m-warn"><el-icon><WarningFilled /></el-icon> {{ orphanCount }} 未连接</span>
-          <el-tag v-if="isDirty" size="small" type="warning" class="m-dirty">未保存</el-tag>
+          <el-tag v-if="isDirty" type="warning" class="m-dirty">未保存</el-tag>
         </div>
       </div>
       <div class="wf-hdr-r">
@@ -341,7 +341,7 @@ const execSuccessRate = computed(() => {
         <div class="wf-ctl">
           <div class="wf-ctl-hd">
             <span><el-icon><VideoPlay /></el-icon> 执行控制</span>
-            <el-radio-group v-model="workflowMode" size="small">
+            <el-radio-group v-model="workflowMode">
               <el-radio-button value="single">单学生</el-radio-button>
               <el-radio-button value="batch">批量</el-radio-button>
             </el-radio-group>
@@ -387,9 +387,9 @@ const execSuccessRate = computed(() => {
                   <div v-if="!modelOptions.length" class="model-empty">暂无可用模型</div>
                 </div>
                 <div class="fg-row-3">
-                  <div class="fg"><label>Temperature</label><el-input-number v-model="llmTemperature" :min="0" :max="2" :step="0.1" :precision="1" size="small" controls-position="right" style="width:100%" /></div>
-                  <div class="fg"><label>Max Tokens</label><el-input-number v-model="llmMaxTokens" :min="256" :max="8192" :step="256" size="small" controls-position="right" style="width:100%" /></div>
-                  <div class="fg"><label>Top P</label><el-input-number v-model="llmTopP" :min="0" :max="1" :step="0.05" :precision="2" size="small" controls-position="right" style="width:100%" /></div>
+                  <div class="fg"><label>Temperature</label><el-input-number v-model="llmTemperature" :min="0" :max="2" :step="0.1" :precision="1" controls-position="right" style="width:100%" /></div>
+                  <div class="fg"><label>Max Tokens</label><el-input-number v-model="llmMaxTokens" :min="256" :max="8192" :step="256" controls-position="right" style="width:100%" /></div>
+                  <div class="fg"><label>Top P</label><el-input-number v-model="llmTopP" :min="0" :max="1" :step="0.05" :precision="2" controls-position="right" style="width:100%" /></div>
                 </div>
               </div>
             </div>
@@ -407,7 +407,7 @@ const execSuccessRate = computed(() => {
 
         <!-- Logs -->
         <div v-if="showLogs && executionLogs.length" class="wf-logs">
-          <div class="wf-logs-hd"><span><el-icon><Tickets /></el-icon> 执行日志 ({{ executionLogs.length }})</span><el-button link size="small" @click="executionLogs = []">清空</el-button></div>
+          <div class="wf-logs-hd"><span><el-icon><Tickets /></el-icon> 执行日志 ({{ executionLogs.length }})</span><el-button link @click="executionLogs = []">清空</el-button></div>
           <div class="wf-logs-bd">
             <div v-for="(l, i) in executionLogs" :key="i" class="log-ln" :class="`log-${l.level}`">
               <span class="log-t">{{ l.time }}</span><span class="log-lv">{{ l.level === 'success' ? '✓' : l.level === 'error' ? '✗' : '▶' }}</span><span class="log-m">{{ l.message }}</span>
@@ -420,13 +420,13 @@ const execSuccessRate = computed(() => {
       <div class="wf-right">
         <!-- Results -->
         <div class="wf-result">
-          <div class="wf-result-hd"><span><el-icon><Document /></el-icon> 执行结果</span><el-tag v-if="executionResult" :type="sColor[executionResult.status]" size="small">{{ sLabel[executionResult.status] }}</el-tag></div>
-          <div v-if="!executionResult" class="wf-empty"><el-empty description="选择学生并启动工作流" :image-size="70"><el-button type="primary" size="small" @click="scrollToControl">前往执行</el-button></el-empty></div>
+          <div class="wf-result-hd"><span><el-icon><Document /></el-icon> 执行结果</span><el-tag v-if="executionResult" :type="sColor[executionResult.status]">{{ sLabel[executionResult.status] }}</el-tag></div>
+          <div v-if="!executionResult" class="wf-empty"><el-empty description="选择学生并启动工作流" :image-size="70"><el-button type="primary" @click="scrollToControl">前往执行</el-button></el-empty></div>
           <div v-else class="wf-result-bd">
             <div class="r-summary">
               <div class="r-grid">
                 <div class="r-item"><span class="r-lbl">ID</span><span class="r-val mono">{{ executionResult.executionId?.slice(0, 8) }}...</span></div>
-                <div class="r-item"><span class="r-lbl">模式</span><el-tag :type="workflowMode === 'single' ? 'primary' : 'success'" size="small">{{ mL[workflowMode] }}</el-tag></div>
+                <div class="r-item"><span class="r-lbl">模式</span><el-tag :type="workflowMode === 'single' ? 'primary' : 'success'">{{ mL[workflowMode] }}</el-tag></div>
                 <div class="r-item"><span class="r-lbl">学生</span><span class="r-val">{{ workflowMode === 'single' ? stuName(executionResult.userId) : `${selectedStudentIds.length}人` }}</span></div>
                 <div class="r-item"><span class="r-lbl">耗时</span><span class="r-val">{{ execDuration }}</span></div>
               </div>
@@ -435,7 +435,7 @@ const execSuccessRate = computed(() => {
             <div v-if="executionResult.nodeResults?.length" class="r-nodes">
               <div class="sec-tl">节点状态</div>
               <div v-for="rec in executionResult.nodeResults" :key="rec.nodeId" class="r-node">
-                <div class="rn-hd"><span>{{ workflowNodes.find(n => n.nodeId === rec.nodeId)?.nodeName || rec.nodeId }}</span><el-tag :type="rec.status === 'SUCCESS' ? 'success' : 'danger'" size="small">{{ rec.status }}</el-tag></div>
+                <div class="rn-hd"><span>{{ workflowNodes.find(n => n.nodeId === rec.nodeId)?.nodeName || rec.nodeId }}</span><el-tag :type="rec.status === 'SUCCESS' ? 'success' : 'danger'">{{ rec.status }}</el-tag></div>
                 <div class="rn-dt"><span>⏱ {{ rec.durationMs ? `${(rec.durationMs / 1000).toFixed(1)}s` : '-' }}</span><span v-if="rec.errorMessage" class="rn-err">{{ rec.errorMessage }}</span></div>
               </div>
             </div>
@@ -452,10 +452,10 @@ const execSuccessRate = computed(() => {
 
         <!-- History -->
         <div class="wf-hist">
-          <div class="wf-hist-hd"><span><el-icon><Clock /></el-icon> 执行历史 ({{ executionHistory.length }})</span><el-button link size="small" @click="loadHistory"><el-icon><Refresh /></el-icon></el-button></div>
+          <div class="wf-hist-hd"><span><el-icon><Clock /></el-icon> 执行历史 ({{ executionHistory.length }})</span><el-button link @click="loadHistory"><el-icon><Refresh /></el-icon></el-button></div>
           <div class="wf-hist-bd">
             <div v-for="it in executionHistory" :key="it.executionId" class="hi" :class="{ 'hi-sel': selectedExecutionId === it.executionId }" @click="viewExec(it.executionId)">
-              <div class="hi-t"><el-tag :type="sColor[it.status]" size="small">{{ sLabel[it.status] }}</el-tag><span class="hi-tm">{{ fmtTime(it.startTime) }}</span></div>
+              <div class="hi-t"><el-tag :type="sColor[it.status]">{{ sLabel[it.status] }}</el-tag><span class="hi-tm">{{ fmtTime(it.startTime) }}</span></div>
               <div class="hi-b"><span>{{ stuName(it.userId) }}</span><span>{{ it.nodeResults?.length || 0 }}节点</span></div>
             </div>
             <el-empty v-if="!executionHistory.length" description="暂无记录" :image-size="40" />
@@ -479,9 +479,9 @@ const execSuccessRate = computed(() => {
     <!-- Node Drawer -->
     <el-drawer v-model="drawerVisible" :title="selectedNodeDef?.nodeName || '节点配置'" size="400px" destroy-on-close>
       <template v-if="selectedNodeDef">
-        <el-descriptions :column="2" border size="small" title="基本信息">
+        <el-descriptions :column="2" border title="基本信息">
           <el-descriptions-item label="ID">{{ selectedNodeDef.nodeId }}</el-descriptions-item>
-          <el-descriptions-item label="类型"><el-tag :color="nodeTypeColor[selectedNodeDef.nodeType]?.bg" size="small" style="color:#fff">{{ selectedNodeDef.nodeType }}</el-tag></el-descriptions-item>
+          <el-descriptions-item label="类型"><el-tag :color="nodeTypeColor[selectedNodeDef.nodeType]?.bg" style="color:#fff">{{ selectedNodeDef.nodeType }}</el-tag></el-descriptions-item>
           <el-descriptions-item label="名称" :span="2">{{ selectedNodeDef.nodeName }}</el-descriptions-item>
           <el-descriptions-item label="描述" :span="2">{{ selectedNodeDef.description }}</el-descriptions-item>
           <el-descriptions-item v-if="selectedNodeDef.model" label="模型" :span="2">{{ selectedNodeDef.model }}</el-descriptions-item>
@@ -499,7 +499,7 @@ const execSuccessRate = computed(() => {
           </el-tab-pane>
           <el-tab-pane label="输入参数" name="input">
             <div v-if="!selectedNodeDef.inputs.length" class="dr-empty"><el-empty description="无输入参数" :image-size="50" /></div>
-            <div v-else class="dr-params"><div v-for="i in selectedNodeDef.inputs" :key="i.name" class="dr-p"><div class="dr-ph"><span class="dr-pn">{{ i.name }}</span><el-tag v-if="i.required" type="danger" size="small">必填</el-tag></div><div class="dr-pm"><span>{{ i.label }}</span><span class="dr-pt">{{ i.type }}</span><span v-if="i.defaultValue" class="dr-pd">默认: {{ i.defaultValue }}</span></div></div></div>
+            <div v-else class="dr-params"><div v-for="i in selectedNodeDef.inputs" :key="i.name" class="dr-p"><div class="dr-ph"><span class="dr-pn">{{ i.name }}</span><el-tag v-if="i.required" type="danger">必填</el-tag></div><div class="dr-pm"><span>{{ i.label }}</span><span class="dr-pt">{{ i.type }}</span><span v-if="i.defaultValue" class="dr-pd">默认: {{ i.defaultValue }}</span></div></div></div>
           </el-tab-pane>
           <el-tab-pane label="输出参数" name="output">
             <div v-if="!selectedNodeDef.outputs.length" class="dr-empty"><el-empty description="无输出参数" :image-size="50" /></div>

@@ -295,7 +295,7 @@ onMounted(async () => {
             <el-button :loading="exporting" @click="exportCsv">
               <el-icon><Download /></el-icon>导出 CSV
             </el-button>
-            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'">
               <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
               {{ viewMode === 'card' ? '表格' : '卡片' }}
             </el-button>
@@ -350,17 +350,17 @@ onMounted(async () => {
           </el-table-column>
           <el-table-column label="方法" width="80" align="center">
             <template #default="{ row }">
-              <el-tag :type="methodTag(row.httpMethod)" size="small">{{ methodLabel(row.httpMethod) }}</el-tag>
+              <el-tag :type="methodTag(row.httpMethod)">{{ methodLabel(row.httpMethod) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="操作类型" width="140">
             <template #default="{ row }">
-              <el-tag :type="typeTag(row.operationType)" size="small">{{ typeLabel(row.operationType) }}</el-tag>
+              <el-tag :type="typeTag(row.operationType)">{{ typeLabel(row.operationType) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="结果" width="100" align="center">
             <template #default="{ row }">
-              <el-tag :type="resultTag(row.resultCode)" size="small">{{ row.resultCode || '-' }}</el-tag>
+              <el-tag :type="resultTag(row.resultCode)">{{ row.resultCode || '-' }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="目标" width="150" show-overflow-tooltip>
@@ -382,8 +382,8 @@ onMounted(async () => {
           <el-table-column prop="clientIp" label="IP" width="130" />
           <el-table-column label="操作" width="120" fixed="right">
             <template #default="{ row }">
-              <el-button type="primary" size="small" @click.stop="showDetail(row)">查看</el-button>
-              <el-button type="danger" size="small" @click.stop="handleDelete(row)">删除</el-button>
+              <el-button type="primary" @click.stop="showDetail(row)">查看</el-button>
+              <el-button type="danger" @click.stop="handleDelete(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -411,16 +411,16 @@ onMounted(async () => {
               <span class="user-id">#{{ item.userId }}</span>
             </div>
             <div class="log-tags">
-              <el-tag :type="methodTag(item.httpMethod)" size="small">
+              <el-tag :type="methodTag(item.httpMethod)">
                 {{ methodLabel(item.httpMethod) }}
               </el-tag>
-              <el-tag :type="typeTag(item.operationType)" size="small">
+              <el-tag :type="typeTag(item.operationType)">
                 {{ typeLabel(item.operationType) }}
               </el-tag>
-              <el-tag :type="resultTag(item.resultCode)" size="small">
+              <el-tag :type="resultTag(item.resultCode)">
                 {{ item.resultCode || '-' }}
               </el-tag>
-              <el-tag v-if="item.durationMs && item.durationMs > 5000" type="danger" size="small">
+              <el-tag v-if="item.durationMs && item.durationMs > 5000" type="danger">
                 <el-icon><Clock /></el-icon>{{ formatDuration(item.durationMs) }}
               </el-tag>
             </div>
@@ -444,8 +444,8 @@ onMounted(async () => {
             </div>
           </div>
           <div class="log-actions">
-            <el-button type="primary" size="small" @click.stop="showDetail(item)">查看详情</el-button>
-            <el-button type="danger" size="small" @click.stop="handleDelete(item)">删除</el-button>
+            <el-button type="primary" @click.stop="showDetail(item)">查看详情</el-button>
+            <el-button type="danger" @click.stop="handleDelete(item)">删除</el-button>
           </div>
         </div>
       </div>
@@ -483,13 +483,13 @@ onMounted(async () => {
             <el-descriptions-item label="用户ID">{{ detailLog.userId }}</el-descriptions-item>
             <el-descriptions-item label="用户角色">{{ detailLog.userRole || '-' }}</el-descriptions-item>
             <el-descriptions-item label="HTTP方法">
-              <el-tag :type="methodTag(detailLog.httpMethod)" size="small">{{ detailLog.httpMethod }}</el-tag>
+              <el-tag :type="methodTag(detailLog.httpMethod)">{{ detailLog.httpMethod }}</el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="操作类型">
-              <el-tag :type="typeTag(detailLog.operationType)" size="small">{{ typeLabel(detailLog.operationType) }}</el-tag>
+              <el-tag :type="typeTag(detailLog.operationType)">{{ typeLabel(detailLog.operationType) }}</el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="操作结果">
-              <el-tag :type="resultTag(detailLog.resultCode)" size="small">{{ detailLog.resultCode }}</el-tag>
+              <el-tag :type="resultTag(detailLog.resultCode)">{{ detailLog.resultCode }}</el-tag>
             </el-descriptions-item>
             <el-descriptions-item label="目标类型">{{ detailLog.targetType || '-' }}</el-descriptions-item>
             <el-descriptions-item label="目标ID">{{ detailLog.targetId || '-' }}</el-descriptions-item>

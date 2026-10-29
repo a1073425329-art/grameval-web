@@ -94,7 +94,7 @@ onMounted(load)
             <div class="li-name">
               {{ item.realName || item.username }}
               <span v-if="item.englishName" class="li-en-name">({{ item.englishName }})</span>
-              <el-tag v-if="isMe(item)" size="small" type="primary">我</el-tag>
+              <el-tag v-if="isMe(item)" type="primary">我</el-tag>
             </div>
             <div class="li-desc">考试 {{ item.examCount }}次 · 练习 {{ item.practiceCount }}次 · 错题 {{ item.wrongCount }}道</div>
           </div>

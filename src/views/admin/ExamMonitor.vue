@@ -104,12 +104,12 @@ const submittedPct = computed(() =>
           @change="(v: unknown) => toggleAutoRefresh(v as boolean)"
           active-text="自动刷新"
         />
-        <el-button size="small" @click="load()">
+        <el-button @click="load()">
           <el-icon><Refresh /></el-icon>手动刷新
         </el-button>
         <el-button
           type="danger"
-          size="small"
+         
           :disabled="!monitor?.ongoingCount"
           :loading="submitting"
           @click="doForceSubmit"
@@ -118,7 +118,7 @@ const submittedPct = computed(() =>
         </el-button>
         <el-button
           type="primary"
-          size="small"
+         
           @click="router.push(`/admin/exams/${sessionId}/statistics`)"
         >
           <el-icon><DataAnalysis /></el-icon>查看统计
@@ -172,7 +172,7 @@ const submittedPct = computed(() =>
           <div>
             <el-icon><User /></el-icon>
             <span style="font-weight:600; margin-left:6px">考生列表</span>
-            <el-tag type="warning" size="small" style="margin-left:8px" v-if="monitor?.ongoingCount">
+            <el-tag type="warning" style="margin-left:8px" v-if="monitor?.ongoingCount">
               进行中 {{ monitor.ongoingCount }} 人
             </el-tag>
           </div>
@@ -193,7 +193,7 @@ const submittedPct = computed(() =>
         <el-table-column prop="submitTime" label="提交时间" width="180" />
         <el-table-column label="状态" width="120">
           <template #default="{ row }">
-            <el-tag :type="statusType(row.submitStatus)" size="small">
+            <el-tag :type="statusType(row.submitStatus)">
               {{ row.submitStatusText || statusText(row.submitStatus) }}
             </el-tag>
           </template>

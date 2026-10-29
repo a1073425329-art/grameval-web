@@ -310,11 +310,11 @@ onMounted(load)
           <el-form-item>
             <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
             <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'">
               <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
               {{ viewMode === 'card' ? '表格' : '卡片' }}
             </el-button>
-            <el-button type="primary" size="small" @click="$router.push('/admin/ai-compose')">
+            <el-button type="primary" @click="$router.push('/admin/ai-compose')">
               <el-icon><Cpu /></el-icon>AI成绩分析
             </el-button>
           </el-form-item>
@@ -355,7 +355,7 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.passed ? 'success' : 'danger'" size="small">{{ row.passed ? '及格' : '不及格' }}</el-tag>
+            <el-tag :type="row.passed ? 'success' : 'danger'">{{ row.passed ? '及格' : '不及格' }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="用时" width="100" align="center">
@@ -370,7 +370,7 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="排名" width="100" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.classRank != null" :type="row.classRank <= 3 ? 'warning' : 'info'" size="small">
+            <el-tag v-if="row.classRank != null" :type="row.classRank <= 3 ? 'warning' : 'info'">
               {{ rankText(row) }}
             </el-tag>
             <span v-else>-</span>
@@ -380,7 +380,7 @@ onMounted(load)
         <el-table-column prop="createTime" label="生成时间" width="180" />
         <el-table-column label="操作" width="120" align="center">
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="openDetail(row)">详情</el-button>
+            <el-button type="primary" @click="openDetail(row)">详情</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -396,10 +396,10 @@ onMounted(load)
         >
           <div class="card-header">
             <span class="result-id">#{{ item.id }}</span>
-            <el-tag v-if="item.classRank != null && item.classRank <= 3" type="warning" size="small" effect="dark">
+            <el-tag v-if="item.classRank != null && item.classRank <= 3" type="warning" effect="dark">
               第{{ item.classRank }}名
             </el-tag>
-            <el-tag :type="item.passed ? 'success' : 'danger'" size="small">{{ item.passed ? '及格' : '不及格' }}</el-tag>
+            <el-tag :type="item.passed ? 'success' : 'danger'">{{ item.passed ? '及格' : '不及格' }}</el-tag>
           </div>
           <div class="card-title">{{ item.sessionName }}</div>
           <div class="card-student">
@@ -443,7 +443,7 @@ onMounted(load)
             </div>
           </div>
           <div class="card-footer">
-            <el-button type="primary" size="small">查看详情</el-button>
+            <el-button type="primary">查看详情</el-button>
           </div>
         </el-card>
       </div>
@@ -466,7 +466,7 @@ onMounted(load)
       <template #header>
         <div style="display:flex;align-items:center;justify-content:space-between;padding-right:28px">
           <span>答题详情</span>
-          <el-button type="warning" size="small" :loading="regrading" @click="doRegrade">
+          <el-button type="warning" :loading="regrading" @click="doRegrade">
             <el-icon><Refresh /></el-icon>&nbsp;重新阅卷
           </el-button>
         </div>
@@ -508,8 +508,8 @@ onMounted(load)
                   <el-icon><CircleCheck v-if="a.isCorrect === 1" /><CircleClose v-else /></el-icon>
                   第 {{ idx + 1 }} 题
                 </span>
-                <el-tag size="small">{{ typeLabel(a.questionType) }}</el-tag>
-                <el-tag size="small" type="info">{{ a.obtainedScore ?? 0 }} 分</el-tag>
+                <el-tag>{{ typeLabel(a.questionType) }}</el-tag>
+                <el-tag type="info">{{ a.obtainedScore ?? 0 }} 分</el-tag>
               </div>
               <div class="stem">{{ a.stem }}</div>
               <div class="row"><span class="lbl">你的答案：</span><span :class="a.isCorrect === 1 ? 'ok-text' : 'ng-text'">{{ answerText(a.userAnswer, a.questionType) }}</span></div>

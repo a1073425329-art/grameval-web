@@ -117,7 +117,7 @@ const handleRegister = async () => {
       </el-form>
 
       <div style="text-align: center; margin-top: 8px">
-        <el-text type="info" size="small">
+        <el-text type="info">
           已有账号？
           <el-link type="primary" @click="router.push('/login')">去登录</el-link>
         </el-text>

@@ -527,7 +527,7 @@ onMounted(async () => {
           <el-form-item>
             <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
             <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'">
               <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
               {{ viewMode === 'card' ? '表格' : '卡片' }}
             </el-button>
@@ -559,22 +559,22 @@ onMounted(async () => {
              该列实际恒渲染「-」，属空白列 ⇒ 整列删除 -->
         <el-table-column label="状态" width="100">
           <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+            <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="归档" width="80" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.archiveStatus === 1" type="info" size="small">已归档</el-tag>
+            <el-tag v-if="row.archiveStatus === 1" type="info">已归档</el-tag>
             <span v-else style="color:#c0c4cc">-</span>
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="180" />
         <el-table-column label="操作" width="200" align="center">
           <template #default="{ row }">
-            <el-button type="primary" size="small" @click="openView(row)">查看</el-button>
-            <el-button v-if="row.status !== 1" type="success" size="small" @click="publish(row)">发布</el-button>
-            <el-button v-else type="warning" size="small" @click="unpublish(row)">下架</el-button>
-            <el-button type="danger" size="small" @click="confirmDelete(row)">删除</el-button>
+            <el-button type="primary" @click="openView(row)">查看</el-button>
+            <el-button v-if="row.status !== 1" type="success" @click="publish(row)">发布</el-button>
+            <el-button v-else type="warning" @click="unpublish(row)">下架</el-button>
+            <el-button type="danger" @click="confirmDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -590,8 +590,8 @@ onMounted(async () => {
         >
           <div class="card-header">
             <span class="paper-id">#{{ item.id }}</span>
-            <el-tag :type="statusType(item.status)" size="small">{{ statusText(item.status) }}</el-tag>
-            <el-tag v-if="item.archiveStatus === 1" type="info" size="small">已归档</el-tag>
+            <el-tag :type="statusType(item.status)">{{ statusText(item.status) }}</el-tag>
+            <el-tag v-if="item.archiveStatus === 1" type="info">已归档</el-tag>
           </div>
           <div class="card-title">{{ item.paperName }}</div>
           <div v-if="item.description" class="card-desc">{{ item.description }}</div>
@@ -614,10 +614,10 @@ onMounted(async () => {
           <div class="card-footer">
             <span class="create-time">{{ item.createTime || '-' }}</span>
             <div class="actions">
-              <el-button type="primary" size="small" @click.stop="openView(item)">查看</el-button>
-              <el-button v-if="item.status !== 1" type="success" size="small" @click.stop="publish(item)">发布</el-button>
-              <el-button v-else type="warning" size="small" @click.stop="unpublish(item)">下架</el-button>
-              <el-button type="danger" size="small" @click.stop="confirmDelete(item)">删除</el-button>
+              <el-button type="primary" @click.stop="openView(item)">查看</el-button>
+              <el-button v-if="item.status !== 1" type="success" @click.stop="publish(item)">发布</el-button>
+              <el-button v-else type="warning" @click.stop="unpublish(item)">下架</el-button>
+              <el-button type="danger" @click.stop="confirmDelete(item)">删除</el-button>
             </div>
           </div>
         </el-card>
@@ -692,7 +692,7 @@ onMounted(async () => {
                     <div class="picked-passage-content">{{ row.passageContent }}</div>
                     <div v-for="(question, qi) in row.subQuestions" :key="question.questionId" class="picked-sub-question">
                       <span>{{ qi + 1 }}. {{ question.stem }}</span>
-                      <el-input-number v-model="question.score" :min="0.5" :max="100" :step="0.5" size="small" />
+                      <el-input-number v-model="question.score" :min="0.5" :max="100" :step="0.5" />
                     </div>
                   </div>
                 </template>
@@ -704,18 +704,18 @@ onMounted(async () => {
             </el-table-column>
             <el-table-column label="难度" width="80">
               <template #default="{ row }">
-                <el-tag :type="diffTagType(row.difficulty)" size="small">{{ diffLabel(row.difficulty) }}</el-tag>
+                <el-tag :type="diffTagType(row.difficulty)">{{ diffLabel(row.difficulty) }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column label="单元总分" width="150" align="center">
               <template #default="{ row }">
-                <el-input-number v-if="row.unitType === 'QUESTION'" v-model="row.score" :min="0.5" :max="100" :step="0.5" size="small" />
+                <el-input-number v-if="row.unitType === 'QUESTION'" v-model="row.score" :min="0.5" :max="100" :step="0.5" />
                 <span v-else>{{ unitScore(row) }} 分 · {{ row.subQuestions.length }} 小题</span>
               </template>
             </el-table-column>
             <el-table-column label="操作" width="95" align="center">
               <template #default="{ row }">
-                <el-button link type="danger" size="small" @click="removePicked(row)">移除单元</el-button>
+                <el-button link type="danger" @click="removePicked(row)">移除单元</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -812,12 +812,12 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="难度" width="80">
           <template #default="{ row }">
-            <el-tag size="small" :type="diffTagType(row.difficulty)">{{ diffLabel(row.difficulty) }}</el-tag>
+            <el-tag :type="diffTagType(row.difficulty)">{{ diffLabel(row.difficulty) }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="100" align="center">
           <template #default="{ row }">
-            <el-button size="small" type="primary" :disabled="pickedIds.has(row.id)" @click="addQuestion(row)">
+            <el-button type="primary" :disabled="pickedIds.has(row.id)" @click="addQuestion(row)">
               {{ pickedIds.has(row.id) ? '已加入' : '加入' }}
             </el-button>
           </template>
@@ -842,7 +842,7 @@ onMounted(async () => {
         <el-table-column prop="totalScore" label="总分" width="80" align="center" />
         <el-table-column label="操作" width="100" align="center">
           <template #default="{ row }">
-            <el-button size="small" type="primary" :disabled="isPassagePicked(row.id)" @click="addPassage(row)">
+            <el-button type="primary" :disabled="isPassagePicked(row.id)" @click="addPassage(row)">
               {{ isPassagePicked(row.id) ? '已加入' : '加入整组' }}
             </el-button>
           </template>
@@ -867,7 +867,7 @@ onMounted(async () => {
 
     <!-- 查看试卷(含题目、答案、解析 —— 论文 4.2.2 管理员预览) -->
     <el-dialog v-model="viewVisible" :title="'查看试卷：' + (viewPaper?.paperName || '')" width="900px" top="4vh">
-      <el-descriptions :column="4" size="small" border style="margin-bottom:12px">
+      <el-descriptions :column="4" border style="margin-bottom:12px">
         <el-descriptions-item label="题量">{{ viewPaper?.questionCount ?? viewQuestions.length }}</el-descriptions-item>
         <el-descriptions-item label="总分">{{ viewPaper?.totalScore ?? viewQuestions.length * 2 }}</el-descriptions-item>
         <el-descriptions-item label="及格分">{{ viewPaper?.passScore ?? '-' }}</el-descriptions-item>
@@ -879,7 +879,7 @@ onMounted(async () => {
           <template v-if="unit.unitType === 'READING'">
             <div class="view-q-head">
               <span class="q-no">{{ idx + 1 }}.</span>
-              <el-tag size="small" type="warning">阅读理解</el-tag>
+              <el-tag type="warning">阅读理解</el-tag>
               <span class="q-score">{{ unitScore(unit) }} 分 · {{ unit.subQuestions.length }} 小题</span>
             </div>
             <h4>{{ unit.passageTitle }}</h4>
@@ -887,9 +887,9 @@ onMounted(async () => {
             <div v-for="(question, qi) in unit.subQuestions" :key="question.questionId" class="view-sub-question">
               <div class="view-q-head">
                 <span class="q-no">{{ qi + 1 }}.</span>
-                <el-tag size="small">{{ typeLabel(question.questionType) }}</el-tag>
+                <el-tag>{{ typeLabel(question.questionType) }}</el-tag>
                 <span class="q-score">{{ question.score }} 分</span>
-                <el-button link type="primary" size="small" style="margin-left:auto" @click="loadAnswer(question.questionId)">
+                <el-button link type="primary" style="margin-left:auto" @click="loadAnswer(question.questionId)">
                   {{ viewAnswers[question.questionId] ? '隐藏答案' : '查看答案与解析' }}
                 </el-button>
               </div>
@@ -906,10 +906,10 @@ onMounted(async () => {
           <template v-else>
             <div class="view-q-head">
               <span class="q-no">{{ idx + 1 }}.</span>
-              <el-tag size="small">{{ typeLabel(unit.questionType) }}</el-tag>
-              <el-tag size="small" :type="diffTagType(unit.difficulty)" style="margin-right:6px">{{ diffLabel(unit.difficulty) }}</el-tag>
+              <el-tag>{{ typeLabel(unit.questionType) }}</el-tag>
+              <el-tag :type="diffTagType(unit.difficulty)" style="margin-right:6px">{{ diffLabel(unit.difficulty) }}</el-tag>
               <span class="q-score">{{ unit.score }} 分</span>
-              <el-button link type="primary" size="small" style="margin-left:auto" @click="loadAnswer(unit.questionId)">
+              <el-button link type="primary" style="margin-left:auto" @click="loadAnswer(unit.questionId)">
                 {{ viewAnswers[unit.questionId] ? '隐藏答案' : '查看答案与解析' }}
               </el-button>
             </div>

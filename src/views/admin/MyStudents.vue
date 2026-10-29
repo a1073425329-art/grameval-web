@@ -265,7 +265,7 @@ onMounted(load)
           @click="activeClassId = c.id"
         >
           <span class="chip-name">{{ c.className }}</span>
-          <el-tag v-if="(c.teacherNames?.length ?? 0) > 1" size="small" type="warning" effect="plain">
+          <el-tag v-if="(c.teacherNames?.length ?? 0) > 1" type="warning" effect="plain">
             {{ c.teacherNames?.length }} 位老师
           </el-tag>
           <span class="chip-count">{{ c.studentCount ?? 0 }}</span>
@@ -291,7 +291,7 @@ onMounted(load)
         <el-button :loading="exporting" @click="exportCsv">
           <el-icon><Download /></el-icon>导出 CSV
         </el-button>
-        <el-button type="primary" size="small" @click="$router.push('/admin/ai-compose')">
+        <el-button type="primary" @click="$router.push('/admin/ai-compose')">
           <el-icon><Cpu /></el-icon>AI学生分析
         </el-button>
       </div>
@@ -325,7 +325,7 @@ onMounted(load)
             <el-tag
               v-for="(cn, i) in row.classNames"
               :key="i"
-              size="small"
+             
               effect="plain"
               :type="i === 0 ? 'primary' : 'success'"
               class="cls-tag"
@@ -361,7 +361,7 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="状态" width="85">
           <template #default="{ row }">
-            <el-tag :type="(row.status ?? 1) === 0 ? 'danger' : 'success'" size="small" effect="light">
+            <el-tag :type="(row.status ?? 1) === 0 ? 'danger' : 'success'" effect="light">
               {{ statusLabel(row.status) }}
             </el-tag>
           </template>
@@ -369,7 +369,7 @@ onMounted(load)
         <el-table-column label="操作" width="90" align="center">
           <template #default="{ row }">
             <el-tooltip content="从当前班级移除" placement="top">
-              <el-button link type="danger" size="small" @click="removeFromClass(row)">
+              <el-button link type="danger" @click="removeFromClass(row)">
                 <el-icon><Close /></el-icon>
               </el-button>
             </el-tooltip>

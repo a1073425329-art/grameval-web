@@ -147,8 +147,8 @@ onMounted(async () => {
           <div class="bell-header">
             <span>消息通知</span>
             <div>
-              <el-button size="small" text @click="goToMessageCenter">查看全部</el-button>
-              <el-button v-if="unreadCount > 0" size="small" text type="primary" @click="handleMarkAllRead">全部已读</el-button>
+              <el-button text @click="goToMessageCenter">查看全部</el-button>
+              <el-button v-if="unreadCount > 0" text type="primary" @click="handleMarkAllRead">全部已读</el-button>
             </div>
           </div>
           <div class="bell-body">
@@ -181,7 +181,7 @@ onMounted(async () => {
         <span class="header-user">
           <el-avatar :size="32" :src="avatarUrl"><el-icon><UserFilled /></el-icon></el-avatar>
           <span class="username">{{ authStore.userInfo?.displayName || authStore.userInfo?.username || '未登录' }}</span>
-          <el-tag v-if="authStore.role" size="small" :type="authStore.role === 'ADMIN' ? 'danger' : 'success'">{{ authStore.role === 'ADMIN' ? '管理员' : '学生' }}</el-tag>
+          <el-tag v-if="authStore.role" :type="authStore.role === 'ADMIN' ? 'danger' : 'success'">{{ authStore.role === 'ADMIN' ? '管理员' : '学生' }}</el-tag>
           <el-icon><ArrowDown /></el-icon>
         </span>
         <template #dropdown>

@@ -1688,7 +1688,7 @@ onMounted(async () => {
             <span class="stem-cell">
               <el-tag
                 v-if="row.questionType === 'READING' && row.passageId"
-                size="small"
+               
                 type="warning"
                 effect="plain"
                 class="group-tag"
@@ -1711,7 +1711,7 @@ onMounted(async () => {
             <el-tag
               v-if="row.questionType === 'READING'"
               type="warning"
-              size="small"
+             
               effect="light"
             >
               {{ typeLabel(row.questionType) }}
@@ -1719,7 +1719,7 @@ onMounted(async () => {
             <span v-else>{{ typeLabel(row.questionType) }}</span>
             <el-tag
               v-if="row.questionSubtype"
-              size="small"
+             
               type="info"
               effect="plain"
               class="subtype-tag"
@@ -1739,7 +1739,7 @@ onMounted(async () => {
               </span>
               <el-button
                 link
-                size="small"
+               
                 :title="isRevealed(row.id) ? '隐藏答案' : '显示答案'"
                 @click="toggleReveal(row.id)"
               >
@@ -1750,14 +1750,14 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="难度" width="90">
           <template #default="{ row }">
-            <el-tag :type="diffTagType(row.difficulty)" size="small">{{
+            <el-tag :type="diffTagType(row.difficulty)">{{
               diffLabel(row.difficulty)
             }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="80">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">{{
+            <el-tag :type="row.status === 1 ? 'success' : 'info'">{{
               row.status === 1 ? '启用' : '停用'
             }}</el-tag>
           </template>
@@ -1767,7 +1767,7 @@ onMounted(async () => {
             <el-tag
               v-for="tag in (row.knowledgePoints || []).slice(0, 3)"
               :key="tag"
-              size="small"
+             
               type="info"
               effect="plain"
               class="kp-tag"
@@ -1790,12 +1790,12 @@ onMounted(async () => {
              实时计数只在单题详情里展示（详情弹窗「被引用」项）。 -->
         <el-table-column label="操作" width="188" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openDetail(row)">
+            <el-button link type="primary" @click="openDetail(row)">
               <el-icon><Tickets /></el-icon>详情
             </el-button>
-            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-dropdown trigger="click" size="small" @command="(cmd: string) => onRowCommand(cmd, row)">
-              <el-button link type="primary" size="small">
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
+              <el-button link type="primary">
                 更多<el-icon><ArrowDown /></el-icon>
               </el-button>
               <template #dropdown>
@@ -1836,15 +1836,15 @@ onMounted(async () => {
               @click.stop
             />
             <span class="q-id">#{{ item.id }}</span>
-            <el-tag :type="item.status === 1 ? 'success' : 'info'" size="small">{{
+            <el-tag :type="item.status === 1 ? 'success' : 'info'">{{
               item.status === 1 ? '启用' : '停用'
             }}</el-tag>
-            <el-tag :type="diffTagType(item.difficulty)" size="small">{{
+            <el-tag :type="diffTagType(item.difficulty)">{{
               diffLabel(item.difficulty)
             }}</el-tag>
             <el-tag
               :type="item.questionType === 'READING' ? 'warning' : 'info'"
-              size="small"
+             
             >
               {{ typeLabel(item.questionType) }}
             </el-tag>
@@ -1865,7 +1865,7 @@ onMounted(async () => {
             </span>
           </div>
           <div class="card-passage" v-if="item.questionType === 'READING' && item.passageTitle">
-            <el-tag size="small" type="warning" effect="plain">
+            <el-tag type="warning" effect="plain">
               {{ item.passageTitle }} · 第{{ item.passageQuestionOrder ?? '?' }}题
             </el-tag>
           </div>
@@ -1884,7 +1884,7 @@ onMounted(async () => {
             <el-tag
               v-for="tag in item.knowledgePoints"
               :key="tag"
-              size="small"
+             
               type="info"
             >
               {{ tag }}
@@ -1896,29 +1896,29 @@ onMounted(async () => {
               <span class="answer-text" :class="{ masked: !isRevealed(item.id) }">
                 {{ formatAnswerDisplay(item) }}
               </span>
-              <el-button link size="small" @click.stop="toggleReveal(item.id)">
+              <el-button link @click.stop="toggleReveal(item.id)">
                 <el-icon><Hide v-if="isRevealed(item.id)" /><View v-else /></el-icon>
               </el-button>
             </span>
             <div class="actions">
-              <el-button link type="primary" size="small" @click.stop="openDetail(item)">
+              <el-button link type="primary" @click.stop="openDetail(item)">
                 详情
               </el-button>
-              <el-button link type="primary" size="small" @click.stop="openEdit(item)">
+              <el-button link type="primary" @click.stop="openEdit(item)">
                 编辑
               </el-button>
-              <el-button link type="primary" size="small" @click.stop="openCopy(item)">
+              <el-button link type="primary" @click.stop="openCopy(item)">
                 <el-icon><CopyDocument /></el-icon>复制
               </el-button>
               <el-button
                 link
                 :type="item.status === 1 ? 'warning' : 'success'"
-                size="small"
+               
                 @click.stop="toggleStatus(item)"
               >
                 {{ item.status === 1 ? '停用' : '启用' }}
               </el-button>
-              <el-button link type="danger" size="small" @click.stop="confirmDelete(item)">
+              <el-button link type="danger" @click.stop="confirmDelete(item)">
                 删除
               </el-button>
             </div>
@@ -2051,17 +2051,17 @@ onMounted(async () => {
               <!-- 文章库选择 -->
               <div v-if="!isReadingEdit && readingForm.passageMode === 'select'" class="passage-selector">
                 <div class="selector-toolbar">
-                  <el-input v-model="passageSearchKw" placeholder="搜索文章标题/内容" clearable size="small" style="width: 240px">
+                  <el-input v-model="passageSearchKw" placeholder="搜索文章标题/内容" clearable style="width: 240px">
                     <template #prefix><Search /></template>
                   </el-input>
-                  <el-button size="small" type="primary" @click="loadPassages">搜索</el-button>
+                  <el-button type="primary" @click="loadPassages">搜索</el-button>
                 </div>
                 <div class="passage-list" v-loading="passageLoading">
                   <div v-for="p in passageList" :key="p.id" class="passage-item" :class="{ selected: readingForm.selectedPassageId === p.id }" @click="selectPassage(p)">
                     <div class="passage-item-title">
                       {{ p.title || '(无标题)' }}
-                      <el-tag size="small" type="info" class="passage-tag">{{ diffLabel(p.difficulty) }}</el-tag>
-                      <el-tag size="small" class="passage-tag">{{ p.questionCount ?? 0 }} 题</el-tag>
+                      <el-tag type="info" class="passage-tag">{{ diffLabel(p.difficulty) }}</el-tag>
+                      <el-tag class="passage-tag">{{ p.questionCount ?? 0 }} 题</el-tag>
                     </div>
                     <div class="passage-item-content">{{ p.content }}</div>
                   </div>
@@ -2100,7 +2100,7 @@ onMounted(async () => {
 
               <div class="sub-questions">
                 <div class="sq-toolbar">
-                  <el-button size="small" type="primary" plain @click="addSubQuestion">
+                  <el-button type="primary" plain @click="addSubQuestion">
                     <el-icon><Plus /></el-icon>{{ isReadingEdit ? '给本组加一题' : '添加题目' }}
                   </el-button>
                   <span class="sq-hint">提示：阅读理解通常一篇文章配 3-5 道选择题</span>
@@ -2115,13 +2115,13 @@ onMounted(async () => {
                   <div class="sub-q-header">
                     <span class="sub-q-num">
                       第 {{ qIdx + 1 }} 题
-                      <el-tag v-if="q.id" size="small" type="info" effect="plain">#{{ q.id }}</el-tag>
-                      <el-tag v-else size="small" type="success" effect="plain">新增</el-tag>
+                      <el-tag v-if="q.id" type="info" effect="plain">#{{ q.id }}</el-tag>
+                      <el-tag v-else type="success" effect="plain">新增</el-tag>
                     </span>
                     <div class="sub-q-actions">
                       <el-select
                         v-model="q.questionSubtype"
-                        size="small"
+                       
                         clearable
                         placeholder="子题型"
                         style="width: 104px"
@@ -2130,7 +2130,7 @@ onMounted(async () => {
                       </el-select>
                       <el-select
                         v-model="q.blankMode"
-                        size="small"
+                       
                         style="width: 118px"
                         @change="onBlankModeChange(q)"
                       >
@@ -2140,26 +2140,26 @@ onMounted(async () => {
                       <el-select
                         v-if="q.blankMode === 'multi'"
                         v-model="q.scoreType"
-                        size="small"
+                       
                         style="width: 108px"
                         title="整题给分＝全选对才得分；逐空给分＝按答对的空数比例给分"
                       >
                         <el-option label="整题给分" value="FULL" />
                         <el-option label="逐空给分" value="PARTIAL" />
                       </el-select>
-                      <el-input-number v-model="q.defaultScore" :min="0.5" :max="20" :step="0.5" size="small" />
+                      <el-input-number v-model="q.defaultScore" :min="0.5" :max="20" :step="0.5" />
                       <span style="margin-left: 4px">分</span>
                       <el-switch
                         v-if="q.id"
                         v-model="q.status"
                         :active-value="1"
                         :inactive-value="0"
-                        size="small"
+                       
                         active-text="启用"
                         inline-prompt
                         style="margin: 0 6px"
                       />
-                      <el-button link type="danger" size="small" @click="removeSubQuestion(qIdx)">
+                      <el-button link type="danger" @click="removeSubQuestion(qIdx)">
                         {{ q.id ? '停用' : '移除' }}
                       </el-button>
                     </div>
@@ -2171,13 +2171,13 @@ onMounted(async () => {
                     <div class="sub-opts-grid">
                       <div v-for="(opt, oIdx) in q.options" :key="oIdx" class="sub-opt-row">
                         <el-tag class="opt-key">{{ opt.optionLabel }}</el-tag>
-                        <el-input v-model="opt.optionContent" placeholder="选项内容" size="small" />
-                        <el-button link type="danger" size="small" @click="removeSubOpt(qIdx, oIdx)">
+                        <el-input v-model="opt.optionContent" placeholder="选项内容" />
+                        <el-button link type="danger" @click="removeSubOpt(qIdx, oIdx)">
                           <el-icon><Delete /></el-icon>
                         </el-button>
                       </div>
                     </div>
-                    <el-button size="small" type="primary" link @click="addSubOpt(qIdx)">+ 添加选项</el-button>
+                    <el-button type="primary" link @click="addSubOpt(qIdx)">+ 添加选项</el-button>
                   </el-form-item>
                   <el-form-item label="答案" :label-width="60">
                     <el-radio-group v-if="q.blankMode === 'single'" v-model="q.picks[0]">
@@ -2292,11 +2292,11 @@ onMounted(async () => {
                 <div v-for="(op, idx) in normalForm.options" :key="idx" class="opt-row">
                   <el-tag class="opt-key">{{ op.optionLabel }}</el-tag>
                   <el-input v-model="op.optionContent" placeholder="选项内容" />
-                  <el-button link type="danger" size="small" @click="removeOption(idx)">
+                  <el-button link type="danger" @click="removeOption(idx)">
                     <el-icon><Delete /></el-icon>
                   </el-button>
                 </div>
-                <el-button size="small" @click="addOption"><el-icon><Plus /></el-icon>添加选项</el-button>
+                <el-button @click="addOption"><el-icon><Plus /></el-icon>添加选项</el-button>
               </div>
             </el-form-item>
             <el-form-item label="正确答案">
@@ -2315,11 +2315,11 @@ onMounted(async () => {
                 <div v-for="(op, idx) in normalForm.options" :key="idx" class="opt-row">
                   <el-tag class="opt-key">{{ op.optionLabel }}</el-tag>
                   <el-input v-model="op.optionContent" placeholder="选项内容" />
-                  <el-button link type="danger" size="small" @click="removeOption(idx)">
+                  <el-button link type="danger" @click="removeOption(idx)">
                     <el-icon><Delete /></el-icon>
                   </el-button>
                 </div>
-                <el-button size="small" @click="addOption"><el-icon><Plus /></el-icon>添加选项</el-button>
+                <el-button @click="addOption"><el-icon><Plus /></el-icon>添加选项</el-button>
               </div>
               <span class="fill-hint">提示：多选题至少需要 2 个选项</span>
             </el-form-item>
@@ -2463,21 +2463,21 @@ onMounted(async () => {
     <el-drawer v-model="drawerVisible" title="题目详情" size="520px">
       <div v-if="detail" class="detail-box">
         <div class="detail-tags">
-          <el-tag size="small" :type="detail.questionType === 'READING' ? 'warning' : 'info'">
+          <el-tag :type="detail.questionType === 'READING' ? 'warning' : 'info'">
             {{ typeLabel(detail.questionType) }}
           </el-tag>
-          <el-tag v-if="detail.questionSubtype" size="small" type="info" effect="plain">
+          <el-tag v-if="detail.questionSubtype" type="info" effect="plain">
             {{ subtypeLabel(detail.questionSubtype) }}
           </el-tag>
-          <el-tag :type="diffTagType(detail.difficulty)" size="small">
+          <el-tag :type="diffTagType(detail.difficulty)">
             {{ diffLabel(detail.difficulty) }}
           </el-tag>
-          <el-tag :type="detail.status === 1 ? 'success' : 'info'" size="small">
+          <el-tag :type="detail.status === 1 ? 'success' : 'info'">
             {{ detail.status === 1 ? '启用' : '停用' }}
           </el-tag>
         </div>
 
-        <el-descriptions :column="2" size="small" border class="detail-desc">
+        <el-descriptions :column="2" border class="detail-desc">
           <el-descriptions-item label="ID">{{ detail.id }}</el-descriptions-item>
           <el-descriptions-item label="分类">{{ detail.categoryName || '-' }}</el-descriptions-item>
           <el-descriptions-item label="分值">{{ detail.defaultScore ?? 2 }} 分</el-descriptions-item>
@@ -2547,7 +2547,7 @@ onMounted(async () => {
             <span>{{ opt.optionContent }}</span>
             <el-tag
               v-if="isRightOption(detail, opt.optionLabel)"
-              size="small"
+             
               type="success"
               effect="dark"
               class="right-tag"
@@ -2578,7 +2578,7 @@ onMounted(async () => {
             <el-tag
               v-for="tag in detail.knowledgePoints"
               :key="tag"
-              size="small"
+             
               type="info"
               class="kp-tag"
             >
@@ -2590,7 +2590,7 @@ onMounted(async () => {
         <div class="detail-block" v-if="detail.passageId" v-loading="detailLoading">
           <div class="detail-label">
             阅读理解文章
-            <el-tag size="small" type="warning" effect="plain">
+            <el-tag type="warning" effect="plain">
               第 {{ detail.passageQuestionOrder ?? '?' }} 题
             </el-tag>
           </div>
@@ -2603,15 +2603,15 @@ onMounted(async () => {
         </div>
 
         <div class="detail-actions">
-          <el-button type="primary" size="small" @click="drawerVisible = false; openEdit(detail)">
+          <el-button type="primary" @click="drawerVisible = false; openEdit(detail)">
             编辑
           </el-button>
-          <el-button size="small" @click="drawerVisible = false; openCopy(detail)">
+          <el-button @click="drawerVisible = false; openCopy(detail)">
             <el-icon><CopyDocument /></el-icon>复制新建
           </el-button>
           <el-button
             :type="detail.status === 1 ? 'warning' : 'success'"
-            size="small"
+           
             @click="toggleStatus(detail)"
           >
             {{ detail.status === 1 ? '停用' : '启用' }}
@@ -2679,7 +2679,7 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="结论" width="120" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.isValid ? 'success' : 'danger'" size="small">{{ row.isValid ? '通过' : '未通过' }}</el-tag>
+            <el-tag :type="row.isValid ? 'success' : 'danger'">{{ row.isValid ? '通过' : '未通过' }}</el-tag>
             <span style="color:#909399"> {{ row.confidence }}%</span>
           </template>
         </el-table-column>

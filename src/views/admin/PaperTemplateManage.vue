@@ -442,9 +442,9 @@ const examTone = (v?: string) => {
         <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
             <div class="cell-actions">
-              <el-button type="primary" size="small" :loading="generating" @click="handleGenerate(row)">生成试卷</el-button>
-              <el-button size="small" @click="openEdit(row)">编辑</el-button>
-              <el-button size="small" type="danger" text @click="handleDelete(row.id)">删除</el-button>
+              <el-button type="primary" :loading="generating" @click="handleGenerate(row)">生成试卷</el-button>
+              <el-button @click="openEdit(row)">编辑</el-button>
+              <el-button type="danger" text @click="handleDelete(row.id)">删除</el-button>
             </div>
           </template>
         </el-table-column>
@@ -568,7 +568,7 @@ const examTone = (v?: string) => {
                   <el-input-number v-model="diffMix.hard" :min="0" :max="100" controls-position="right" />
                 </label>
                 <el-tag :type="diffValid ? 'success' : 'danger'" effect="plain" round>合计 {{ diffSum }}%</el-tag>
-                <el-button text size="small" @click="diffMix.easy = 30; diffMix.medium = 50; diffMix.hard = 20">重置</el-button>
+                <el-button text @click="diffMix.easy = 30; diffMix.medium = 50; diffMix.hard = 20">重置</el-button>
               </div>
             </div>
           </section>
@@ -577,7 +577,7 @@ const examTone = (v?: string) => {
             <h3 class="ed-sec-h">
               4 · 题型结构
               <span class="ed-sec-meta">合计 {{ countFromRows }} 题 · 卷面 {{ totalFromRows }} 分</span>
-              <el-button size="small" round @click="alignOnePointOneQ">一键 1 题 1 分</el-button>
+              <el-button round @click="alignOnePointOneQ">一键 1 题 1 分</el-button>
             </h3>
             <div class="qtype-list">
               <div v-for="(row, i) in configRows" :key="i" class="qtype-card">
@@ -604,9 +604,9 @@ const examTone = (v?: string) => {
                   </div>
                 </div>
                 <div class="qtype-ops">
-                  <el-button text size="small" :disabled="i === 0" @click="moveRow(i, -1)">↑</el-button>
-                  <el-button text size="small" :disabled="i === configRows.length - 1" @click="moveRow(i, 1)">↓</el-button>
-                  <el-button text type="danger" size="small" @click="removeRow(i)">删除</el-button>
+                  <el-button text :disabled="i === 0" @click="moveRow(i, -1)">↑</el-button>
+                  <el-button text :disabled="i === configRows.length - 1" @click="moveRow(i, 1)">↓</el-button>
+                  <el-button text type="danger" @click="removeRow(i)">删除</el-button>
                 </div>
               </div>
               <el-button class="qtype-add" size="large" @click="addRow">＋ 添加题型</el-button>

@@ -5,7 +5,7 @@
       <template #header>
         <div class="card-header">
           <span><el-icon><Setting /></el-icon> 系统配置概览</span>
-          <el-button type="primary" plain size="small" @click="handleRefresh">
+          <el-button type="primary" plain @click="handleRefresh">
             <el-icon><Refresh /></el-icon> 刷新配置
           </el-button>
         </div>
@@ -19,22 +19,22 @@
           <span class="overview-model">{{ savedModelLabel }}</span>
         </el-descriptions-item>
         <el-descriptions-item label="DeepSeek">
-          <el-tag :type="aiOverview.deepseekConfigured ? 'success' : 'info'" size="small">
+          <el-tag :type="aiOverview.deepseekConfigured ? 'success' : 'info'">
             {{ aiOverview.deepseekConfigured ? '已配置' : '未配置' }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="通义千问">
-          <el-tag :type="aiOverview.qianwenConfigured ? 'success' : 'info'" size="small">
+          <el-tag :type="aiOverview.qianwenConfigured ? 'success' : 'info'">
             {{ aiOverview.qianwenConfigured ? '已配置' : '未配置' }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="Dify 工作流">
-          <el-tag :type="aiOverview.difyAnalyzeConfigured && aiOverview.difyGenerateConfigured ? 'success' : 'info'" size="small">
+          <el-tag :type="aiOverview.difyAnalyzeConfigured && aiOverview.difyGenerateConfigured ? 'success' : 'info'">
             {{ aiOverview.difyAnalyzeConfigured && aiOverview.difyGenerateConfigured ? '已配置' : '未配置' }}
           </el-tag>
         </el-descriptions-item>
         <el-descriptions-item label="Mock 模式">
-          <el-tag :type="aiOverview.mockEnabled ? 'warning' : 'success'" size="small">
+          <el-tag :type="aiOverview.mockEnabled ? 'warning' : 'success'">
             {{ aiOverview.mockEnabled ? '已启用' : '已关闭' }}
           </el-tag>
         </el-descriptions-item>
@@ -59,10 +59,10 @@
               <div class="active-path-line">
                 <strong class="active-path-name">{{ activePathRow?.label || '未选择' }}</strong>
                 <span class="active-path-model">{{ activePathRow?.model || '未设置模型' }}</span>
-                <el-tag :type="activePathRow?.status === 'ok' ? 'success' : 'warning'" size="small" effect="light">
+                <el-tag :type="activePathRow?.status === 'ok' ? 'success' : 'warning'" effect="light">
                   {{ activePathRow?.status === 'ok' ? '通路已配置' : (activePathRow?.statusText || '待配置') }}
                 </el-tag>
-                <el-tag size="small" type="info" effect="plain">
+                <el-tag type="info" effect="plain">
                   来源：{{ activePathRow?.group === 'profile' ? '厂商档案（优先）' : '内置通路' }}
                 </el-tag>
               </div>
@@ -122,9 +122,9 @@
                 <div class="path-row-main">
                   <div class="path-row-title">
                     <strong>{{ row.label }}</strong>
-                    <el-tag v-if="row.key === activePathKey" size="small" type="success" effect="dark">当前使用</el-tag>
-                    <el-tag v-if="row.group === 'profile'" size="small" type="warning" effect="plain">档案优先</el-tag>
-                    <el-tag v-if="row.off" size="small" type="info">已停用</el-tag>
+                    <el-tag v-if="row.key === activePathKey" type="success" effect="dark">当前使用</el-tag>
+                    <el-tag v-if="row.group === 'profile'" type="warning" effect="plain">档案优先</el-tag>
+                    <el-tag v-if="row.off" type="info">已停用</el-tag>
                   </div>
                   <div class="path-row-sub">
                     <span class="path-row-model">{{ row.model || '未设置模型' }}</span>
@@ -132,8 +132,8 @@
                   </div>
                 </div>
                 <div class="path-row-side">
-                  <el-tag v-if="row.status === 'ok'" size="small" type="success" effect="plain">已配置</el-tag>
-                  <el-tag v-else size="small" type="warning" effect="plain">{{ row.statusText }}</el-tag>
+                  <el-tag v-if="row.status === 'ok'" type="success" effect="plain">已配置</el-tag>
+                  <el-tag v-else type="warning" effect="plain">{{ row.statusText }}</el-tag>
                   <el-button
                     v-if="row.canTest"
                     link
@@ -155,7 +155,7 @@
                   <el-switch
                     v-if="row.raw"
                     :model-value="row.off !== true"
-                    size="small"
+                   
                     @click.stop
                     @change="handleTogglePathRow(row)"
                   />
@@ -163,7 +163,7 @@
                   <el-button v-if="row.raw" link type="danger" @click.stop="handleDeleteVendor(row.raw)">删除</el-button>
                 </div>
                 <div v-if="row.id && vendorTestResult[row.id]" class="path-row-test">
-                  <el-tag :type="vendorTestResult[row.id]?.success ? 'success' : 'error'" size="small" effect="plain">
+                  <el-tag :type="vendorTestResult[row.id]?.success ? 'success' : 'error'" effect="plain">
                     {{ vendorTestResult[row.id]?.message }}
                   </el-tag>
                   <span class="path-row-latency">{{ vendorTestResult[row.id]?.latencyMs ?? 0 }} ms</span>
@@ -234,7 +234,7 @@
               <span class="config-scope-title">
                 下面只展示<strong>{{ activePathRow?.label || '所选' }}</strong>这一条通路的参数
               </span>
-              <el-switch v-model="showAllProviderConfigs" size="small" active-text="显示全部通路配置" />
+              <el-switch v-model="showAllProviderConfigs" active-text="显示全部通路配置" />
             </div>
 
             <template v-if="providerConfigVisible('DEEPSEEK')">
@@ -272,7 +272,7 @@
                   <div class="model-option">
                     <div class="model-option-title">
                       <strong>{{ model.name }}</strong>
-                      <el-tag v-if="model.id === aiForm.deepseekModel" type="success" size="small">当前</el-tag>
+                      <el-tag v-if="model.id === aiForm.deepseekModel" type="success">当前</el-tag>
                     </div>
                     <span>{{ model.description }}</span>
                   </div>
@@ -317,7 +317,7 @@
                   <div class="model-option">
                     <div class="model-option-title">
                       <strong>{{ model.name }}</strong>
-                      <el-tag v-if="model.id === aiForm.qianwenModel" type="success" size="small">当前</el-tag>
+                      <el-tag v-if="model.id === aiForm.qianwenModel" type="success">当前</el-tag>
                     </div>
                     <span>{{ model.description }}</span>
                   </div>
@@ -351,7 +351,7 @@
                   <div class="model-option">
                     <div class="model-option-title">
                       <strong>{{ model.name }}</strong>
-                      <el-tag v-if="model.id === aiForm.ollamaModel" type="success" size="small">当前</el-tag>
+                      <el-tag v-if="model.id === aiForm.ollamaModel" type="success">当前</el-tag>
                     </div>
                     <span>{{ model.description }}</span>
                   </div>
@@ -434,14 +434,14 @@
                 <el-card class="provider-test-card" shadow="hover">
                   <div class="provider-header">
                     <span class="provider-name">{{ provider.name }}</span>
-                    <el-tag :type="provider.configured ? 'success' : 'info'" size="small">
+                    <el-tag :type="provider.configured ? 'success' : 'info'">
                       {{ provider.configured ? '已配置' : '未配置' }}
                     </el-tag>
                   </div>
                   <div class="provider-info">
                     <div>模型: <strong>{{ provider.model || '-' }}</strong></div>
                     <div>地址: <span class="url-text">{{ provider.baseUrl || '-' }}</span></div>
-                    <div>类型: <el-tag size="small" :type="provider.providerType === 'WORKFLOW' ? 'warning' : ''">{{ provider.providerType }}</el-tag></div>
+                    <div>类型: <el-tag :type="provider.providerType === 'WORKFLOW' ? 'warning' : ''">{{ provider.providerType }}</el-tag></div>
                   </div>
                   <div class="test-result" v-if="testResults[provider.id]">
                     <!-- v-if 已保证该项存在；noUncheckedIndexedAccess 下索引访问为可选，故用可选链 + 兜底值满足类型检查 -->
@@ -455,7 +455,7 @@
                   </div>
                   <el-button
                     type="primary"
-                    size="small"
+                   
                     :loading="testingProvider === provider.id"
                     @click="handleTestProvider(provider.id)"
                   >
@@ -590,7 +590,7 @@
 
             <!-- 结果过滤 -->
             <div class="api-test-filter" v-if="apiTestSummary">
-              <el-radio-group v-model="apiTestFilter" size="small">
+              <el-radio-group v-model="apiTestFilter">
                 <el-radio-button value="all">全部 ({{ apiTestSummary.results.length }})</el-radio-button>
                 <el-radio-button value="success">成功 ({{ apiTestSummary.successCount }})</el-radio-button>
                 <el-radio-button value="failed">失败 ({{ apiTestSummary.failedCount }})</el-radio-button>
@@ -599,7 +599,7 @@
                 v-model="apiTestSearch"
                 placeholder="搜索路径/方法"
                 style="width: 240px"
-                size="small"
+               
                 clearable
               >
                 <template #prefix><el-icon><Search /></el-icon></template>
@@ -611,10 +611,10 @@
               <el-tag type="info" style="margin-bottom: 8px">
                 已发现 {{ apiTestEndpoints.length }} 个接口，点击「一键测试」开始测试
               </el-tag>
-              <el-table :data="apiTestEndpoints" size="small" max-height="500" stripe>
+              <el-table :data="apiTestEndpoints" max-height="500" stripe>
                 <el-table-column label="方法" width="80">
                   <template #default="{ row }">
-                    <el-tag :type="methodTagType(row.method)" size="small">{{ row.method }}</el-tag>
+                    <el-tag :type="methodTagType(row.method)">{{ row.method }}</el-tag>
                   </template>
                 </el-table-column>
                 <el-table-column prop="path" label="路径" min-width="200" show-overflow-tooltip />
@@ -627,21 +627,21 @@
             <el-table
               v-if="apiTestSummary"
               :data="filteredApiTestResults"
-              size="small"
+             
               max-height="600"
               stripe
               border
             >
               <el-table-column label="状态" width="70" fixed>
                 <template #default="{ row }">
-                  <el-tag :type="row.success ? 'success' : 'danger'" size="small">
+                  <el-tag :type="row.success ? 'success' : 'danger'">
                     {{ row.success ? '成功' : '失败' }}
                   </el-tag>
                 </template>
               </el-table-column>
               <el-table-column label="方法" width="75">
                 <template #default="{ row }">
-                  <el-tag :type="methodTagType(row.method)" size="small" effect="plain">{{ row.method }}</el-tag>
+                  <el-tag :type="methodTagType(row.method)" effect="plain">{{ row.method }}</el-tag>
                 </template>
               </el-table-column>
               <el-table-column prop="url" label="路径" min-width="220" show-overflow-tooltip />
@@ -710,9 +710,9 @@
                 </el-form-item>
               </el-form>
               <div class="chat-summary-bar">
-                <el-tag size="small" type="info">已发送 {{ chatMessageCount }} 条消息</el-tag>
-                <el-tag size="small" type="success" v-if="chatForm.mode === 'multi'">多轮对话模式（上下文记忆）</el-tag>
-                <el-tag size="small" v-else>单轮对话模式</el-tag>
+                <el-tag type="info">已发送 {{ chatMessageCount }} 条消息</el-tag>
+                <el-tag type="success" v-if="chatForm.mode === 'multi'">多轮对话模式（上下文记忆）</el-tag>
+                <el-tag v-else>单轮对话模式</el-tag>
               </div>
             </div>
 
@@ -757,7 +757,7 @@
                 <div>
                   <el-button 
                     v-if="chatForm.mode === 'multi'"
-                    size="small"
+                   
                     @click="handleRollback"
                     :disabled="chatMessages.length < 2"
                   >

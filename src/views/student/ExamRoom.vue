@@ -568,11 +568,11 @@ const confirmSubmit = () => {
         </el-tooltip>
         <div class="font-switch">
           <span class="font-label">字号</span>
-          <el-radio-group v-model="fontSize" size="small">
+          <el-radio-group v-model="fontSize">
             <el-radio v-for="fs in fontSizes" :key="fs.value" :value="fs.value">{{ fs.label }}</el-radio>
           </el-radio-group>
         </div>
-        <el-button size="small" @click="doResume">
+        <el-button @click="doResume">
           <!-- [2026-10-28 清除] 原条件 v-if="paperView?.resumeCount != null" 随 resume_count 列删除：
                该条件实际只对真续考过的记录成立，改成常显以免「重新同步」入口整体消失。 -->
           <el-icon><Refresh /></el-icon>重新同步
@@ -594,7 +594,7 @@ const confirmSubmit = () => {
             <span class="q-idx">第 {{ currentIdx }} 题 / 共 {{ questions.length }} 题</span>
             <div class="q-meta">
               <el-button
-                size="small"
+               
                 :type="markedSet.has(currentIdx) ? 'warning' : 'default'"
                 @click="toggleMark()"
                 class="mark-btn"
@@ -602,10 +602,10 @@ const confirmSubmit = () => {
                 <el-icon><StarFilled /></el-icon>
                 {{ markedSet.has(currentIdx) ? '已标记' : '标记' }}
               </el-button>
-              <el-button size="small" :disabled="currentIdx === 1" @click="goPrev">
+              <el-button :disabled="currentIdx === 1" @click="goPrev">
                 <el-icon><ArrowLeft /></el-icon>上一题
               </el-button>
-              <el-button size="small" type="primary" :disabled="currentIdx === questions.length" @click="goNext">
+              <el-button type="primary" :disabled="currentIdx === questions.length" @click="goNext">
                 下一题<el-icon><ArrowRight /></el-icon>
               </el-button>
             </div>
@@ -640,10 +640,10 @@ const confirmSubmit = () => {
             >
               <div class="q-block-head">
                 <span class="q-no">{{ item.index }}.</span>
-                <el-tag v-if="item.q.questionSubtype && readingSubtypeLabel(item.q.questionSubtype)" size="small" type="success" effect="plain">
+                <el-tag v-if="item.q.questionSubtype && readingSubtypeLabel(item.q.questionSubtype)" type="success" effect="plain">
                   {{ readingSubtypeLabel(item.q.questionSubtype) }}
                 </el-tag>
-                <el-tag size="small" type="info" effect="plain">{{ item.q.questionScore ?? item.q.readingGroupScore }} 分</el-tag>
+                <el-tag type="info" effect="plain">{{ item.q.questionScore ?? item.q.readingGroupScore }} 分</el-tag>
                 <button type="button" class="mark-mini" :class="{ on: markedSet.has(item.index) }" @click.stop="toggleMark(item.index)">
                   <el-icon><StarFilled /></el-icon>
                 </button>
@@ -652,7 +652,7 @@ const confirmSubmit = () => {
 
               <div v-if="isTextAnswer(item.q)" class="text-answer">
                 <div v-if="item.q.hintText" class="hint-line">
-                  <el-tag size="small" type="warning" effect="plain">提示</el-tag>
+                  <el-tag type="warning" effect="plain">提示</el-tag>
                   <span>{{ item.q.hintText }}</span>
                 </div>
                 <el-input
@@ -704,14 +704,14 @@ const confirmSubmit = () => {
           >
             <div class="q-block-head">
               <span class="q-no">{{ currentIdx }}.</span>
-              <el-tag size="small">{{ typeLabel(current.questionType) }}</el-tag>
-              <el-tag size="small" type="info" effect="plain">{{ current.questionScore }} 分</el-tag>
+              <el-tag>{{ typeLabel(current.questionType) }}</el-tag>
+              <el-tag type="info" effect="plain">{{ current.questionScore }} 分</el-tag>
             </div>
             <div class="q-stem">{{ current.stem }}</div>
 
             <div v-if="isTextAnswer(current)" class="text-answer">
               <div v-if="current.hintText" class="hint-line">
-                <el-tag size="small" type="warning" effect="plain">提示</el-tag>
+                <el-tag type="warning" effect="plain">提示</el-tag>
                 <span>{{ current.hintText }}</span>
               </div>
               <el-input

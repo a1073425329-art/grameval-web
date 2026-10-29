@@ -317,12 +317,12 @@ onMounted(async () => {
         <div class="wc-head">
           <div class="wc-tags">
             <span class="wc-idx">#{{ (query.pageNum - 1) * query.pageSize + idx + 1 }}</span>
-            <el-tag v-if="unit.unitType === 'READING'" size="small" type="success">阅读理解</el-tag>
-            <el-tag v-else-if="unit.question" :type="sourceTag(unit.question.source)" size="small" effect="dark">{{ sourceLabel(unit.question.source) }}</el-tag>
-            <el-tag v-if="unit.unitType === 'READING'" size="small" type="warning" effect="plain">{{ unit.subQuestionCount }} 道错题 · {{ unit.totalScore ?? 0 }} 分</el-tag>
-            <el-tag v-if="unit.question" size="small">{{ typeLabel(unit.question.questionType) }}</el-tag>
-            <el-tag v-if="unit.question" :type="diffTagType(unit.question.difficulty)" size="small">{{ diffLabel(unit.question.difficulty) }}</el-tag>
-            <el-tag v-if="unit.question" type="info" size="small">{{ unit.question.categoryName }}</el-tag>
+            <el-tag v-if="unit.unitType === 'READING'" type="success">阅读理解</el-tag>
+            <el-tag v-else-if="unit.question" :type="sourceTag(unit.question.source)" effect="dark">{{ sourceLabel(unit.question.source) }}</el-tag>
+            <el-tag v-if="unit.unitType === 'READING'" type="warning" effect="plain">{{ unit.subQuestionCount }} 道错题 · {{ unit.totalScore ?? 0 }} 分</el-tag>
+            <el-tag v-if="unit.question">{{ typeLabel(unit.question.questionType) }}</el-tag>
+            <el-tag v-if="unit.question" :type="diffTagType(unit.question.difficulty)">{{ diffLabel(unit.question.difficulty) }}</el-tag>
+            <el-tag v-if="unit.question" type="info">{{ unit.question.categoryName }}</el-tag>
           </div>
           <span v-if="unit.question" class="wc-time">首次错误：{{ unit.question.firstWrongTime?.slice(0, 16) }}</span>
         </div>
@@ -340,9 +340,9 @@ onMounted(async () => {
           <div class="wc-subhead">
             <strong>{{ w.stem }}</strong>
             <div class="wc-tags">
-              <el-tag :type="sourceTag(w.source)" size="small" effect="dark">{{ sourceLabel(w.source) }}</el-tag>
-              <el-tag v-if="unit.unitType === 'READING'" size="small" type="info">{{ w.categoryName }}</el-tag>
-              <el-tag v-if="unit.unitType === 'READING'" size="small" type="warning" effect="plain">首次错误：{{ w.firstWrongTime?.slice(0, 16) }}</el-tag>
+              <el-tag :type="sourceTag(w.source)" effect="dark">{{ sourceLabel(w.source) }}</el-tag>
+              <el-tag v-if="unit.unitType === 'READING'" type="info">{{ w.categoryName }}</el-tag>
+              <el-tag v-if="unit.unitType === 'READING'" type="warning" effect="plain">首次错误：{{ w.firstWrongTime?.slice(0, 16) }}</el-tag>
             </div>
           </div>
 
@@ -353,8 +353,8 @@ onMounted(async () => {
             }">
               <span class="opt-key">{{ op.optionLabel }}.</span>
               <span>{{ op.optionContent }}</span>
-              <el-tag v-if="op.optionLabel === w.standardAnswer" size="small" type="success" effect="plain" class="opt-tag">✓</el-tag>
-              <el-tag v-if="op.optionLabel === w.userAnswer && w.userAnswer !== w.standardAnswer" size="small" type="danger" effect="plain" class="opt-tag">✗ 你的答案</el-tag>
+              <el-tag v-if="op.optionLabel === w.standardAnswer" type="success" effect="plain" class="opt-tag">✓</el-tag>
+              <el-tag v-if="op.optionLabel === w.userAnswer && w.userAnswer !== w.standardAnswer" type="danger" effect="plain" class="opt-tag">✗ 你的答案</el-tag>
             </div>
           </div>
 
@@ -405,9 +405,9 @@ onMounted(async () => {
       <div v-if="redoQuestions.length && !redoResult" class="redo-content">
         <div v-if="currentRedoQuestion" key="question">
           <div class="rq-head">
-            <el-tag size="small">{{ typeLabel(currentRedoQuestion.questionType) }}</el-tag>
-            <el-tag :type="diffTagType(currentRedoQuestion.difficulty)" size="small">{{ diffLabel(currentRedoQuestion.difficulty) }}</el-tag>
-            <el-tag type="info" size="small">{{ currentRedoQuestion.categoryName }}</el-tag>
+            <el-tag>{{ typeLabel(currentRedoQuestion.questionType) }}</el-tag>
+            <el-tag :type="diffTagType(currentRedoQuestion.difficulty)">{{ diffLabel(currentRedoQuestion.difficulty) }}</el-tag>
+            <el-tag type="info">{{ currentRedoQuestion.categoryName }}</el-tag>
           </div>
           <PassageCard
             v-if="currentRedoQuestion.passageContent"

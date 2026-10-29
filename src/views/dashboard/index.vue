@@ -426,7 +426,7 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
       <el-col :span="12">
         <el-card shadow="hover">
           <template #header><div class="card-title">🏆 优等生 Top 5</div></template>
-          <el-table v-if="stats.topStudents?.length" :data="stats.topStudents" size="small">
+          <el-table v-if="stats.topStudents?.length" :data="stats.topStudents">
             <el-table-column type="index" label="#" width="50" />
             <el-table-column prop="realName" label="姓名" width="80" />
             <el-table-column prop="englishName" label="英文名" width="80" />
@@ -447,7 +447,7 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
       <el-col :span="12">
         <el-card shadow="hover">
           <template #header><div class="card-title">📈 待进步学生 Top 5</div></template>
-          <el-table v-if="stats.bottomStudents?.length" :data="stats.bottomStudents" size="small">
+          <el-table v-if="stats.bottomStudents?.length" :data="stats.bottomStudents">
             <el-table-column type="index" label="#" width="50" />
             <el-table-column prop="realName" label="姓名" width="80" />
             <el-table-column prop="englishName" label="英文名" width="80" />
@@ -472,10 +472,10 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
       <el-col :span="12">
         <el-card shadow="hover" class="chart-card">
           <template #header><div class="card-title">最近考试概况</div></template>
-          <el-table v-if="stats.recentSessions?.length" :data="stats.recentSessions" size="small">
+          <el-table v-if="stats.recentSessions?.length" :data="stats.recentSessions">
             <el-table-column prop="sessionName" label="考试名称" min-width="120" show-overflow-tooltip />
             <el-table-column label="状态" width="80">
-              <template #default="{ row }"><el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag></template>
+              <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag></template>
             </el-table-column>
             <el-table-column prop="attendedCount" label="参加" width="60" align="center" />
             <el-table-column label="平均分" width="80" align="center">
@@ -491,7 +491,7 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
       <el-col :span="12">
         <el-card shadow="hover" class="chart-card">
           <template #header><div class="card-title">最近考试提交记录</div></template>
-          <el-table v-if="stats.recentExams?.length" :data="stats.recentExams" size="small">
+          <el-table v-if="stats.recentExams?.length" :data="stats.recentExams">
             <el-table-column prop="studentName" label="学生" width="80" />
             <el-table-column prop="sessionName" label="考试" min-width="100" show-overflow-tooltip />
             <el-table-column label="分数" width="80" align="center">

@@ -230,7 +230,7 @@ const roleLabel = computed(() => (activeRole.value === 'ADMIN' ? '管理员' : '
           <el-button
             v-for="acct in currentPresets"
             :key="acct.username"
-            size="small"
+           
             plain
             @click="loginForm.username = acct.username; loginForm.password = acct.password"
           >
@@ -240,12 +240,12 @@ const roleLabel = computed(() => (activeRole.value === 'ADMIN' ? '管理员' : '
       </div>
 
       <div class="login-footer">
-        <el-text type="info" size="small">
+        <el-text type="info">
           还没有账号？
           <el-link type="primary" @click="goRegister">立即注册</el-link>
         </el-text>
         <!-- [2026-10-16 取消] 管理员默认账号提示行：论文已按此版截图，隐藏该行但不改布局；旧代码注释保留
-        <el-text v-if="activeRole === 'ADMIN'" type="info" size="small" class="hint">
+        <el-text v-if="activeRole === 'ADMIN'" type="info" class="hint">
           管理员默认账号：admin / 123456
         </el-text>
         -->

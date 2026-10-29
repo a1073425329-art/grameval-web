@@ -249,8 +249,8 @@ onMounted(() => { load(); loadPickers() })
       <div class="toolbar">
         <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>发布新考试</el-button>
         <el-button-group class="view-toggle">
-          <el-button :type="isTable() ? 'primary' : 'default'" size="small" @click="viewMode = 'table'"><el-icon><Grid /></el-icon>表格</el-button>
-          <el-button :type="isCard() ? 'primary' : 'default'" size="small" @click="viewMode = 'card'"><el-icon><Menu /></el-icon>卡片</el-button>
+          <el-button :type="isTable() ? 'primary' : 'default'" @click="viewMode = 'table'"><el-icon><Grid /></el-icon>表格</el-button>
+          <el-button :type="isCard() ? 'primary' : 'default'" @click="viewMode = 'card'"><el-icon><Menu /></el-icon>卡片</el-button>
         </el-button-group>
       </div>
 
@@ -266,7 +266,7 @@ onMounted(() => { load(); loadPickers() })
                     <span>考生明细（指派 {{ row.assignedCount ?? 0 }} 人 / 已进入 {{ row.attendedCount ?? 0 }} 人 / 已提交 {{ row.submittedCount ?? 0 }} 人）</span>
                     <span v-if="row.averageScore != null" style="margin-left:16px">平均分：<b :style="{color:scoreColor(row.averageScore)}">{{ row.averageScore?.toFixed(1) }}</b></span>
                   </div>
-                  <el-table :data="examineesMap[row.id]" size="small" style="margin-top:8px">
+                  <el-table :data="examineesMap[row.id]" style="margin-top:8px">
                     <el-table-column type="index" label="#" width="50" />
                     <el-table-column label="头像" width="70" align="center">
                       <template #default="{ row: r }">
@@ -280,7 +280,7 @@ onMounted(() => { load(); loadPickers() })
                     </el-table-column>
                     <el-table-column label="状态" width="100" align="center">
                       <template #default="{ row: r }">
-                        <el-tag :type="submitStatusTag(r.submitStatus).type" size="small">{{ submitStatusTag(r.submitStatus).text }}</el-tag>
+                        <el-tag :type="submitStatusTag(r.submitStatus).type">{{ submitStatusTag(r.submitStatus).text }}</el-tag>
                       </template>
                     </el-table-column>
                     <el-table-column label="得分" width="100" align="center">
@@ -336,16 +336,16 @@ onMounted(() => { load(); loadPickers() })
           </el-table-column>
           <el-table-column label="状态" width="90">
             <template #default="{ row }">
-              <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+              <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="320" align="center" fixed="right">
             <template #default="{ row }">
-              <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-              <el-button link type="primary" size="small" @click="router.push('/admin/exams/'+row.id+'/monitor')">监控</el-button>
-              <el-button link type="primary" size="small" @click="router.push('/admin/exams/'+row.id+'/statistics')">统计</el-button>
-              <el-button v-if="row.status===1" link type="warning" size="small" @click="confirmForceSubmit(row)">强制收卷</el-button>
-              <el-button link type="danger" size="small" @click="confirmDelete(row)">删除</el-button>
+              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button link type="primary" @click="router.push('/admin/exams/'+row.id+'/monitor')">监控</el-button>
+              <el-button link type="primary" @click="router.push('/admin/exams/'+row.id+'/statistics')">统计</el-button>
+              <el-button v-if="row.status===1" link type="warning" @click="confirmForceSubmit(row)">强制收卷</el-button>
+              <el-button link type="danger" @click="confirmDelete(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
@@ -361,7 +361,7 @@ onMounted(() => { load(); loadPickers() })
             <!-- 卡片头部 -->
             <div class="card-header" :style="{ borderTopColor: statusColor(row.status) }">
               <div class="card-title-area">
-                <el-tag :type="statusType(row.status)" size="small" effect="dark">{{ statusText(row.status) }}</el-tag>
+                <el-tag :type="statusType(row.status)" effect="dark">{{ statusText(row.status) }}</el-tag>
                 <span v-if="isOngoing(row)" class="live-badge"><span class="live-dot"></span>进行中</span>
               </div>
               <div class="card-title">{{ row.sessionName }}</div>
@@ -419,7 +419,7 @@ onMounted(() => { load(); loadPickers() })
                     {{ (examinee.realName || examinee.username || '?').charAt(0) }}
                   </el-avatar>
                   <span class="examinee-name">{{ examinee.realName || examinee.username }}</span>
-                  <el-tag :type="submitStatusTag(examinee.submitStatus).type" size="small" effect="plain">
+                  <el-tag :type="submitStatusTag(examinee.submitStatus).type" effect="plain">
                     {{ submitStatusTag(examinee.submitStatus).text }}
                   </el-tag>
                 </div>
@@ -427,18 +427,18 @@ onMounted(() => { load(); loadPickers() })
                   +{{ (cardExamineesMap[row.id]?.length ?? 0) - 5 }}人
                 </span>
               </div>
-              <el-button v-else link type="primary" size="small" @click="loadCardExaminees(row)" :loading="cardLoadingMap[row.id]">
+              <el-button v-else link type="primary" @click="loadCardExaminees(row)" :loading="cardLoadingMap[row.id]">
                 <el-icon><View /></el-icon> 查看考生
               </el-button>
             </div>
 
             <!-- 卡片操作 -->
             <div class="card-footer">
-              <el-button link type="primary" size="small" @click="openEdit(row)"><el-icon><Edit /></el-icon>编辑</el-button>
-              <el-button link type="primary" size="small" @click="router.push('/admin/exams/'+row.id+'/monitor')"><el-icon><Monitor /></el-icon>监控</el-button>
-              <el-button link type="primary" size="small" @click="router.push('/admin/exams/'+row.id+'/statistics')"><el-icon><DataAnalysis /></el-icon>统计</el-button>
-              <el-button v-if="row.status===1" link type="warning" size="small" @click="confirmForceSubmit(row)"><el-icon><Warning /></el-icon>收卷</el-button>
-              <el-button link type="danger" size="small" @click="confirmDelete(row)"><el-icon><Delete /></el-icon>删除</el-button>
+              <el-button link type="primary" @click="openEdit(row)"><el-icon><Edit /></el-icon>编辑</el-button>
+              <el-button link type="primary" @click="router.push('/admin/exams/'+row.id+'/monitor')"><el-icon><Monitor /></el-icon>监控</el-button>
+              <el-button link type="primary" @click="router.push('/admin/exams/'+row.id+'/statistics')"><el-icon><DataAnalysis /></el-icon>统计</el-button>
+              <el-button v-if="row.status===1" link type="warning" @click="confirmForceSubmit(row)"><el-icon><Warning /></el-icon>收卷</el-button>
+              <el-button link type="danger" @click="confirmDelete(row)"><el-icon><Delete /></el-icon>删除</el-button>
             </div>
           </div>
         </div>

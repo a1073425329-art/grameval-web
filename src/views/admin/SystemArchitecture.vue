@@ -353,7 +353,7 @@ const focusTable = (name: string) => {
           <el-icon><Document /></el-icon>
           <span>
             论文证据链：<b>{{ paperTechCount }} / {{ techItemCount }}</b> 项技术在论文中有对应章节或表号（带
-            <el-tag size="small" type="success" effect="plain" class="note-tag">📘 章节</el-tag>
+            <el-tag type="success" effect="plain" class="note-tag">📘 章节</el-tag>
             标注）；其余为工程实现补充，论文未展开。版本按实际运行环境显示，论文版本差异可忽略。
           </span>
         </div>
@@ -370,12 +370,12 @@ const focusTable = (name: string) => {
               <div v-for="it in layer.items" :key="it.name" class="tech-item">
                 <div class="ti-main">
                   <span class="ti-name">{{ it.name }}</span>
-                  <el-tag v-if="it.version && it.version !== '-'" size="small" effect="plain" class="ti-ver">
+                  <el-tag v-if="it.version && it.version !== '-'" effect="plain" class="ti-ver">
                     {{ it.version }}
                   </el-tag>
                   <el-tag
                     v-if="it.paperMentioned"
-                    size="small"
+                   
                     type="success"
                     effect="plain"
                     class="ti-paper"
@@ -421,7 +421,7 @@ const focusTable = (name: string) => {
             <b>{{ overview?.paperCoreTableCount ?? 0 }}</b> + 支撑
             <b>{{ overview?.supportTableCount ?? 0 }}</b>），共
             <b>{{ fmt(overview?.columnCount) }}</b> 个字段。
-            标有 <el-tag size="small" type="primary" effect="plain">表 3.x</el-tag> 的即论文中详述的核心表。
+            标有 <el-tag type="primary" effect="plain">表 3.x</el-tag> 的即论文中详述的核心表。
           </div>
         </div>
 
@@ -467,7 +467,7 @@ const focusTable = (name: string) => {
           row-key="tableName"
           border
           stripe
-          size="small"
+         
           :expand-row-keys="expandedTables"
           class="table-list"
           @row-click="(row: ArchTable) => focusTable(row.tableName)"
@@ -481,7 +481,7 @@ const focusTable = (name: string) => {
                   <b>{{ row.tableName }}</b> 的字段结构（{{ row.columnCount }} 个字段）
                   <span v-if="row.entityClass" class="cd-entity">实体：{{ row.entityClass }}</span>
                 </div>
-                <el-table :data="row.columns" size="small" border class="col-table">
+                <el-table :data="row.columns" border class="col-table">
                   <el-table-column prop="ordinal" label="#" width="50" align="center" />
                   <el-table-column prop="name" label="字段名" width="190">
                     <template #default="{ row: c }">
@@ -490,8 +490,8 @@ const focusTable = (name: string) => {
                   </el-table-column>
                   <el-table-column label="口径" width="72" align="center">
                     <template #default="{ row: c }">
-                      <el-tag v-if="c.paperCore" size="small" type="success" effect="light">论文</el-tag>
-                      <el-tag v-else size="small" type="info" effect="plain">扩展</el-tag>
+                      <el-tag v-if="c.paperCore" type="success" effect="light">论文</el-tag>
+                      <el-tag v-else type="info" effect="plain">扩展</el-tag>
                     </template>
                   </el-table-column>
                   <el-table-column label="类型" width="150">
@@ -504,7 +504,7 @@ const focusTable = (name: string) => {
                       <el-tag
                         v-for="t in columnTags(c)"
                         :key="t.text"
-                        size="small"
+                       
                         :type="t.type"
                         effect="plain"
                         class="col-tag"
@@ -544,7 +544,7 @@ const focusTable = (name: string) => {
                   <div class="cd-box">
                     <div class="cd-box-title">
                       <el-icon><Link /></el-icon> 关系（{{ row.foreignKeys?.length ?? 0 }}）
-                      <el-tag v-if="row.foreignKeys?.[0]?.inferred" size="small" type="warning" effect="plain" class="ml6">
+                      <el-tag v-if="row.foreignKeys?.[0]?.inferred" type="warning" effect="plain" class="ml6">
                         推断
                       </el-tag>
                     </div>
@@ -572,14 +572,14 @@ const focusTable = (name: string) => {
                 :content="`论文 3.3.2 节 ${row.paperTableNo} 有完整字段设计`"
                 placement="top"
               >
-                <el-tag size="small" type="success" effect="plain">{{ row.paperTableNo }}</el-tag>
+                <el-tag type="success" effect="plain">{{ row.paperTableNo }}</el-tag>
               </el-tooltip>
               <span v-else class="no-comment">支撑表</span>
             </template>
           </el-table-column>
           <el-table-column prop="module" label="模块" width="110">
             <template #default="{ row }">
-              <el-tag size="small" effect="plain">{{ row.module }}</el-tag>
+              <el-tag effect="plain">{{ row.module }}</el-tag>
             </template>
           </el-table-column>
           <el-table-column prop="purpose" label="业务职责" min-width="300" show-overflow-tooltip />
@@ -593,7 +593,7 @@ const focusTable = (name: string) => {
             <template #default="{ row }">
               <el-tag
                 v-if="row.foreignKeys?.length"
-                size="small"
+               
                 :type="row.foreignKeys[0].inferred ? 'warning' : 'success'"
                 effect="plain"
               >
@@ -637,7 +637,7 @@ const focusTable = (name: string) => {
             <template #header>
               <div class="er-head">
                 <code class="tbl-name">{{ t.tableName }}</code>
-                <el-tag size="small" effect="plain">{{ t.module }}</el-tag>
+                <el-tag effect="plain">{{ t.module }}</el-tag>
               </div>
               <div class="er-purpose">{{ t.purpose }}</div>
             </template>

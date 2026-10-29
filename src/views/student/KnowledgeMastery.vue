@@ -245,7 +245,7 @@ const proficiencyColor = (score: number) => {
                「英语语法分类信息表」是数据实体、其 category_name 的语义是「语法专题名称」，
                面向学生的业务概念一律称「专题」（管理端菜单仍叫「语法分类」，因为它维护的是分类数据本身）。 -->
           <span>语法专题掌握度网格</span>
-          <el-tag size="small" type="info">共 {{ masteryGrid.length }} 个专题</el-tag>
+          <el-tag type="info">共 {{ masteryGrid.length }} 个专题</el-tag>
         </div>
       </template>
       <div class="mastery-grid">
@@ -276,7 +276,7 @@ const proficiencyColor = (score: number) => {
         <div style="display:flex;align-items:center;gap:8px">
           <el-icon><WarningFilled /></el-icon>
           <span>薄弱知识点练习建议</span>
-          <el-button type="primary" size="small" link @click="$router.push('/student/practice')">
+          <el-button type="primary" link @click="$router.push('/student/practice')">
             去练习 →
           </el-button>
         </div>
@@ -288,7 +288,7 @@ const proficiencyColor = (score: number) => {
             <div class="rec-content">
               <div class="rec-title">
                 {{ rec.tagName }}
-                <el-tag :color="levelColors[rec.masteryLevel]" effect="dark" size="small" style="margin-left:8px">
+                <el-tag :color="levelColors[rec.masteryLevel]" effect="dark" style="margin-left:8px">
                   {{ levelLabels[rec.masteryLevel] }}
                 </el-tag>
               </div>
@@ -300,7 +300,7 @@ const proficiencyColor = (score: number) => {
               </div>
             </div>
           </div>
-          <el-button type="primary" size="small" @click="$router.push('/student/practice')">立即练习</el-button>
+          <el-button type="primary" @click="$router.push('/student/practice')">立即练习</el-button>
         </div>
       </div>
     </el-card>
@@ -320,7 +320,7 @@ const proficiencyColor = (score: number) => {
         <el-table-column label="掌握等级" width="110">
           <template #default="{ row }">
             <el-tooltip :content="levelCriteria[row.masteryLevel]" placement="top" effect="light">
-              <el-tag :color="levelColors[row.masteryLevel]" effect="dark" size="small" style="cursor:help">
+              <el-tag :color="levelColors[row.masteryLevel]" effect="dark" style="cursor:help">
                 {{ levelLabels[row.masteryLevel] }}
               </el-tag>
             </el-tooltip>
@@ -363,7 +363,7 @@ const proficiencyColor = (score: number) => {
         </el-table-column>
         <el-table-column label="操作" width="80" fixed="right">
           <template #default="{ row: _row }">
-            <el-button size="small" type="primary" link @click="$router.push('/student/practice')">练习</el-button>
+            <el-button type="primary" link @click="$router.push('/student/practice')">练习</el-button>
           </template>
         </el-table-column>
       </el-table>

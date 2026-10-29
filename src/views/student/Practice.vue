@@ -458,7 +458,7 @@ const submitAiGenerate = async () => {
           </div>
         </div>
         <div class="dh-right">
-          <el-button size="small" @click="recordsCollapsed = !recordsCollapsed">
+          <el-button @click="recordsCollapsed = !recordsCollapsed">
             <el-icon><Fold v-if="!recordsCollapsed" /><Expand v-else /></el-icon>
             <span style="margin-left:4px">{{ recordsCollapsed ? '展开记录' : '收起记录' }}</span>
           </el-button>
@@ -509,7 +509,7 @@ const submitAiGenerate = async () => {
       <div class="left-panel">
         <div class="panel-title">
           <span>选择语法专题</span>
-          <el-button size="small" type="primary" plain @click="openAiDialog">AI 补题</el-button>
+          <el-button type="primary" plain @click="openAiDialog">AI 补题</el-button>
         </div>
         <el-scrollbar height="calc(100vh - 300px)">
           <!-- [2026-10-16 改造] 原来是 127 个分类拍平成一个长列表（只靠 12px 缩进区分层级，
@@ -624,7 +624,7 @@ const submitAiGenerate = async () => {
               <el-button
                 class="bookmark-btn"
                 :type="isBookmarked(current.id) ? 'warning' : 'default'"
-                size="small"
+               
                 circle
                 @click="toggleBookmark(current.id)"
               >
@@ -646,7 +646,7 @@ const submitAiGenerate = async () => {
             />
 
             <div v-if="subtypeLabel" class="q-subtype">
-              <el-tag size="small" type="success" effect="plain">{{ subtypeLabel }}</el-tag>
+              <el-tag type="success" effect="plain">{{ subtypeLabel }}</el-tag>
             </div>
 
             <div class="q-stem">{{ currentIndex + 1 }}. {{ current.stem }}</div>
@@ -658,7 +658,7 @@ const submitAiGenerate = async () => {
               <el-tag
                 v-for="kp in current.knowledgePoints"
                 :key="kp"
-                size="small"
+               
                 effect="plain"
                 round
                 class="kp-tag"
@@ -671,7 +671,7 @@ const submitAiGenerate = async () => {
               class="text-answer"
             >
               <div v-if="current.hintText" class="hint-line">
-                <el-tag size="small" type="warning" effect="plain">提示</el-tag>
+                <el-tag type="warning" effect="plain">提示</el-tag>
                 <span>{{ current.hintText }}</span>
               </div>
               <el-input

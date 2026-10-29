@@ -78,7 +78,7 @@ const jump = (idx: number) => emit('jump', idx)
       <span class="progress">{{ answeredCount }} / {{ total }}</span>
     </div>
     <div class="type-filter">
-      <el-button-group size="small">
+      <el-button-group>
         <el-button 
           :type="!filterType ? 'primary' : 'default'" 
           @click="$emit('filter', '')"

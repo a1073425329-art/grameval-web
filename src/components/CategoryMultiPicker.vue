@@ -105,7 +105,7 @@ const isOpen = (id: number) => !!keyword.value.trim() || !collapsed.value.includ
     <div class="picker-toolbar">
       <el-input
         v-model="keyword"
-        size="small"
+       
         placeholder="搜索语法专题"
         :prefix-icon="Search"
         clearable
@@ -122,7 +122,7 @@ const isOpen = (id: number) => !!keyword.value.trim() || !collapsed.value.includ
         >
           全选
         </el-checkbox>
-        <el-button size="small" link :disabled="!selectedCount" @click="clearAll">清空</el-button>
+        <el-button link :disabled="!selectedCount" @click="clearAll">清空</el-button>
       </div>
     </div>
 
@@ -166,7 +166,7 @@ const isOpen = (id: number) => !!keyword.value.trim() || !collapsed.value.includ
       <el-tag
         v-for="id in props.modelValue"
         :key="id"
-        size="small"
+       
         closable
         type="primary"
         effect="light"

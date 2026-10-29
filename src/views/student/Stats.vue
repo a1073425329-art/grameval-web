@@ -464,7 +464,7 @@ const scoreDistributionSummary = computed(() => {
         <span class="page-subtitle">成绩趋势 · 知识点雷达 · 班级对比 · 考点弱点诊断（活动流水请看首页）</span>
       </div>
       <div class="page-header-actions">
-        <el-radio-group v-model="currentModule" @change="switchModule" size="small">
+        <el-radio-group v-model="currentModule" @change="switchModule">
           <el-radio-button v-for="m in moduleOptions" :key="m.value" :value="m.value">{{ m.label }}</el-radio-button>
         </el-radio-group>
       </div>
@@ -503,7 +503,7 @@ const scoreDistributionSummary = computed(() => {
               <div style="display:flex;align-items:center;gap:8px">
                 <el-icon><DataAnalysis /></el-icon>
                 <span>知识点掌握程度雷达图</span>
-                <el-tag size="small" type="info">班级平均正确率 {{ classAvgAccuracy }}%</el-tag>
+                <el-tag type="info">班级平均正确率 {{ classAvgAccuracy }}%</el-tag>
               </div>
             </template>
             <VChart :option="radarChartOption" autoresize style="height:360px" />
@@ -551,7 +551,7 @@ const scoreDistributionSummary = computed(() => {
         </template>
         <VChart :option="classComparisonOption" autoresize style="height:300px" />
         <!-- 对比明细表格 -->
-        <el-table :data="comparisonTableData" size="small" style="margin-top:14px" stripe>
+        <el-table :data="comparisonTableData" style="margin-top:14px" stripe>
           <el-table-column prop="examName" label="考试名称" min-width="150" show-overflow-tooltip />
           <el-table-column prop="examDate" label="日期" width="110" />
           <el-table-column label="我的分数" width="100" align="center">
@@ -610,7 +610,7 @@ const scoreDistributionSummary = computed(() => {
       <!-- ====== 考点弱点明细表 ====== -->
       <el-card shadow="never" class="section-card" v-if="stats.tagStats?.length">
         <template #header>📋 考点弱点明细（共 {{ stats.tagStats.length }} 个考点）</template>
-        <el-table :data="stats.tagStats" size="small">
+        <el-table :data="stats.tagStats">
           <el-table-column type="index" label="#" width="50" />
           <el-table-column prop="tagName" label="考点名称" min-width="150" />
           <el-table-column prop="total" label="总题数" width="80" align="center" />

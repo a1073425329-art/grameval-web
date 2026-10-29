@@ -273,7 +273,7 @@ onMounted(load)
           <el-form-item>
             <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
             <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+            <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'">
               <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
               {{ viewMode === 'card' ? '表格' : '卡片' }}
             </el-button>
@@ -312,7 +312,7 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="角色" width="100">
           <template #default="{ row }">
-            <el-tag :type="row.role === 'ADMIN' ? 'danger' : 'success'" size="small">{{ row.role === 'ADMIN' ? '管理员' : '学生' }}</el-tag>
+            <el-tag :type="row.role === 'ADMIN' ? 'danger' : 'success'">{{ row.role === 'ADMIN' ? '管理员' : '学生' }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="100">
@@ -328,9 +328,9 @@ onMounted(load)
         <el-table-column prop="lastLoginTime" label="最后登录" width="180" />
         <el-table-column label="操作" width="160" align="center">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="warning" size="small" @click="confirmResetPwd(row)">重置密码</el-button>
-            <el-button link type="danger" size="small" @click="confirmDelete(row)">禁用</el-button>
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="warning" @click="confirmResetPwd(row)">重置密码</el-button>
+            <el-button link type="danger" @click="confirmDelete(row)">禁用</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -353,7 +353,7 @@ onMounted(load)
               <div class="user-name">{{ item.realName || item.username }}</div>
               <div class="user-meta">
                 <span class="username">@{{ item.username }}</span>
-                <el-tag :type="item.role === 'ADMIN' ? 'danger' : 'success'" size="small">{{ item.role === 'ADMIN' ? '管理员' : '学生' }}</el-tag>
+                <el-tag :type="item.role === 'ADMIN' ? 'danger' : 'success'">{{ item.role === 'ADMIN' ? '管理员' : '学生' }}</el-tag>
               </div>
             </div>
             <el-switch
@@ -386,9 +386,9 @@ onMounted(load)
             </div>
           </div>
           <div class="card-footer">
-            <el-button link type="primary" size="small" @click="openEdit(item)">编辑</el-button>
-            <el-button link type="warning" size="small" @click="confirmResetPwd(item)">重置密码</el-button>
-            <el-button link type="danger" size="small" @click="confirmDelete(item)">禁用</el-button>
+            <el-button link type="primary" @click="openEdit(item)">编辑</el-button>
+            <el-button link type="warning" @click="confirmResetPwd(item)">重置密码</el-button>
+            <el-button link type="danger" @click="confirmDelete(item)">禁用</el-button>
           </div>
         </el-card>
       </div>

@@ -199,7 +199,7 @@ const getWeekLabel = (report: StudyWeeklyReport) => {
     <!-- 历史周报 -->
     <div class="section" v-if="historyReports.length">
       <h3 class="section-title">📋 历史周报</h3>
-      <el-table :data="historyReports" size="small">
+      <el-table :data="historyReports">
         <el-table-column label="周次" width="120">
           <template #default="{ row }">{{ getWeekLabel(row) }}</template>
         </el-table-column>

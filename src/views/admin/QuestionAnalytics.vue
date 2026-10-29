@@ -282,7 +282,7 @@ const bestQuestions = computed(() => [...sortedByAcc.value].reverse().slice(0, 1
               <el-table-column type="index" label="#" width="50" />
               <el-table-column prop="stemPreview" label="题干" min-width="220" show-overflow-tooltip />
               <el-table-column label="题型" width="80" align="center"><template #default="{ row }">{{ typeLabel(row.questionType) }}</template></el-table-column>
-              <el-table-column label="难度" width="76" align="center"><template #default="{ row }"><el-tag :type="diffTagType(row.difficulty)" size="small">{{ diffLabel(row.difficulty) }}</el-tag></template></el-table-column>
+              <el-table-column label="难度" width="76" align="center"><template #default="{ row }"><el-tag :type="diffTagType(row.difficulty)">{{ diffLabel(row.difficulty) }}</el-tag></template></el-table-column>
               <el-table-column label="正确率" width="120" align="center">
                 <template #default="{ row }"><span :style="{ color: accColor(row.accuracy), fontWeight: 600 }">{{ row.accuracy.toFixed(1) }}%</span><span style="color:#909399"> ({{ row.correctCount }}/{{ row.attemptCount }})</span></template>
               </el-table-column>
@@ -296,7 +296,7 @@ const bestQuestions = computed(() => [...sortedByAcc.value].reverse().slice(0, 1
               <el-table-column type="index" label="#" width="50" />
               <el-table-column prop="stemPreview" label="题干" min-width="220" show-overflow-tooltip />
               <el-table-column label="题型" width="80" align="center"><template #default="{ row }">{{ typeLabel(row.questionType) }}</template></el-table-column>
-              <el-table-column label="难度" width="76" align="center"><template #default="{ row }"><el-tag :type="diffTagType(row.difficulty)" size="small">{{ diffLabel(row.difficulty) }}</el-tag></template></el-table-column>
+              <el-table-column label="难度" width="76" align="center"><template #default="{ row }"><el-tag :type="diffTagType(row.difficulty)">{{ diffLabel(row.difficulty) }}</el-tag></template></el-table-column>
               <el-table-column label="正确率" width="120" align="center">
                 <template #default="{ row }"><span :style="{ color: accColor(row.accuracy), fontWeight: 600 }">{{ row.accuracy.toFixed(1) }}%</span><span style="color:#909399"> ({{ row.correctCount }}/{{ row.attemptCount }})</span></template>
               </el-table-column>

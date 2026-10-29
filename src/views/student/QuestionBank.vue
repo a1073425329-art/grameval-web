@@ -360,15 +360,15 @@ const isPracticeCorrect = (q: Question): boolean => {
             <div class="card-header">
               <span class="passage-badge">阅读理解</span>
               <span class="passage-title">{{ item.title }}</span>
-              <el-tag v-if="item.wordCount" size="small" type="info">约 {{ item.wordCount }} 词</el-tag>
-              <el-tag size="small" type="warning">共 {{ item.questions.length }} 小题</el-tag>
-              <el-tag size="small" type="danger">本组 {{ item.totalScore }} 分</el-tag>
-              <el-tag v-if="item.translation" size="small" type="success" effect="plain">含中文翻译</el-tag>
-              <el-tag v-if="item.keyVocabulary?.length" size="small" type="warning" effect="plain">
+              <el-tag v-if="item.wordCount" type="info">约 {{ item.wordCount }} 词</el-tag>
+              <el-tag type="warning">共 {{ item.questions.length }} 小题</el-tag>
+              <el-tag type="danger">本组 {{ item.totalScore }} 分</el-tag>
+              <el-tag v-if="item.translation" type="success" effect="plain">含中文翻译</el-tag>
+              <el-tag v-if="item.keyVocabulary?.length" type="warning" effect="plain">
                 词汇 ×{{ item.keyVocabulary.length }}
               </el-tag>
-              <el-tag v-if="item.categoryName" size="small" type="info">{{ item.categoryName }}</el-tag>
-              <el-tag v-if="item.difficulty" size="small" :type="diffTagType(item.difficulty)">
+              <el-tag v-if="item.categoryName" type="info">{{ item.categoryName }}</el-tag>
+              <el-tag v-if="item.difficulty" :type="diffTagType(item.difficulty)">
                 {{ diffLabel(item.difficulty) }}
               </el-tag>
             </div>
@@ -383,7 +383,7 @@ const isPracticeCorrect = (q: Question): boolean => {
               >
                 <span class="sub-no">{{ qi + 1 }}</span>
                 <span class="sub-stem">{{ q.stem }}</span>
-                <el-tag v-if="q.questionSubtype" size="small" effect="plain" type="success">
+                <el-tag v-if="q.questionSubtype" effect="plain" type="success">
                   {{ readingSubtypeLabel(q.questionSubtype) }}
                 </el-tag>
               </div>
@@ -394,7 +394,7 @@ const isPracticeCorrect = (q: Question): boolean => {
 
             <div class="card-footer">
               <span class="answer-hint">点开查看完整文章与小题（答案需逐题点击查看）</span>
-              <el-button type="primary" size="small">阅读全文</el-button>
+              <el-button type="primary">阅读全文</el-button>
             </div>
           </el-card>
 
@@ -407,11 +407,11 @@ const isPracticeCorrect = (q: Question): boolean => {
           >
             <div class="card-header">
               <span class="q-id">#{{ item.question.id }}</span>
-              <el-tag size="small" type="info">{{ item.question.categoryName }}</el-tag>
-              <el-tag size="small" :type="diffTagType(item.question.difficulty)">
+              <el-tag type="info">{{ item.question.categoryName }}</el-tag>
+              <el-tag :type="diffTagType(item.question.difficulty)">
                 {{ diffLabel(item.question.difficulty) }}
               </el-tag>
-              <el-tag size="small">{{ typeLabel(item.question.questionType) }}</el-tag>
+              <el-tag>{{ typeLabel(item.question.questionType) }}</el-tag>
             </div>
             <div class="card-stem">
               <template v-for="(seg, si) in stemSegments(item.question.stem)" :key="si">
@@ -425,15 +425,15 @@ const isPracticeCorrect = (q: Question): boolean => {
                 <span class="opt-content">{{ opt.optionContent }}</span>
               </div>
               <div v-if="!item.question.options?.length" class="no-options">
-                <el-text type="info" size="small">点击查看详情获取选项</el-text>
+                <el-text type="info">点击查看详情获取选项</el-text>
               </div>
             </div>
             <div class="card-tags" v-if="item.question.knowledgePoints?.length">
-              <el-tag v-for="tag in item.question.knowledgePoints" :key="tag" size="small" type="info">{{ tag }}</el-tag>
+              <el-tag v-for="tag in item.question.knowledgePoints" :key="tag" type="info">{{ tag }}</el-tag>
             </div>
             <div class="card-footer">
               <span class="answer-hint">先心算，点开后可自测并查看答案</span>
-              <el-button type="primary" size="small">查看题目</el-button>
+              <el-button type="primary">查看题目</el-button>
             </div>
           </el-card>
         </template>
@@ -467,11 +467,11 @@ const isPracticeCorrect = (q: Question): boolean => {
             <div class="passage-head">
               <span class="passage-badge">阅读原文</span>
               <span class="passage-title-lg">{{ passageDetail.title }}</span>
-              <el-tag v-if="passageDetail.wordCount" size="small" type="info" effect="plain">
+              <el-tag v-if="passageDetail.wordCount" type="info" effect="plain">
                 约 {{ passageDetail.wordCount }} 词
               </el-tag>
-              <el-tag size="small" type="warning" effect="plain">本组 {{ passageDetail.questions.length }} 题</el-tag>
-              <el-tag size="small" type="danger" effect="plain">总分 {{ passageDetail.totalScore }} 分</el-tag>
+              <el-tag type="warning" effect="plain">本组 {{ passageDetail.questions.length }} 题</el-tag>
+              <el-tag type="danger" effect="plain">总分 {{ passageDetail.totalScore }} 分</el-tag>
             </div>
             <div class="passage-body">{{ passageDetail.content }}</div>
 
@@ -507,7 +507,7 @@ const isPracticeCorrect = (q: Question): boolean => {
           <el-divider content-position="left">
             <span class="divider-title">📋 答案标准总览</span>
             <el-button
-              size="small"
+             
               type="primary"
               plain
               style="margin-left: 12px"
@@ -517,11 +517,11 @@ const isPracticeCorrect = (q: Question): boolean => {
               🔓 整组查看答案
             </el-button>
           </el-divider>
-          <el-table :data="passageAnswerRows" size="small" border class="answer-table">
+          <el-table :data="passageAnswerRows" border class="answer-table">
             <el-table-column type="index" label="#" width="50" align="center" />
             <el-table-column label="子题型" width="90" align="center">
               <template #default="{ row }">
-                <el-tag size="small" type="success" effect="plain">{{ row.subtype || '—' }}</el-tag>
+                <el-tag type="success" effect="plain">{{ row.subtype || '—' }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="stem" label="题干" min-width="260" show-overflow-tooltip />
@@ -545,14 +545,14 @@ const isPracticeCorrect = (q: Question): boolean => {
           >
             <div class="sub-detail-head">
               <span class="sub-detail-no">第 {{ qi + 1 }} 题</span>
-              <el-tag v-if="q.questionSubtype" size="small" type="success" effect="plain">
+              <el-tag v-if="q.questionSubtype" type="success" effect="plain">
                 {{ readingSubtypeLabel(q.questionSubtype) }}
               </el-tag>
-              <el-tag v-if="q.defaultScore" size="small" type="info" effect="plain">{{ q.defaultScore }} 分</el-tag>
+              <el-tag v-if="q.defaultScore" type="info" effect="plain">{{ q.defaultScore }} 分</el-tag>
               <el-tag
                 v-for="kp in q.knowledgePoints || []"
                 :key="kp"
-                size="small"
+               
                 type="info"
                 effect="plain"
               >{{ kp }}</el-tag>
@@ -614,7 +614,7 @@ const isPracticeCorrect = (q: Question): boolean => {
               <span class="mask-text">先心算你的答案，再核对</span>
               <el-button
                 type="primary"
-                size="small"
+               
                 :loading="isRevealing(q.id)"
                 @click="revealAnswer(q)"
               >
@@ -625,7 +625,7 @@ const isPracticeCorrect = (q: Question): boolean => {
               <div class="sub-answer-row">
                 <span class="ans-label">答案：</span>
                 <span class="ans-value">{{ answerDisplay(q.standardAnswer, q.questionType) }}</span>
-                <el-button link type="primary" size="small" @click="copyAnswer(q.standardAnswer)">复制</el-button>
+                <el-button link type="primary" @click="copyAnswer(q.standardAnswer)">复制</el-button>
               </div>
               <div v-if="q.analysis" class="sub-analysis">
                 <span class="ans-label">解析：</span>{{ q.analysis }}
@@ -648,10 +648,10 @@ const isPracticeCorrect = (q: Question): boolean => {
             </template>
           </div>
           <div class="q-meta">
-            <el-tag size="small">{{ typeLabel(detail.questionType) }}</el-tag>
-            <el-tag size="small" :type="diffTagType(detail.difficulty)">{{ diffLabel(detail.difficulty) }}</el-tag>
-            <el-tag v-if="detail.categoryName" size="small" type="info">{{ detail.categoryName }}</el-tag>
-            <el-tag v-if="detail.hintText" size="small" type="warning" effect="plain">提示：{{ detail.hintText }}</el-tag>
+            <el-tag>{{ typeLabel(detail.questionType) }}</el-tag>
+            <el-tag :type="diffTagType(detail.difficulty)">{{ diffLabel(detail.difficulty) }}</el-tag>
+            <el-tag v-if="detail.categoryName" type="info">{{ detail.categoryName }}</el-tag>
+            <el-tag v-if="detail.hintText" type="warning" effect="plain">提示：{{ detail.hintText }}</el-tag>
           </div>
           <div v-if="detail.options?.length" class="q-options">
             <div
@@ -709,7 +709,7 @@ const isPracticeCorrect = (q: Question): boolean => {
             <span class="mask-text">先心算你的答案，再核对</span>
             <el-button
               type="primary"
-              size="small"
+             
               :loading="isRevealing(detail.id)"
               @click="revealAnswer(detail)"
             >
@@ -722,7 +722,7 @@ const isPracticeCorrect = (q: Question): boolean => {
             <el-divider content-position="left">参考答案</el-divider>
             <div class="q-answer">
               {{ answerDisplay(detail.standardAnswer, detail.questionType) }}
-              <el-button v-if="detail.standardAnswer" link type="primary" size="small" @click="copyAnswer(detail.standardAnswer)">复制</el-button>
+              <el-button v-if="detail.standardAnswer" link type="primary" @click="copyAnswer(detail.standardAnswer)">复制</el-button>
             </div>
             <el-divider content-position="left">解析</el-divider>
             <div class="q-analysis">{{ detail.analysis || '暂无解析' }}</div>
@@ -731,7 +731,7 @@ const isPracticeCorrect = (q: Question): boolean => {
           <template v-if="detail.knowledgePoints?.length">
             <el-divider content-position="left">知识点</el-divider>
             <div class="q-meta">
-              <el-tag v-for="kp in detail.knowledgePoints" :key="kp" size="small" type="info">{{ kp }}</el-tag>
+              <el-tag v-for="kp in detail.knowledgePoints" :key="kp" type="info">{{ kp }}</el-tag>
             </div>
           </template>
         </template>

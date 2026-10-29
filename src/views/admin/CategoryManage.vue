@@ -204,7 +204,7 @@ onMounted(load)
           <template #label>
             <span class="tab-label">
               启用中
-              <el-tag size="small" type="success" effect="plain">{{ stats.enabled }}</el-tag>
+              <el-tag type="success" effect="plain">{{ stats.enabled }}</el-tag>
             </span>
           </template>
         </el-tab-pane>
@@ -212,7 +212,7 @@ onMounted(load)
           <template #label>
             <span class="tab-label">
               已停用
-              <el-tag size="small" type="danger" effect="plain">{{ stats.disabled }}</el-tag>
+              <el-tag type="danger" effect="plain">{{ stats.disabled }}</el-tag>
             </span>
           </template>
         </el-tab-pane>
@@ -254,10 +254,10 @@ onMounted(load)
                 <span class="group-name">
                   <el-icon><Folder /></el-icon>{{ g.root.categoryName }}
                 </span>
-                <el-tag size="small" effect="plain" class="group-chip" :style="{ color: g.color, borderColor: g.color + '55' }">
+                <el-tag effect="plain" class="group-chip" :style="{ color: g.color, borderColor: g.color + '55' }">
                   {{ (g.root.children ?? []).length }} 个二级
                 </el-tag>
-                <el-tag v-if="g.root.status === 0" size="small" type="danger">已停用</el-tag>
+                <el-tag v-if="g.root.status === 0" type="danger">已停用</el-tag>
               </div>
               <div class="group-desc">{{ g.root.description || '暂无描述' }}</div>
             </div>
@@ -283,11 +283,11 @@ onMounted(load)
                 </div>
               </template>
               <div class="group-actions">
-                <el-button link type="primary" size="small" @click="openCreateChild(g.root)">
+                <el-button link type="primary" @click="openCreateChild(g.root)">
                   <el-icon><Plus /></el-icon>二级分类
                 </el-button>
-                <el-button link type="warning" size="small" @click="openEdit(g.root)">编辑</el-button>
-                <el-button link type="danger" size="small" @click="confirmDelete(g.root)">删除</el-button>
+                <el-button link type="warning" @click="openEdit(g.root)">编辑</el-button>
+                <el-button link type="danger" @click="confirmDelete(g.root)">删除</el-button>
               </div>
             </div>
           </header>
@@ -308,8 +308,8 @@ onMounted(load)
               </div>
               <div class="child-desc" :title="c.description">{{ c.description || '暂无描述' }}</div>
               <div class="child-actions">
-                <el-button link type="warning" size="small" @click="openEdit(c)">编辑</el-button>
-                <el-button link type="danger" size="small" @click="confirmDelete(c)">删除</el-button>
+                <el-button link type="warning" @click="openEdit(c)">编辑</el-button>
+                <el-button link type="danger" @click="confirmDelete(c)">删除</el-button>
               </div>
             </div>
           </div>

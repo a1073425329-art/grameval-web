@@ -582,18 +582,18 @@ onMounted(async () => {
 
         <el-form-item label="选择学生（支持多选）">
           <div class="student-filter-bar">
-            <el-radio-group v-model="activeFilter" size="small">
+            <el-radio-group v-model="activeFilter">
               <el-radio-button label="all">全部学生</el-radio-button>
               <el-radio-button label="mine" @click="selectMyStudents" :loading="loadingMyStudents">
                 我的学生
               </el-radio-button>
             </el-radio-group>
             <div class="student-actions">
-              <el-button size="small" @click="toggleSelectAll" :disabled="filteredStudents.length === 0">
+              <el-button @click="toggleSelectAll" :disabled="filteredStudents.length === 0">
                 <el-icon><Select /></el-icon>
                 {{ isAllSelected ? '取消全选' : '全选' }}
               </el-button>
-              <el-button size="small" @click="clearSelection" :disabled="selectedStudentIds.length === 0">
+              <el-button @click="clearSelection" :disabled="selectedStudentIds.length === 0">
                 <el-icon><Delete /></el-icon>
                 清空
               </el-button>
@@ -790,7 +790,7 @@ onMounted(async () => {
                 <el-icon><ChatRound /></el-icon>
                 {{ batchAnalysis ? '整体学情分析' : 'AI 一句话学情分析' }}（可编辑）
               </span>
-              <el-button size="small" text @click="fetchAnalysis" :loading="analysisLoading">
+              <el-button text @click="fetchAnalysis" :loading="analysisLoading">
                 <el-icon><Refresh /></el-icon>重新分析
               </el-button>
             </div>
@@ -818,14 +818,14 @@ onMounted(async () => {
               <!-- [2026-10-16 对齐] 分母用后端实际字段 attemptCount（旧 totalCount 后端不返回，恒显示空） -->
               {{ w.categoryName }} <span class="w-count">({{ w.wrongCount }}/{{ w.attemptCount }} 错)</span>
             </el-tag>
-            <el-button size="small" link type="primary" @click="pickWeakCategories">
+            <el-button link type="primary" @click="pickWeakCategories">
               一键加入语法选择
             </el-button>
           </div>
           
           <!-- 一键加入共同薄弱分类（多选学生时显示） -->
           <div v-if="batchAnalysis?.commonWeakCategories?.length" class="weak-list">
-            <el-button size="small" link type="primary" @click="pickWeakCategories">
+            <el-button link type="primary" @click="pickWeakCategories">
               一键加入共同薄弱专题
             </el-button>
           </div>
@@ -858,20 +858,20 @@ onMounted(async () => {
             <div class="diff-row">
               <div class="diff-item">
                 <label>简单</label>
-                <el-input-number v-model="form.easyPct" :min="0" :max="100" :step="10" size="small" />
+                <el-input-number v-model="form.easyPct" :min="0" :max="100" :step="10" />
                 <span>%</span>
               </div>
               <div class="diff-item">
                 <label>中等</label>
-                <el-input-number v-model="form.mediumPct" :min="0" :max="100" :step="10" size="small" />
+                <el-input-number v-model="form.mediumPct" :min="0" :max="100" :step="10" />
                 <span>%</span>
               </div>
               <div class="diff-item">
                 <label>困难</label>
-                <el-input-number v-model="form.hardPct" :min="0" :max="100" :step="10" size="small" />
+                <el-input-number v-model="form.hardPct" :min="0" :max="100" :step="10" />
                 <span>%</span>
               </div>
-              <el-tag :type="difficultyValid ? 'success' : 'danger'" size="small">
+              <el-tag :type="difficultyValid ? 'success' : 'danger'">
                 合计 {{ difficultySum }}%
               </el-tag>
             </div>
@@ -881,10 +881,10 @@ onMounted(async () => {
             <div class="diff-row">
               <div v-for="op in typeOptions" :key="op.field" class="diff-item">
                 <label>{{ op.label }}</label>
-                <el-input-number v-model="form[op.field]" :min="0" :max="100" :step="10" size="small" />
+                <el-input-number v-model="form[op.field]" :min="0" :max="100" :step="10" />
                 <span>%</span>
               </div>
-              <el-tag :type="typeValid ? 'success' : 'danger'" size="small">
+              <el-tag :type="typeValid ? 'success' : 'danger'">
                 合计 {{ typeSum }}%
               </el-tag>
             </div>
@@ -979,13 +979,13 @@ onMounted(async () => {
             <div>
               <el-icon><Document /></el-icon>
               <span>生成预览</span>
-              <el-tag type="success" size="small" style="margin-left:8px">
+              <el-tag type="success" style="margin-left:8px">
                 共 {{ preview.questions.length }} 道题
               </el-tag>
-              <el-tag v-if="preview.durationMs" type="info" size="small" style="margin-left:4px">
+              <el-tag v-if="preview.durationMs" type="info" style="margin-left:4px">
                 耗时 {{ (preview.durationMs / 1000).toFixed(1) }}s
               </el-tag>
-              <el-tag type="warning" size="small" style="margin-left:4px">
+              <el-tag type="warning" style="margin-left:4px">
                 logId #{{ preview.logId }}
               </el-tag>
             </div>
@@ -1013,9 +1013,9 @@ onMounted(async () => {
           <div v-for="(q, idx) in preview.questions" :key="idx" class="q-item">
             <div class="q-head">
               <span class="q-idx">Q{{ idx + 1 }}</span>
-              <el-tag size="small">{{ typeLabel(q.questionType) }}</el-tag>
-              <el-tag size="small" :type="diffTagType(q.difficulty)">{{ diffLabel(q.difficulty) }}</el-tag>
-              <el-tag v-if="q.categoryName" size="small" type="info">{{ q.categoryName }}</el-tag>
+              <el-tag>{{ typeLabel(q.questionType) }}</el-tag>
+              <el-tag :type="diffTagType(q.difficulty)">{{ diffLabel(q.difficulty) }}</el-tag>
+              <el-tag v-if="q.categoryName" type="info">{{ q.categoryName }}</el-tag>
             </div>
             <div class="q-stem">{{ q.stem }}</div>
             <div v-if="q.options?.length" class="q-opts">

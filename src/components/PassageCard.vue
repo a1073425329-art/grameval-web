@@ -34,14 +34,14 @@ const groupPos = computed(() => {
     <div class="passage-head">
       <span class="passage-badge">阅读理解</span>
       <span class="passage-title">{{ title || '短文' }}</span>
-      <el-tag v-if="wordCount" size="small" type="info" effect="plain">约 {{ wordCount }} 词</el-tag>
-      <el-tag v-if="showGroupTag" size="small" type="warning" effect="plain">
+      <el-tag v-if="wordCount" type="info" effect="plain">约 {{ wordCount }} 词</el-tag>
+      <el-tag v-if="showGroupTag" type="warning" effect="plain">
         本组共 {{ groupTotal }} 题
       </el-tag>
-      <el-tag v-if="groupScore != null" size="small" type="success" effect="plain">
+      <el-tag v-if="groupScore != null" type="success" effect="plain">
         本组 {{ groupScore }} 分
       </el-tag>
-      <el-tag v-if="groupPos" size="small" type="success" effect="plain">{{ groupPos }}</el-tag>
+      <el-tag v-if="groupPos" type="success" effect="plain">{{ groupPos }}</el-tag>
     </div>
     <div class="passage-body">{{ content }}</div>
     <div class="passage-tip">{{ groupPos ? '对照上方短文作答本题' : '请先阅读短文，再结合短文内容完成下方题目' }}</div>

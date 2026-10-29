@@ -208,11 +208,11 @@ onMounted(load)
     <div class="sc-header">
       <div class="sc-header-left">
         <h3 class="sc-title">成绩趋势分析</h3>
-        <el-button type="primary" size="small" plain @click="$router.push('/student/stats')">
+        <el-button type="primary" plain @click="$router.push('/student/stats')">
           <el-icon><TrendCharts /></el-icon>查看详细统计
         </el-button>
       </div>
-      <el-button size="small" @click="exportCSV" :disabled="!data.length">
+      <el-button @click="exportCSV" :disabled="!data.length">
         <el-icon><Download /></el-icon>导出CSV
       </el-button>
     </div>
@@ -267,7 +267,7 @@ onMounted(load)
         <div style="display:flex;align-items:center;gap:8px">
           <el-icon><DataAnalysis /></el-icon>
           <span>知识点掌握度雷达图（最弱 8 项）</span>
-          <el-button type="primary" size="small" link @click="$router.push('/student/knowledge-mastery')">
+          <el-button type="primary" link @click="$router.push('/student/knowledge-mastery')">
             查看全部 →
           </el-button>
         </div>

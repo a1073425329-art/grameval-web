@@ -177,7 +177,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
     <!-- Left Sidebar -->
     <aside class="msg-sidebar">
       <div class="sidebar-header">
-        <el-button type="primary" size="small" @click="router.back()" style="width:100%">
+        <el-button type="primary" @click="router.back()" style="width:100%">
           <el-icon><ArrowLeft /></el-icon>返回
         </el-button>
       </div>
@@ -212,7 +212,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
       <div class="sidebar-divider" />
 
       <div class="sidebar-footer">
-        <el-button text size="small" @click="showPrefs = true" style="width:100%">
+        <el-button text @click="showPrefs = true" style="width:100%">
           <el-icon><Setting /></el-icon>通知偏好
         </el-button>
       </div>
@@ -228,23 +228,23 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
       </el-alert>
       <div class="list-toolbar">
         <div class="toolbar-left">
-          <el-button size="small" :type="selectionMode ? 'primary' : 'default'" @click="selectionMode = !selectionMode; selectedIds = new Set()">
+          <el-button :type="selectionMode ? 'primary' : 'default'" @click="selectionMode = !selectionMode; selectedIds = new Set()">
             {{ selectionMode ? '取消' : '多选' }}
           </el-button>
           <template v-if="selectionMode">
-            <el-button size="small" :disabled="selectedIds.size === 0" @click="selectAll">
+            <el-button :disabled="selectedIds.size === 0" @click="selectAll">
               {{ selectedIds.size === messages.length ? '取消全选' : '全选' }}
             </el-button>
-            <el-button size="small" type="warning" :disabled="selectedIds.size === 0" @click="handleBatchRead">已读</el-button>
-            <el-button size="small" type="danger" :disabled="selectedIds.size === 0" @click="handleBatchDelete">删除</el-button>
+            <el-button type="warning" :disabled="selectedIds.size === 0" @click="handleBatchRead">已读</el-button>
+            <el-button type="danger" :disabled="selectedIds.size === 0" @click="handleBatchDelete">删除</el-button>
             <span style="font-size:12px;color:#909399">{{ selectedIds.size }} 条选中</span>
           </template>
           <template v-else>
-            <el-button size="small" text @click="handleMarkAllRead" :disabled="unreadTotal === 0">全部已读</el-button>
+            <el-button text @click="handleMarkAllRead" :disabled="unreadTotal === 0">全部已读</el-button>
           </template>
         </div>
         <div class="toolbar-right">
-          <el-input v-model="searchKeyword" placeholder="搜索消息…" size="small" clearable style="width:220px" prefix-icon="Search" />
+          <el-input v-model="searchKeyword" placeholder="搜索消息…" clearable style="width:220px" prefix-icon="Search" />
         </div>
       </div>
 
@@ -276,7 +276,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
               </div>
               <div class="msg-item-preview">{{ msg.summary || msg.content?.replace(/<[^>]*>/g, '').substring(0, 80) }}</div>
               <div class="msg-item-meta">
-                <el-tag size="small" :color="msg.color" effect="dark" style="--el-tag-bg-color:transparent;color:inherit;border-color:transparent;font-size:11px;padding:0 2px">
+                <el-tag :color="msg.color" effect="dark" style="--el-tag-bg-color:transparent;color:inherit;border-color:transparent;font-size:11px;padding:0 2px">
                   {{ msg.typeLabel || msg.type }}
                 </el-tag>
                 <span v-if="msg.senderName" style="font-size:11px;color:#c0c4cc">{{ msg.senderName }}</span>
@@ -303,7 +303,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
         <el-button text circle @click="selectedMsg = null"><el-icon><Close /></el-icon></el-button>
       </div>
       <div class="detail-meta">
-        <el-tag :color="selectedMsg.color" effect="dark" size="small">{{ selectedMsg.typeLabel || selectedMsg.type }}</el-tag>
+        <el-tag :color="selectedMsg.color" effect="dark">{{ selectedMsg.typeLabel || selectedMsg.type }}</el-tag>
         <span>{{ formatTime(selectedMsg.createTime) }}</span>
         <span v-if="selectedMsg.senderName">来自 {{ selectedMsg.senderName }}</span>
       </div>
@@ -326,7 +326,7 @@ onUnmounted(() => document.removeEventListener('keydown', handleKeydown))
     <!-- Preferences Dialog -->
     <el-dialog v-model="showPrefs" title="通知偏好设置" width="520px">
       <div v-if="prefs" class="prefs-form">
-        <el-form label-width="100px" label-position="left" size="small">
+        <el-form label-width="100px" label-position="left">
           <el-form-item label="通知总开关"><el-switch v-model="prefs.notificationEnabled" /></el-form-item>
           <el-form-item label="免打扰"><el-switch v-model="prefs.quietHoursEnabled" /></el-form-item>
           <el-form-item v-if="prefs.quietHoursEnabled" label="免打扰时段">

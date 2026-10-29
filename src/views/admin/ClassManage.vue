@@ -198,7 +198,7 @@ const handlePageChange = () => load()
         <el-form-item>
           <el-button type="primary" @click="search"><el-icon><Search /></el-icon>查询</el-button>
           <el-button @click="reset"><el-icon><Refresh /></el-icon>重置</el-button>
-          <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'" size="small">
+          <el-button @click="toggleViewMode" :type="viewMode === 'card' ? 'primary' : 'default'">
             <el-icon><List v-if="viewMode === 'card'" /><Grid v-else /></el-icon>
             {{ viewMode === 'card' ? '表格' : '卡片' }}
           </el-button>
@@ -222,7 +222,7 @@ const handlePageChange = () => load()
         <el-table-column prop="schoolName" label="学校" width="140" show-overflow-tooltip sortable />
         <el-table-column prop="grade" label="年级" width="80" align="center" sortable>
           <template #default="{ row }">
-            <el-tag v-if="row.grade" type="info" size="small" effect="plain">{{ row.grade }}</el-tag>
+            <el-tag v-if="row.grade" type="info" effect="plain">{{ row.grade }}</el-tag>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -236,20 +236,20 @@ const handlePageChange = () => load()
         </el-table-column>
         <el-table-column label="学生数" width="90" align="center" prop="studentCount" sortable>
           <template #default="{ row }">
-            <el-tag type="primary" size="small">{{ row.studentCount ?? 0 }}</el-tag>
+            <el-tag type="primary">{{ row.studentCount ?? 0 }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="80" align="center" prop="status" sortable :sort-method="sortByStatus">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">{{ row.status === 1 ? '启用' : '停用' }}</el-tag>
+            <el-tag :type="row.status === 1 ? 'success' : 'info'">{{ row.status === 1 ? '启用' : '停用' }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="170" sortable />
         <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="warning" link @click="openStudents(row)"><el-icon><User /></el-icon>学生</el-button>
-            <el-button size="small" type="primary" link @click="openEdit(row)"><el-icon><Edit /></el-icon>编辑</el-button>
-            <el-button size="small" type="danger" link @click="handleDelete(row.id)"><el-icon><Delete /></el-icon>删除</el-button>
+            <el-button type="warning" link @click="openStudents(row)"><el-icon><User /></el-icon>学生</el-button>
+            <el-button type="primary" link @click="openEdit(row)"><el-icon><Edit /></el-icon>编辑</el-button>
+            <el-button type="danger" link @click="handleDelete(row.id)"><el-icon><Delete /></el-icon>删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -271,7 +271,7 @@ const handlePageChange = () => load()
         <div class="card-head">
           <el-icon :size="22" color="#409EFF"><School /></el-icon>
           <span class="card-title">{{ c.className }}</span>
-          <el-tag :type="c.status === 1 ? 'success' : 'info'" size="small">{{ c.status === 1 ? '启用' : '停用' }}</el-tag>
+          <el-tag :type="c.status === 1 ? 'success' : 'info'">{{ c.status === 1 ? '启用' : '停用' }}</el-tag>
         </div>
         <div class="card-info">
           <div class="info-item">
@@ -298,9 +298,9 @@ const handlePageChange = () => load()
         </div>
         <div class="card-time">{{ c.createTime }}</div>
         <div class="card-actions">
-          <el-button size="small" type="warning" @click="openStudents(c)"><el-icon><User /></el-icon>学生</el-button>
-          <el-button size="small" type="primary" @click="openEdit(c)"><el-icon><Edit /></el-icon>编辑</el-button>
-          <el-button size="small" type="danger" @click="handleDelete(c.id)"><el-icon><Delete /></el-icon>删除</el-button>
+          <el-button type="warning" @click="openStudents(c)"><el-icon><User /></el-icon>学生</el-button>
+          <el-button type="primary" @click="openEdit(c)"><el-icon><Edit /></el-icon>编辑</el-button>
+          <el-button type="danger" @click="handleDelete(c.id)"><el-icon><Delete /></el-icon>删除</el-button>
         </div>
       </el-card>
 
@@ -350,7 +350,7 @@ const handlePageChange = () => load()
                 <div class="assigned-name">{{ s.studentName || s.username }}</div>
                 <div class="assigned-meta">{{ s.username }}</div>
               </div>
-              <el-button type="danger" size="small" link @click="removeStudent(currentClass!.id, s.studentId)">
+              <el-button type="danger" link @click="removeStudent(currentClass!.id, s.studentId)">
                 <el-icon><Delete /></el-icon>
               </el-button>
             </div>
@@ -672,9 +672,9 @@ const removeStudent = async (classId: number, studentId: number) => {
         <el-table-column prop="createTime" label="创建时间" width="160" />
         <el-table-column label="操作" width="240" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" type="warning" @click="openStudents(row)">学生</el-button>
-            <el-button size="small" type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row.id)">删除</el-button>
+            <el-button type="warning" @click="openStudents(row)">学生</el-button>
+            <el-button type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button type="danger" @click="handleDelete(row.id)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>

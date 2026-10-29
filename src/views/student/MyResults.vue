@@ -397,7 +397,7 @@ onBeforeUnmount(() => {
                   <div class="ed-title">
                     <el-icon><Document /></el-icon> 逐题明细
                   </div>
-                  <el-table :data="flattenAnswerUnits(expandedDetails[row.examId ?? row.id]?.answers ?? [])" size="small" border stripe>
+                  <el-table :data="flattenAnswerUnits(expandedDetails[row.examId ?? row.id]?.answers ?? [])" border stripe>
                     <el-table-column type="index" label="#" width="44" />
                     <el-table-column label="题型" width="80">
                       <template #default="{ row: a }">{{ typeLabel(a.questionType) }}</template>
@@ -460,13 +460,13 @@ onBeforeUnmount(() => {
         <el-table-column label="操作" width="230" align="center">
           <template #default="{ row }">
             <!-- 原操作：详情 -->
-            <el-button type="primary" size="small" @click="router.push(`/student/results/${row.examId ?? row.id}`)">详情</el-button>
+            <el-button type="primary" @click="router.push(`/student/results/${row.examId ?? row.id}`)">详情</el-button>
             <!-- 新增：错题解析入口 -->
-            <el-button type="warning" size="small" plain @click="goWrongAnalysis(row)">
+            <el-button type="warning" plain @click="goWrongAnalysis(row)">
               <el-icon><CircleClose /></el-icon>错题
             </el-button>
             <!-- 新增：导出明细 -->
-            <el-button size="small" @click="exportDetail(row)">
+            <el-button @click="exportDetail(row)">
               <el-icon><Download /></el-icon>导出
             </el-button>
           </template>
@@ -484,10 +484,10 @@ onBeforeUnmount(() => {
           <div class="card-header">
             <span class="result-id">#{{ item.id }}</span>
             <div class="card-header-actions">
-              <el-button type="warning" size="small" plain @click.stop="goWrongAnalysis(item)">
+              <el-button type="warning" plain @click.stop="goWrongAnalysis(item)">
                 <el-icon><CircleClose /></el-icon>错题
               </el-button>
-              <el-button size="small" @click.stop="exportDetail(item)">
+              <el-button @click.stop="exportDetail(item)">
                 <el-icon><Download /></el-icon>导出
               </el-button>
             </div>
@@ -518,7 +518,7 @@ onBeforeUnmount(() => {
           </div>
           <!-- 新增：展开/收起明细 -->
           <div class="card-detail-toggle">
-            <el-button text size="small" @click="toggleCardDetail(item)">
+            <el-button text @click="toggleCardDetail(item)">
               {{ cardExpanded[item.examId ?? item.id] ? '收起明细' : '展开明细' }}
               <el-icon><ArrowUp v-if="cardExpanded[item.examId ?? item.id]" /><ArrowDown v-else /></el-icon>
             </el-button>
@@ -546,14 +546,14 @@ onBeforeUnmount(() => {
                     <span class="qa-score">{{ a.obtainedScore ?? '-' }}/{{ a.questionScore ?? '-' }}</span>
                   </div>
                 </div>
-                <el-button size="small" type="primary" style="margin-top:8px" @click="router.push(`/student/results/${item.examId ?? item.id}`)">
+                <el-button type="primary" style="margin-top:8px" @click="router.push(`/student/results/${item.examId ?? item.id}`)">
                   查看完整解析
                 </el-button>
               </template>
             </div>
           </transition>
           <div class="card-footer">
-            <el-button type="primary" size="small" @click="router.push(`/student/results/${item.examId ?? item.id}`)">查看详情</el-button>
+            <el-button type="primary" @click="router.push(`/student/results/${item.examId ?? item.id}`)">查看详情</el-button>
           </div>
         </el-card>
       </div>

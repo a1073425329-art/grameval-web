@@ -14,13 +14,23 @@ import {
   listCategoryTree,
 } from '@/api/admin'
 import { generateReading } from '@/api/ai'
-import { readingSubtypeDict } from '@/utils/dict'
+import {
+  questionAnalysisDisplayText,
+  readingKnowledgePointLabel,
+  readingSubtypeDict,
+} from '@/utils/dict'
 import type { ReadingPassage, ReadingPassageForm, VocabularyItem } from '@/types/reading'
 import type { QuestionOption } from '@/types/question'
 import type { Category } from '@/types/category'
 import type { Difficulty } from '@/types/common'
 import { FormLimits } from '@/utils/formLimits'
 import { useViewMode } from '@/composables/useViewMode'
+
+/**
+ * [2026-10-30 合入试题管理] embedded=true 时隐藏本页自带的标题区，
+ * 供 QuestionManage 的「阅读文章」页签内嵌复用。其余逻辑完全不变。
+ */
+const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 
 const { viewMode, toggleViewMode } = useViewMode('reading_passage_manage')
 
@@ -450,7 +460,7 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <div class="page-header">
+    <div v-if="!props.embedded" class="page-header">
       <div class="ph-left">
         <div class="ph-icon"><el-icon :size="22"><Reading /></el-icon></div>
         <div class="ph-text">
@@ -569,20 +579,20 @@ onMounted(async () => {
           <el-empty description="暂无文章，点击「新建文章」或「批量导入」开始添加" />
         </template>
         <el-table-column type="selection" width="50" />
-        <el-table-column type="index" label="序号" width="66" />
-        <el-table-column prop="title" label="标题" min-width="170" show-overflow-tooltip />
-        <el-table-column label="正文预览" min-width="280" show-overflow-tooltip>
+        <el-table-column type="index" label="序号" width="56" />
+        <el-table-column prop="title" label="标题" min-width="130" show-overflow-tooltip />
+        <el-table-column label="正文预览" min-width="170" show-overflow-tooltip>
           <template #default="{ row }">{{ row.content }}</template>
         </el-table-column>
-        <el-table-column label="难度" width="90" align="center">
+        <el-table-column label="难度" width="70" align="center">
           <template #default="{ row }">
             <el-tag :type="diffTagType(row.difficulty)" effect="light">{{ diffLabel(row.difficulty) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="体裁" width="100">
+        <el-table-column label="体裁" width="90">
           <template #default="{ row }">{{ typeLabel(row.passageType) }}</template>
         </el-table-column>
-        <el-table-column label="附加信息" width="120" align="center">
+        <el-table-column label="附加信息" width="100" align="center">
           <template #default="{ row }">
             <el-tooltip v-if="row.translation" content="含中文翻译"><el-tag type="success" effect="plain">译</el-tag></el-tooltip>
             <el-tooltip v-if="row.keyVocabulary?.length" :content="`${row.keyVocabulary.length} 条重点词汇`">
@@ -605,13 +615,14 @@ onMounted(async () => {
             }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" align="center" fixed="right">
+        <!-- [2026-10-30 内嵌适配] 原 3 个实心按钮在 220px 内换行错乱，改 link 风格并与试题管理操作列统一 -->
+        <el-table-column label="操作" width="200" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button type="success" plain @click="openPassageDetail(row)">
+            <el-button link type="success" @click.stop="openPassageDetail(row)">
               <el-icon><View /></el-icon>题目详情
             </el-button>
-            <el-button type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button type="danger" @click="confirmDelete(row)">删除</el-button>
+            <el-button link type="primary" @click.stop="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" @click.stop="confirmDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -1027,9 +1038,9 @@ onMounted(async () => {
               </div>
 
               <!-- 解析 -->
-              <div class="qvc-analysis" v-if="q.analysis">
+              <div class="qvc-analysis" v-if="questionAnalysisDisplayText(q.analysis)">
                 <span class="ana-lbl">💡 解析：</span>
-                <span class="ana-text">{{ q.analysis }}</span>
+                <span class="ana-text">{{ questionAnalysisDisplayText(q.analysis) }}</span>
               </div>
 
               <!-- 知识点 -->
@@ -1042,7 +1053,7 @@ onMounted(async () => {
                   type="info"
                   class="kp-tag"
                 >
-                  {{ kp }}
+                  {{ readingKnowledgePointLabel(kp) }}
                 </el-tag>
               </div>
             </div>

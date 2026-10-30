@@ -211,6 +211,7 @@ export const getMySummary = () =>
 export interface MyResultQuery extends PageQuery {
   keyword?: string | undefined
   isPass?: boolean | undefined
+  submitStatus?: number | undefined
   minScore?: number | undefined
   maxScore?: number | undefined
 }

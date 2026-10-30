@@ -8,6 +8,9 @@ export interface ResultSummary {
   highestScore: number
   lowestScore: number
   totalAccuracy: number
+  passCount?: number
+  passRate?: number
+  missedCount?: number
 }
 
 /**
@@ -42,6 +45,12 @@ export interface ExamResultItem {
   correctRate?: number
   classRank?: number
   totalCount?: number
+  submitStatus?: number
+  answerPublishTime?: string
+  isAnswerPublished?: boolean
+  weakCategories?: string[]
+  isMissed?: boolean
+  isPass?: boolean
 }
 
 /** 成绩明细（GET /results/{resultId}/detail）—— ExamRecordVO */
@@ -74,6 +83,10 @@ export interface ResultDetail {
   /** 正确率（后端已按百分比给出） */
   correctRate?: number
   clientIp?: string
+  answerPublishTime?: string
+  isAnswerPublished?: boolean
+  isMissed?: boolean
+  isPass?: boolean
 }
 
 /**

@@ -143,3 +143,114 @@ export interface PracticeAnswerForm {
   questionId: number
   userAnswer: string
 }
+
+/**
+ * 单题使用统计 —— 对齐后端 QuestionUsageStatsVO
+ * GET /api/admin/questions/{questionId}/usage-stats
+ *
+ * [2026-10-30] 全部为实时聚合结果，数据库无对应统计列。
+ * 注意：discriminationIndex / difficultyCoefficient / qualityLevel 三个字段
+ * 后端已随 QuestionAnalysis 表删除而恒为 null，前端不要依赖。
+ */
+export interface QuestionUsageStats {
+  questionId: number
+  stemPreview?: string
+  questionType?: string
+  difficulty?: number
+  categoryId?: number
+  categoryName?: string
+  /** 被多少份试卷引用 */
+  paperCount: number
+  /** 被多少场考试场次使用（经试卷关联） */
+  examSessionCount: number
+  /** 总答题次数（已阅卷） */
+  totalAttemptCount: number
+  correctCount: number
+  wrongCount: number
+  /** 正确率 % */
+  correctRate: number
+  /** 参与答题的不同学生数 */
+  distinctStudentCount: number
+  /**
+   * 是否按整篇聚合（阅读理解 = true）。
+   * 母本 16 R1/R2：READING 对外就是一道大题，业务口径以「阅读大题」为一题，
+   * 为 true 时上面所有计数与正确率都是整篇子题聚合结果，不是单道小题。
+   */
+  aggregatedByPassage?: boolean
+  /** 整篇小题数（仅 aggregatedByPassage=true 时有值） */
+  passageQuestionCount?: number | null
+  averageTimeSeconds?: number | null
+  discriminationIndex?: number | null
+  difficultyCoefficient?: number | null
+  qualityLevel?: string | null
+}
+
+export type QuestionCoverageSource = 'ALL' | 'EXAM' | 'PRACTICE'
+
+export interface QuestionCoverageQuery {
+  source?: QuestionCoverageSource | undefined
+  studentIds?: number[] | undefined
+  startTime?: string | undefined
+  endTime?: string | undefined
+}
+
+export interface QuestionCoverageDimension {
+  key: string
+  label: string
+  totalUnits: number
+  attemptedUnits: number
+  untouchedUnits: number
+  attemptCount: number
+  gradedCount: number
+  correctCount: number
+  accuracy: number | null
+}
+
+export interface QuestionCoverageCategory extends Omit<QuestionCoverageDimension, 'key' | 'label'> {
+  categoryId: number
+  parentId: number | null
+  categoryName: string
+  level: number
+}
+
+export interface QuestionCoverageAlert {
+  scopeType: 'TYPE' | 'CATEGORY'
+  scopeId: number | string | null
+  label: string
+  totalUnits: number
+  untouchedUnits: number
+  reason: string
+}
+
+export interface QuestionCoverage {
+  source: QuestionCoverageSource
+  startTime: string | null
+  endTime: string | null
+  studentIds: number[]
+  inventory: {
+    totalUnits: number
+    ordinaryQuestionUnits: number
+    readingPassages: number
+  }
+  answers: {
+    attemptCount: number
+    gradedCount: number
+    ungradedCount: number
+    correctCount: number
+    accuracy: number | null
+    learnerCount: number
+    attemptedUnits: number
+    untouchedUnits: number
+    coverageRate: number | null
+  }
+  reading: {
+    passageCount: number
+    touchedPassages: number
+    fullyCoveredPassages: number
+    partiallyCoveredPassages: number
+    untouchedPassages: number
+  }
+  byType: QuestionCoverageDimension[]
+  byCategory: QuestionCoverageCategory[]
+  alerts: QuestionCoverageAlert[]
+}

@@ -5,10 +5,16 @@ import type {
   UserCreateForm,
 } from '@/types/user'
 import type { Category, CategoryForm } from '@/types/category'
-import type { Question, QuestionForm } from '@/types/question'
+import type {
+  Question,
+  QuestionCoverage,
+  QuestionCoverageQuery,
+  QuestionForm,
+  QuestionUsageStats,
+} from '@/types/question'
 import type { ReadingPassage, ReadingPassageForm, ReadingQuestionItem } from '@/types/reading'
-import type { Paper, PaperForm } from '@/types/paper'
-import type { ExamSession, SessionForm, ExamRecord } from '@/types/exam'
+import type { Paper, PaperForm, PaperSummaryStats } from '@/types/paper'
+import type { ExamSession, SessionForm, ExamRecord, SessionSummaryStats } from '@/types/exam'
 import type { ExamResultItem } from '@/types/result'
 import type {
   AdminDashboardData,
@@ -16,6 +22,7 @@ import type {
   SessionStatistics,
   QuestionAnalytics,
   OperationLog,
+  PaperUsageStats,
 } from '@/types/admin'
 
 /**
@@ -111,6 +118,42 @@ export const batchStatusQuestions = (ids: number[], status: 0 | 1) =>
 export const batchDeleteQuestions = (ids: number[]) =>
   request.post<ApiResponse<void>>('/questions/batch-delete', { ids })
 
+/**
+ * 单题使用统计（实时聚合，无统计表）
+ * GET /api/admin/questions/{questionId}/usage-stats
+ * 返回：被引用试卷数、考试场次数、答题次数、正确率、涉及学生数等
+ */
+export const getQuestionUsageStats = (questionId: number) =>
+  request.get<ApiResponse<QuestionUsageStats>>(`/admin/questions/${questionId}/usage-stats`)
+
+const serializeQuestionCoverageParams = (params: Record<string, unknown>): string => {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === '') continue
+    if (Array.isArray(value)) {
+      value.forEach((item) => query.append(key, String(item)))
+    } else {
+      query.append(key, String(value))
+    }
+  }
+  return query.toString()
+}
+
+/** 全局题库作答覆盖统计；studentIds 会编码为同名重复查询参数。 */
+export const getQuestionCoverage = (query: QuestionCoverageQuery) =>
+  request.get<ApiResponse<QuestionCoverage>>('/admin/questions/coverage', {
+    params: query,
+    paramsSerializer: { serialize: serializeQuestionCoverageParams },
+  })
+
+/**
+ * 试卷使用统计（实时聚合，无统计表）
+ * GET /api/admin/papers/{paperId}/usage-stats
+ * 返回：引用场次数、参考人次、利用率、平均分/最高/最低、及格率、每题型与每语法正确率
+ */
+export const getPaperUsageStats = (paperId: number) =>
+  request.get<ApiResponse<PaperUsageStats>>(`/admin/papers/${paperId}/usage-stats`)
+
 /** CSV 导入模板下载 */
 export const downloadImportTemplate = () =>
   request.get('/questions/import/template', { responseType: 'blob' })
@@ -139,6 +182,12 @@ export interface PaperListQuery extends PageQuery {
   minTotalScore?: number | undefined
   maxTotalScore?: number | undefined
 }
+
+export const getPaperSummaryStats = () =>
+  request.get<ApiResponse<PaperSummaryStats>>('/papers/summary-stats')
+
+export const copyPaper = (id: number) =>
+  request.post<ApiResponse<Paper>>(`/papers/${id}/copy`)
 
 export const listPapers = (params: PaperListQuery) =>
   request.get<ApiResponse<PageResult<Paper>>>('/papers', { params })
@@ -172,6 +221,15 @@ export interface SessionListQuery extends PageQuery {
   startTimeFrom?: string | undefined
   endTimeTo?: string | undefined
 }
+
+export const getSessionSummaryStats = () =>
+  request.get<ApiResponse<SessionSummaryStats>>('/sessions/summary-stats')
+
+export const publishSessionAnswers = (id: number) =>
+  request.post<ApiResponse<ExamSession>>(`/sessions/${id}/publish-answers`)
+
+export const copySession = (id: number) =>
+  request.post<ApiResponse<ExamSession>>(`/sessions/${id}/copy`)
 
 export const listSessions = (params: SessionListQuery) =>
   request.get<ApiResponse<PageResult<ExamSession>>>('/sessions', { params })
@@ -446,3 +504,15 @@ export const addClassStudent = (classId: number, studentId: number, studentNo?: 
 /** 从班级移除学生（只解绑该班，不影响其其他班级） */
 export const removeClassStudent = (classId: number, studentId: number) =>
   request.delete<ApiResponse<void>>(`/classes/${classId}/students/${studentId}`)
+
+/** 学生个人知识点掌握度（教师端可查任意学生） */
+export const getStudentKnowledgeMastery = (userId: number) =>
+  request.get<ApiResponse<any>>(`/knowledge-mastery/student/${userId}`)
+
+/** 学生个人知识画像洞察 */
+export const getStudentKnowledgeInsights = (userId: number) =>
+  request.get<ApiResponse<any>>(`/knowledge-mastery/student/${userId}/insights`)
+
+/** 学生个人历次成绩趋势曲线 */
+export const getStudentScoreTrend = (userId: number) =>
+  request.get<ApiResponse<any>>(`/score-curve/student/${userId}`)

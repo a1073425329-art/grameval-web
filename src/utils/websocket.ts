@@ -185,6 +185,11 @@ export class WebSocketManager {
       this.stopHeartbeat()
       this.ws = null
       this.emit('close', ev)
+      // 若是明确的认证失败（1008），不再自动重连，避免无意义的频繁握手
+      if (ev.code === 1008) {
+        console.warn('[WebSocketManager] 认证失败(1008)，停止自动重连')
+        return
+      }
       this.scheduleReconnect()
     }
   }

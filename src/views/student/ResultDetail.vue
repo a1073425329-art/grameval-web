@@ -312,6 +312,28 @@ const dimDifficultyChartOption = computed(() => {
       </div>
     </div>
 
+    <!-- 状态横幅提示（对齐论文 UC05/UC07 异常处理与答案安全公布） -->
+    <div v-if="detail" style="margin-bottom: 16px">
+      <el-alert
+        v-if="detail.submitStatus === 2 && (detail.totalScore === 0 || detail.wrongCount === totalCount)"
+        type="warning"
+        show-icon
+        :closable="false"
+        title="缺考 / 超时未提交"
+        description="本场考试已超时截止，系统已按超时提交（缺考）自动完成结算，未作答题目计 0 分。"
+        style="margin-bottom: 10px"
+      />
+      <el-alert
+        v-if="detail.isAnswerPublished === false"
+        type="info"
+        show-icon
+        :closable="false"
+        title="标准答案与逐题解析未到公开时间"
+        :description="`本场考试标准答案与逐题解析将于 ${detail.answerPublishTime || '场次公布时间'} 公开。依据论文 UC07 §4.1.5 安全规范，公开时间前仅展示得分与状态，不公开试卷题目与解析，防止试题泄露。`"
+        style="margin-bottom: 10px"
+      />
+    </div>
+
     <!-- 汇总卡片 -->
     <div class="summary-section" v-if="detail">
       <div class="score-card">

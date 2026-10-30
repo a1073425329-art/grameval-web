@@ -25,6 +25,7 @@ import {
   EditPen,
 } from '@element-plus/icons-vue'
 import {
+  listUsers,
   listAdminQuestions,
   createQuestion,
   updateQuestion,
@@ -39,16 +40,28 @@ import {
   addPassageQuestion,
   downloadImportTemplate,
   importQuestions,
+  getQuestionUsageStats,
+  getQuestionCoverage,
 } from '@/api/admin'
 import { listQuestionTags } from '@/api/tag'
 import type { UploadInstance } from 'element-plus'
 import { validateQuestion, generateReading } from '@/api/ai'
-import type { Question, QuestionOption, QuestionForm } from '@/types/question'
+// [2026-10-30 合入] 阅读文章库内嵌到「阅读文章」页签，避免独立菜单项
+import ReadingPassageManage from './ReadingPassageManage.vue'
+import type {
+  Question,
+  QuestionOption,
+  QuestionForm,
+  QuestionUsageStats,
+  QuestionCoverage,
+  QuestionCoverageQuery,
+} from '@/types/question'
 import type { Difficulty, QuestionType } from '@/types/common'
 import type { Category } from '@/types/category'
 import type { ReadingPassage, ReadingQuestionItem } from '@/types/reading'
 import { useViewMode } from '@/composables/useViewMode'
 import PassageCard from '@/components/PassageCard.vue'
+import { questionAnalysisDisplayText, readingKnowledgePointLabel } from '@/utils/dict'
 
 const { viewMode, toggleViewMode } = useViewMode('question_manage')
 
@@ -58,7 +71,8 @@ const query = reactive({
   questionType: undefined as QuestionType | undefined,
   difficulty: undefined as Difficulty | undefined,
   status: undefined as number | undefined,
-  // [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间的两个查询状态项删除
+  studentIds: [] as number[],
+  onlyWrong: false,
   pageNum: 1,
   pageSize: 50,
 })
@@ -69,6 +83,58 @@ const loading = ref(false)
 const categories = ref<Category[]>([])
 const tagOptions = ref<Array<{ id: number; tagName: string }>>([])
 const selected = ref<Question[]>([])
+
+const studentOptions = ref<Array<{ id: number; username: string; realName?: string }>>([])
+const loadStudents = async () => {
+  try {
+    const res = await listUsers({ pageNum: 1, pageSize: 500, role: 'STUDENT' })
+    studentOptions.value = res.data.records ?? []
+  } catch {}
+}
+
+const coverageFilter = reactive({
+  source: 'ALL' as QuestionCoverageQuery['source'],
+  studentIds: [] as number[],
+  dateRange: [] as string[],
+})
+const coverageData = ref<QuestionCoverage | null>(null)
+const coverageLoading = ref(false)
+const coverageError = ref('')
+let coverageRequestSequence = 0
+
+const loadQuestionCoverage = async () => {
+  const sequence = ++coverageRequestSequence
+  coverageLoading.value = true
+  coverageError.value = ''
+  const [startTime, endTime] = coverageFilter.dateRange
+  const params: QuestionCoverageQuery = {
+    source: coverageFilter.source,
+    studentIds: coverageFilter.studentIds.length ? [...coverageFilter.studentIds] : undefined,
+    startTime: startTime || undefined,
+    endTime: endTime || undefined,
+  }
+  try {
+    const res = await getQuestionCoverage(params)
+    if (sequence === coverageRequestSequence) coverageData.value = res.data
+  } catch {
+    if (sequence === coverageRequestSequence) {
+      coverageError.value = '作答覆盖统计加载失败，请检查筛选条件后重试'
+    }
+  } finally {
+    if (sequence === coverageRequestSequence) coverageLoading.value = false
+  }
+}
+
+const resetCoverageFilter = () => {
+  coverageFilter.source = 'ALL'
+  coverageFilter.studentIds = []
+  coverageFilter.dateRange = []
+  void loadQuestionCoverage()
+}
+
+const formatCoverageRate = (value: number | null | undefined, emptyText = '—') =>
+  value == null ? emptyText : `${Number(value).toFixed(1)}%`
+
 
 /** 知识点可选池：汇总考点标签、当前列表已有知识点以及经典语法核心考点，供下拉点选 */
 const existingKnowledgePoints = computed(() => {
@@ -90,36 +156,44 @@ const existingKnowledgePoints = computed(() => {
   return Array.from(set)
 })
 
-const normalTypeOptions: { label: string; value: QuestionType }[] = [
-  { label: '单选题', value: 'SINGLE' },
-  { label: '多选题', value: 'MULTIPLE' },
-  { label: '判断题', value: 'JUDGE' },
-  { label: '填空题', value: 'FILL' },
-  { label: '带提示填空题', value: 'FILL_HINT' },
-]
 const diffOptions: { label: string; value: Difficulty }[] = [
   { label: '简单', value: 1 },
   { label: '中等', value: 2 },
   { label: '困难', value: 3 },
 ]
 
-/* 题型 Tabs：把原先"题型下拉框"换成顶部页签，切换更直观 */
+/* 题型 Tabs：5 种题型 + 阅读文章
+ * [2026-10-30 修复] 原「阅读理解题」页签必然为空：
+ *   后端 QuestionService.page 硬编码排除 questionType=READING 与 passageId 非空的记录
+ *   （注释：文章才是阅读单元，子题只能经 ReadingPassageService 查），
+ *   所以前端再传 questionType=READING 只会得到 0 条。
+ *   现改为「阅读文章」页签，直接内嵌文章库，符合后端设计。 */
 const typeTabOptions: { label: string; value: string }[] = [
   { label: '全部', value: 'ALL' },
   { label: '单选题', value: 'SINGLE' },
   { label: '多选题', value: 'MULTIPLE' },
   { label: '判断题', value: 'JUDGE' },
-  { label: '填空题', value: 'FILL_HINT' },
+  { label: '填空题', value: 'FILL' },
+  { label: '阅读文章', value: 'READING' },
 ]
 const typeTab = ref<string>('ALL')
 const onTypeTabChange = (name: string | number) => {
+  // 阅读文章页签由内嵌组件自行加载，不走题目分页接口
+  if (name === 'READING') {
+    query.questionType = undefined
+    return
+  }
   query.questionType = name === 'ALL' ? undefined : (name as QuestionType)
   search()
 }
 
 const allTypeOptions: { label: string; value: QuestionType }[] = [
-  ...normalTypeOptions,
-  { label: '阅读理解选择题', value: 'READING' },
+  { label: '单选题', value: 'SINGLE' },
+  { label: '多选题', value: 'MULTIPLE' },
+  { label: '判断题', value: 'JUDGE' },
+  { label: '填空题', value: 'FILL' },
+  { label: '填空题', value: 'FILL_HINT' },
+  { label: '阅读理解题', value: 'READING' },
 ]
 
 const typeLabel = (t?: QuestionType) =>
@@ -169,6 +243,8 @@ const reset = () => {
   query.questionType = undefined
   query.difficulty = undefined
   query.status = undefined
+  query.studentIds = []
+  query.onlyWrong = false
   // [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间的两项重置删除
   query.pageNum = 1
   typeTab.value = 'ALL'
@@ -186,14 +262,13 @@ const formRef = ref<FormInstance>()
 type TabType = QuestionType | 'READING'
 const activeTab = ref<TabType>('SINGLE')
 
-/* tab 配置 */
+/* tab 配置：统一 5 大题型（单选题、多选题、判断题、填空题、阅读理解题） */
 const tabOptions: { label: string; value: TabType }[] = [
   { label: '单选题', value: 'SINGLE' },
   { label: '多选题', value: 'MULTIPLE' },
   { label: '判断题', value: 'JUDGE' },
   { label: '填空题', value: 'FILL' },
-  { label: '带提示填空', value: 'FILL_HINT' },
-  { label: '阅读理解', value: 'READING' },
+  { label: '阅读理解题', value: 'READING' },
 ]
 
 /* ---------- 普通题型表单 ---------- */
@@ -722,7 +797,7 @@ const openCreate = (tab: TabType = 'SINGLE') => {
 }
 
 const openEdit = (row: Question) => {
-  activeTab.value = row.questionType
+  activeTab.value = (row.questionType === 'FILL_HINT' ? 'FILL' : row.questionType) as TabType
   resetNormalForm()
   resetReadingForm()
   validationResult.value = null
@@ -764,6 +839,7 @@ const openEdit = (row: Question) => {
       : (up === 'FALSE' || up === 'F' || up === '错' || up === '错误' ? 'FALSE' : ''))
   } else if (row.questionType === 'FILL_HINT' || row.questionType === 'FILL') {
     normalForm.answerFill = a
+    normalForm.fillHint = row.hintText || ''
     normalForm.answerFormat = row.answerFormat || 'CASE_INSENSITIVE'
   } else {
     normalForm.answerSingle = a.toUpperCase()
@@ -948,11 +1024,7 @@ const submit = async () => {
         return
       }
       standardAnswer = normalForm.answerJudge
-    } else if (activeTab.value === 'FILL_HINT') {
-      if (!normalForm.fillHint.trim()) {
-        ElMessage.warning('请输入提示词')
-        return
-      }
+    } else if (activeTab.value === 'FILL' || activeTab.value === 'FILL_HINT') {
       if (!normalForm.answerFill.trim()) {
         ElMessage.warning('请输入填空答案')
         return
@@ -964,28 +1036,22 @@ const submit = async () => {
         return
       }
       standardAnswer = normalForm.answerFill.trim()
-    } else if (activeTab.value === 'FILL') {
-      if (!normalForm.answerFill.trim()) {
-        ElMessage.warning('请输入填空答案')
-        return
-      }
-      if (normalForm.answerFormat === 'WORD_ONLY' && normalForm.answerFill.trim().includes(' ')) {
-        ElMessage.warning('答案格式为「仅单词(WORD_ONLY)」，填空答案不能包含空格')
-        return
-      }
-      standardAnswer = normalForm.answerFill.trim()
     }
+
+    const isFillType = activeTab.value === 'FILL' || activeTab.value === 'FILL_HINT'
+    const hasFillHint = isFillType && Boolean(normalForm.fillHint && normalForm.fillHint.trim())
+    const qType: QuestionType = isFillType
+      ? (hasFillHint ? 'FILL_HINT' : 'FILL')
+      : (activeTab.value as QuestionType)
 
     const payload: QuestionForm = {
       categoryId: normalForm.categoryId!,
-      questionType: normalForm.questionType,
+      questionType: qType,
       stem: normalForm.stem,
       standardAnswer,
       // 仅填空类携带该字段；选择题类的答案就是选项标签，后端会统一回落 CASE_INSENSITIVE
-      answerFormat:
-        activeTab.value === 'FILL_HINT' || activeTab.value === 'FILL'
-          ? normalForm.answerFormat
-          : undefined,
+      answerFormat: isFillType ? normalForm.answerFormat : undefined,
+      hintText: hasFillHint ? normalForm.fillHint.trim() : undefined,
       analysis: normalForm.analysis,
       knowledgePoints: normalForm.knowledgePoints,
       difficulty: normalForm.difficulty,
@@ -995,9 +1061,7 @@ const submit = async () => {
       tagIds: normalForm.tagIds,
       primaryTagId: normalForm.primaryTagId,
       options:
-        activeTab.value === 'JUDGE' ||
-        activeTab.value === 'FILL_HINT' ||
-        activeTab.value === 'FILL'
+        activeTab.value === 'JUDGE' || isFillType
           ? []
           : normalForm.options.map((o, i) => ({
               optionLabel: o.optionLabel,
@@ -1245,11 +1309,17 @@ const drawerVisible = ref(false)
 const detail = ref<Question | null>(null)
 const detailPassage = ref<ReadingPassage | null>(null)
 const detailLoading = ref(false)
+/** 单题使用统计（实时聚合，非库表字段） */
+const detailStats = ref<QuestionUsageStats | null>(null)
+const detailStatsLoading = ref(false)
 
 const openDetail = async (row: Question) => {
   detail.value = row
   detailPassage.value = null
+  detailStats.value = null
   drawerVisible.value = true
+  // 统计与文章详情并行加载，互不阻塞
+  loadDetailStats(row.id)
   if (!row.passageId) return
   detailLoading.value = true
   try {
@@ -1258,6 +1328,39 @@ const openDetail = async (row: Question) => {
   } finally {
     detailLoading.value = false
   }
+}
+
+/**
+ * 单题使用统计 —— GET /admin/questions/{id}/usage-stats
+ * 全部由后端实时聚合 answer_record / paper_question / exam_session 得出。
+ * 失败时不影响详情本身展示。
+ */
+const loadDetailStats = async (questionId: number) => {
+  detailStatsLoading.value = true
+  detailStats.value = null
+  try {
+    const res = await getQuestionUsageStats(questionId)
+    detailStats.value = res.data
+  } catch {
+    detailStats.value = null
+  } finally {
+    detailStatsLoading.value = false
+  }
+}
+
+/** 表格行点击打开详情；勾选框列不触发（否则点勾选会弹详情） */
+const onRowClick = (row: Question, _column: unknown, event: Event) => {
+  const el = event.target as HTMLElement | null
+  if (el?.closest('.el-checkbox') || el?.closest('.el-table-column--selection')) return
+  openDetail(row)
+}
+
+/** 正确率配色：≥70 绿 / 40-70 橙 / <40 红 */
+const accColor = (rate?: number | null) => {
+  const v = Number(rate ?? 0)
+  if (v >= 70) return '#67C23A'
+  if (v >= 40) return '#E6A23C'
+  return '#F56C6C'
 }
 
 /* ---------- 行内启停 ---------- */
@@ -1506,6 +1609,8 @@ const handleImport = async () => {
 }
 
 onMounted(async () => {
+  loadStudents()
+  void loadQuestionCoverage()
   try {
     const c = await listCategoryTree()
     categories.value = c.data ?? []
@@ -1524,6 +1629,160 @@ onMounted(async () => {
 
 <template>
   <div class="page">
+    <section class="coverage-panel" aria-labelledby="coverage-title">
+      <div class="coverage-header">
+        <h2 id="coverage-title">题库作答覆盖</h2>
+        <div class="coverage-actions">
+          <el-select v-model="coverageFilter.source" aria-label="作答来源" style="width: 130px">
+            <el-option label="全部来源" value="ALL" />
+            <el-option label="正式考试" value="EXAM" />
+            <el-option label="专项练习" value="PRACTICE" />
+          </el-select>
+          <el-select
+            v-model="coverageFilter.studentIds"
+            aria-label="统计学生"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="全体学生"
+            style="width: 220px"
+          >
+            <el-option
+              v-for="student in studentOptions"
+              :key="student.id"
+              :label="`${student.realName || student.username} (${student.username})`"
+              :value="student.id"
+            />
+          </el-select>
+          <el-date-picker
+            v-model="coverageFilter.dateRange"
+            type="datetimerange"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            range-separator="至"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            aria-label="作答时间范围"
+            style="width: 350px"
+          />
+          <el-button type="primary" :loading="coverageLoading" @click="loadQuestionCoverage">
+            <el-icon><Search /></el-icon>统计
+          </el-button>
+          <el-button :disabled="coverageLoading" @click="resetCoverageFilter">
+            <el-icon><Refresh /></el-icon>重置
+          </el-button>
+        </div>
+      </div>
+
+      <el-alert
+        v-if="coverageError"
+        class="coverage-error"
+        :title="coverageError"
+        type="error"
+        :closable="false"
+        show-icon
+      >
+        <el-button link type="primary" @click="loadQuestionCoverage">重试</el-button>
+      </el-alert>
+
+      <div v-loading="coverageLoading" class="coverage-results">
+        <template v-if="coverageData">
+          <div class="coverage-kpis">
+            <div class="coverage-kpi">
+              <strong>{{ coverageData.inventory.totalUnits }}</strong>
+              <span>当前库存单元</span>
+            </div>
+            <div class="coverage-kpi">
+              <strong>{{ coverageData.answers.attemptedUnits }}</strong>
+              <span>已触达单元</span>
+            </div>
+            <div class="coverage-kpi coverage-kpi--warning">
+              <strong>{{ coverageData.answers.untouchedUnits }}</strong>
+              <span>未触达单元</span>
+            </div>
+            <div class="coverage-kpi">
+              <strong>{{ formatCoverageRate(coverageData.answers.coverageRate, coverageData.inventory.totalUnits === 0 ? '无题目' : '—') }}</strong>
+              <span>库存覆盖率</span>
+            </div>
+            <div class="coverage-kpi">
+              <strong>{{ coverageData.answers.attemptCount }}</strong>
+              <span>作答人次</span>
+            </div>
+            <div class="coverage-kpi">
+              <strong>{{ formatCoverageRate(coverageData.answers.accuracy, '暂无样本') }}</strong>
+              <span>作答明细正确率</span>
+              <small>已判分 {{ coverageData.answers.gradedCount }} / 未判分 {{ coverageData.answers.ungradedCount }} 条 · {{ coverageData.answers.learnerCount }} 人</small>
+            </div>
+          </div>
+
+          <div class="coverage-reading" v-if="coverageData.reading.passageCount > 0">
+            <strong>阅读整篇覆盖</strong>
+            <span>文章 {{ coverageData.reading.passageCount }}</span>
+            <span>完整 {{ coverageData.reading.fullyCoveredPassages }}</span>
+            <span>部分 {{ coverageData.reading.partiallyCoveredPassages }}</span>
+            <span>未触达 {{ coverageData.reading.untouchedPassages }}</span>
+            <small>库存按整篇文章计 1 个单元；完整覆盖按当前有效子题均有答题明细判断；正确率按子题判分明细计算。</small>
+          </div>
+
+          <div v-if="coverageData.alerts.length" class="coverage-alerts">
+            <el-alert
+              v-for="alert in coverageData.alerts"
+              :key="`${alert.scopeType}-${alert.scopeId ?? alert.label}`"
+              :title="`${alert.label}：${alert.reason}（库存 ${alert.totalUnits}，未触达 ${alert.untouchedUnits}）`"
+              type="warning"
+              :closable="false"
+              show-icon
+            />
+          </div>
+
+          <div v-if="coverageData.inventory.totalUnits === 0" class="coverage-empty">
+            <el-empty description="当前筛选范围没有可统计的题库单元" :image-size="72" />
+          </div>
+          <div v-else class="coverage-dimensions">
+            <section class="coverage-dimension">
+              <h3>按题型</h3>
+              <el-table :data="coverageData.byType" size="small" max-height="260">
+                <el-table-column prop="label" label="题型" min-width="100" show-overflow-tooltip />
+                <el-table-column prop="totalUnits" label="库存" width="70" align="right" />
+                <el-table-column prop="attemptedUnits" label="已触达" width="78" align="right" />
+                <el-table-column prop="untouchedUnits" label="未触达" width="78" align="right" />
+                <el-table-column prop="attemptCount" label="人次" width="76" align="right" />
+                <el-table-column label="正确率" width="94" align="right">
+                  <template #default="{ row }">
+                    {{ formatCoverageRate(row.accuracy, '暂无样本') }}
+                    <small class="coverage-sample">{{ row.gradedCount }} 条</small>
+                  </template>
+                </el-table-column>
+                <template #empty><span class="coverage-no-data">暂无题型统计</span></template>
+              </el-table>
+            </section>
+
+            <section class="coverage-dimension">
+              <h3>按语法分类</h3>
+              <el-table :data="coverageData.byCategory" size="small" max-height="260">
+                <el-table-column label="分类" min-width="140" show-overflow-tooltip>
+                  <template #default="{ row }">
+                    <span>{{ row.level === 1 ? '一级' : '二级' }} · {{ row.categoryName }}</span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="totalUnits" label="库存" width="70" align="right" />
+                <el-table-column prop="attemptedUnits" label="已触达" width="78" align="right" />
+                <el-table-column prop="untouchedUnits" label="未触达" width="78" align="right" />
+                <el-table-column prop="attemptCount" label="人次" width="76" align="right" />
+                <el-table-column label="正确率" width="94" align="right">
+                  <template #default="{ row }">
+                    {{ formatCoverageRate(row.accuracy, '暂无样本') }}
+                    <small class="coverage-sample">{{ row.gradedCount }} 条</small>
+                  </template>
+                </el-table-column>
+                <template #empty><span class="coverage-no-data">暂无分类统计</span></template>
+              </el-table>
+            </section>
+          </div>
+        </template>
+      </div>
+    </section>
+
     <!-- 题型切换 Tabs（替代原来的题型下拉框，切换更直观） -->
     <el-tabs
       v-model="typeTab"
@@ -1539,7 +1798,7 @@ onMounted(async () => {
     </el-tabs>
 
     <!-- 筛选栏 -->
-    <el-card shadow="never" class="filter-card">
+    <el-card v-if="typeTab !== 'READING'" shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
         <el-row :gutter="8">
           <el-form-item label="关键词">
@@ -1594,6 +1853,27 @@ onMounted(async () => {
               <el-option label="停用" :value="0" />
             </el-select>
           </el-form-item>
+          <el-form-item label="作答学生">
+            <el-select
+              v-model="query.studentIds"
+              multiple
+              filterable
+              collapse-tags
+              collapse-tags-tooltip
+              placeholder="选择学生查做题/错题"
+              style="width: 220px"
+            >
+              <el-option
+                v-for="st in studentOptions"
+                :key="st.id"
+                :label="`${st.realName || st.username} (${st.username})`"
+                :value="st.id"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item v-if="query.studentIds && query.studentIds.length">
+            <el-checkbox v-model="query.onlyWrong" label="仅看错题" border />
+          </el-form-item>
           <!-- [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间筛选框整块删除（后端从来不认该参数，属失效筛选）。
                保留记录：el-form-item 内两个 el-input-number（最低 ~ 最高），绑定 query 的同名 min/max 状态项。 -->
           <el-form-item>
@@ -1618,7 +1898,9 @@ onMounted(async () => {
     </el-card>
 
     <!-- 列表区 -->
-    <el-card shadow="never" v-loading="loading">
+    <!-- [2026-10-30 修复] 原只给上方「筛选卡片」加了 v-if，漏了这张「工具栏+表格+分页」卡片，
+         导致切到「阅读文章」页签后题目表格仍占满首屏、文章库被顶到 3600px 以下。 -->
+    <el-card v-if="typeTab !== 'READING'" shadow="never" v-loading="loading">
       <div class="toolbar">
         <el-button type="primary" @click="openCreate('SINGLE')">
           <el-icon><Plus /></el-icon>新增试题
@@ -1679,7 +1961,9 @@ onMounted(async () => {
         v-if="viewMode === 'table'"
         :data="list"
         style="width: 100%"
+        class="question-table"
         @selection-change="onSelection"
+        @row-click="onRowClick"
       >
         <el-table-column type="selection" width="50" />
         <el-table-column type="index" label="#" width="55" />
@@ -1772,7 +2056,7 @@ onMounted(async () => {
               effect="plain"
               class="kp-tag"
             >
-              {{ tag }}
+              {{ readingKnowledgePointLabel(tag) }}
             </el-tag>
             <span v-if="(row.knowledgePoints || []).length > 3" class="kp-more">
               +{{ row.knowledgePoints.length - 3 }}
@@ -1790,12 +2074,12 @@ onMounted(async () => {
              实时计数只在单题详情里展示（详情弹窗「被引用」项）。 -->
         <el-table-column label="操作" width="188" align="center" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openDetail(row)">
+            <el-button link type="primary" @click.stop="openDetail(row)">
               <el-icon><Tickets /></el-icon>详情
             </el-button>
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="primary" @click.stop="openEdit(row)">编辑</el-button>
             <el-dropdown trigger="click" @command="(cmd: string) => onRowCommand(cmd, row)">
-              <el-button link type="primary">
+              <el-button link type="primary" @click.stop>
                 更多<el-icon><ArrowDown /></el-icon>
               </el-button>
               <template #dropdown>
@@ -1887,7 +2171,7 @@ onMounted(async () => {
              
               type="info"
             >
-              {{ tag }}
+              {{ readingKnowledgePointLabel(tag) }}
             </el-tag>
           </div>
           <div class="card-footer">
@@ -1938,6 +2222,9 @@ onMounted(async () => {
         />
       </div>
     </el-card>
+
+    <ReadingPassageManage v-if="typeTab === 'READING'" embedded />
+    <!-- ↑ 阅读文章页签：内嵌阅读文章库（2026-10-30 合入，embedded 隐藏其自带标题区） -->
 
     <!-- ======================================================
          新增/编辑 弹窗
@@ -2350,26 +2637,11 @@ onMounted(async () => {
             </el-form-item>
           </template>
 
-          <!-- (4) 纯填空题作答区 -->
-          <template v-else-if="activeTab === 'FILL'">
-            <el-form-item label="填空答案">
-              <el-input v-model="normalForm.answerFill" placeholder="填空答案，如 gets / are playing / finished" />
-              <span class="fill-hint">默认忽略大小写判分；选「区分大小写」后学生必须原样输入</span>
-            </el-form-item>
-            <el-form-item label="答案格式">
-              <el-select v-model="normalForm.answerFormat" style="width: 100%">
-                <el-option label="忽略大小写（默认，推荐）" value="CASE_INSENSITIVE" />
-                <el-option label="区分大小写（专有名词等必须照抄）" value="CASE_SENSITIVE" />
-                <el-option label="仅单词（答案不含空格）" value="WORD_ONLY" />
-                <el-option label="整句作答（允许空格与标点）" value="SENTENCE" />
-              </el-select>
-            </el-form-item>
-          </template>
-
-          <!-- (5) 带提示填空题作答区 -->
-          <template v-else-if="activeTab === 'FILL_HINT'">
+          <!-- (4) 填空题作答区（提示词作为可选属性） -->
+          <template v-else-if="activeTab === 'FILL' || activeTab === 'FILL_HINT'">
             <el-form-item label="提示词">
-              <el-input v-model="normalForm.fillHint" placeholder="括号内的提示词，如：verb, noun, past tense" />
+              <el-input v-model="normalForm.fillHint" placeholder="括号内的提示词（可选），如：verb, noun, past tense" clearable />
+              <span class="fill-hint">若有括号提示词请输入（如 play），不输入则为纯填空</span>
             </el-form-item>
             <el-form-item label="填空答案">
               <el-input v-model="normalForm.answerFill" placeholder="填空答案，如 gets / are playing / finished" />
@@ -2477,6 +2749,58 @@ onMounted(async () => {
           </el-tag>
         </div>
 
+        <!-- 使用统计：全部由后端实时聚合 answer_record / paper_question / exam_session 得出，不落库 -->
+        <div class="detail-block">
+          <div class="detail-label">
+            使用统计
+            <span class="stat-note">实时聚合</span>
+            <span v-if="detailStats?.aggregatedByPassage" class="stat-note stat-note--passage">
+              整篇 {{ detailStats.passageQuestionCount }} 小题合计
+            </span>
+          </div>
+          <div v-loading="detailStatsLoading" class="usage-stats">
+            <template v-if="detailStats">
+              <div class="stat-item">
+                <div class="stat-num">{{ detailStats.examSessionCount }}</div>
+                <div class="stat-name">考试次数</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-num">{{ detailStats.totalAttemptCount }}</div>
+                <div class="stat-name">作答次数</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-num" :style="{ color: accColor(detailStats.correctRate) }">
+                  {{ Number(detailStats.correctRate ?? 0).toFixed(1) }}%
+                </div>
+                <div class="stat-name">正确率</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-num">{{ detailStats.paperCount }}</div>
+                <div class="stat-name">被试卷引用</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-num">{{ detailStats.distinctStudentCount }}</div>
+                <div class="stat-name">涉及学生</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-num">
+                  <span class="ok">{{ detailStats.correctCount }}</span>
+                  <span class="slash">/</span>
+                  <span class="bad">{{ detailStats.wrongCount }}</span>
+                </div>
+                <div class="stat-name">对 / 错</div>
+              </div>
+            </template>
+            <el-empty v-else-if="!detailStatsLoading" description="暂无统计数据" :image-size="56" />
+          </div>
+          <div v-if="detailStats" class="stat-foot">
+            作答 {{ detailStats.totalAttemptCount }} 次 · 答对 {{ detailStats.correctCount }} 次
+            <span v-if="detailStats.totalAttemptCount === 0" class="stat-tip">
+              （该题尚未被任何考试或练习作答，正确率无意义）
+            </span>
+          </div>
+        </div>
+
         <el-descriptions :column="2" border class="detail-desc">
           <el-descriptions-item label="ID">{{ detail.id }}</el-descriptions-item>
           <el-descriptions-item label="分类">{{ detail.categoryName || '-' }}</el-descriptions-item>
@@ -2567,9 +2891,9 @@ onMounted(async () => {
           </div>
         </template>
 
-        <div class="detail-block" v-if="detail.analysis">
+        <div class="detail-block" v-if="questionAnalysisDisplayText(detail.analysis)">
           <div class="detail-label">解析</div>
-          <div class="detail-analysis">{{ detail.analysis }}</div>
+          <div class="detail-analysis">{{ questionAnalysisDisplayText(detail.analysis) }}</div>
         </div>
 
         <div class="detail-block" v-if="detail.knowledgePoints?.length">
@@ -2582,7 +2906,7 @@ onMounted(async () => {
               type="info"
               class="kp-tag"
             >
-              {{ tag }}
+              {{ readingKnowledgePointLabel(tag) }}
             </el-tag>
           </div>
         </div>
@@ -3421,5 +3745,265 @@ onMounted(async () => {
 }
 .create-type-bar {
   margin-bottom: 16px;
+}
+
+/* ---------- 题目详情：使用统计（实时聚合） ---------- */
+.stat-note {
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 11px;
+  font-weight: 400;
+  color: #7c4dff;
+  background: rgba(124, 77, 255, 0.1);
+  border-radius: 4px;
+}
+
+.stat-note--passage {
+  color: #e6a23c;
+  background: rgba(230, 162, 60, 0.12);
+}
+
+.usage-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  min-height: 96px;
+  padding: 4px 0;
+
+  .stat-item {
+    padding: 10px 8px;
+    text-align: center;
+    background: #f7f8fa;
+    border: 1px solid #ebeef5;
+    border-radius: 8px;
+  }
+
+  .stat-num {
+    font-size: 20px;
+    font-weight: 650;
+    line-height: 1.2;
+    color: #303133;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-name {
+    margin-top: 4px;
+    font-size: 12px;
+    color: #909399;
+  }
+
+  .ok { color: #67c23a; }
+  .bad { color: #f56c6c; }
+  .slash { margin: 0 2px; color: #c0c4cc; font-weight: 400; }
+}
+
+.stat-foot {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #909399;
+
+  .stat-tip {
+    color: #e6a23c;
+  }
+}
+
+.coverage-panel {
+  margin-bottom: 14px;
+  padding: 14px 16px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+}
+
+.coverage-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+
+  h2 {
+    flex: 0 0 auto;
+    margin: 5px 0 0;
+    color: #303133;
+    font-size: 16px;
+    font-weight: 600;
+  }
+}
+
+.coverage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.coverage-error {
+  margin-bottom: 10px;
+}
+
+.coverage-results {
+  min-height: 48px;
+}
+
+.coverage-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
+  border-top: 1px solid #ebeef5;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.coverage-kpi {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border-right: 1px solid #ebeef5;
+
+  &:last-child {
+    border-right: 0;
+  }
+
+  strong {
+    overflow: hidden;
+    color: #303133;
+    font-size: 20px;
+    font-weight: 650;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  span,
+  small {
+    color: #606266;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  small {
+    color: #909399;
+  }
+}
+
+.coverage-kpi--warning strong {
+  color: #c45656;
+}
+
+.coverage-reading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding: 10px 2px;
+  border-bottom: 1px solid #ebeef5;
+  color: #606266;
+  font-size: 13px;
+
+  strong {
+    color: #303133;
+    font-weight: 600;
+  }
+
+  small {
+    color: #909399;
+    font-size: 12px;
+  }
+}
+
+.coverage-alerts {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.coverage-dimensions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  padding-top: 12px;
+}
+
+.coverage-dimension {
+  min-width: 0;
+
+  h3 {
+    margin: 0 0 8px;
+    color: #303133;
+    font-size: 14px;
+    font-weight: 600;
+  }
+}
+
+.coverage-sample {
+  display: block;
+  color: #909399;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.coverage-no-data {
+  color: #909399;
+  font-size: 12px;
+}
+
+.coverage-empty {
+  padding: 4px 0;
+}
+
+@media (max-width: 1280px) {
+  .coverage-header {
+    flex-direction: column;
+  }
+
+  .coverage-actions {
+    justify-content: flex-start;
+  }
+
+  .coverage-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .coverage-kpi:nth-child(3) {
+    border-right: 0;
+  }
+
+  .coverage-kpi:nth-child(n + 4) {
+    border-top: 1px solid #ebeef5;
+  }
+}
+
+@media (max-width: 760px) {
+  .coverage-panel {
+    padding: 12px;
+  }
+
+  .coverage-actions,
+  .coverage-actions > * {
+    width: 100% !important;
+  }
+
+  .coverage-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .coverage-kpi:nth-child(3) {
+    border-right: 1px solid #ebeef5;
+  }
+
+  .coverage-kpi:nth-child(2n) {
+    border-right: 0;
+  }
+
+  .coverage-kpi:nth-child(n + 3) {
+    border-top: 1px solid #ebeef5;
+  }
+
+  .coverage-dimensions {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 </style>

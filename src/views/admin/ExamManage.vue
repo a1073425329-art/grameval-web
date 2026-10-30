@@ -6,12 +6,19 @@ import type { FormInstance, FormRules } from 'element-plus'
 import {
   listSessions, createSession, updateSession, deleteSession,
   listPapers, listUsers, listExamStudents, assignExamStudents, forceSubmit,
-  getExamMonitor,
+  getExamMonitor, getSessionSummaryStats, publishSessionAnswers, copySession,
+  getPaperDetail,
 } from '@/api/admin'
-import type { ExamSession, SessionForm } from '@/types/exam'
+import type { ExamSession, SessionForm, SessionSummaryStats } from '@/types/exam'
+import type { Difficulty } from '@/types/common'
 import type { Paper } from '@/types/paper'
 import type { UserDetail } from '@/types/user'
 import { useViewMode } from '@/composables/useViewMode'
+import {
+  Document, DocumentChecked, CopyDocument, ArrowDown, View,
+  Timer, Finished, Warning, User,
+  Monitor, DataAnalysis, CircleCheck, Trophy, Edit, Delete
+} from '@element-plus/icons-vue'
 
 const router = useRouter()
 const { viewMode, isTable, isCard } = useViewMode('examManage')
@@ -20,6 +27,7 @@ const query = reactive({
   sessionName: '',
   paperId: undefined as number | undefined,
   status: undefined as number | undefined,
+  studentIds: [] as number[],
   pageNum: 1,
   pageSize: 50,
 })
@@ -27,12 +35,29 @@ const list = ref<ExamSession[]>([])
 const total = ref(0)
 const loading = ref(false)
 
+// 大盘汇总统计（多表动态计算，零库表字段）
+const summaryStats = ref<SessionSummaryStats | null>(null)
+const summaryLoading = ref(false)
+
+const loadSummaryStats = async () => {
+  summaryLoading.value = true
+  try {
+    const res = await getSessionSummaryStats()
+    summaryStats.value = res.data
+  } catch {
+    summaryStats.value = null
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
 const statusText = (s?: number) => (s === 0 ? '草稿' : s === 1 ? '已发布' : s === 2 ? '已结束' : '-')
 const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 'success' : s === 2 ? 'info' : 'warning')
 const statusColor = (s?: number) => (s === 1 ? '#67c23a' : s === 2 ? '#909399' : '#e6a23c')
 
 const load = async () => {
   loading.value = true
+  loadSummaryStats()
   try {
     const res = await listSessions({
       pageNum: query.pageNum, pageSize: query.pageSize,
@@ -44,7 +69,7 @@ const load = async () => {
   } finally { loading.value = false }
 }
 const search = () => { query.pageNum = 1; load() }
-const reset = () => { query.sessionName = ''; query.paperId = undefined; query.status = undefined; query.pageNum = 1; load() }
+const reset = () => { query.sessionName = ''; query.paperId = undefined; query.status = undefined; query.studentIds = []; query.pageNum = 1; load() }
 
 /* ---------------- 展开行：加载考生状态 ---------------- */
 const examineesMap = ref<Record<number, any[]>>({})
@@ -117,17 +142,39 @@ const rules: FormRules = {
 
 const papers = ref<Paper[]>([])
 const students = ref<UserDetail[]>([])
+const pickerLoading = ref(false)
+let pickerLoadTask: Promise<void> | undefined
 
-const loadPickers = async () => {
-  try { const p = await listPapers({ pageNum: 1, pageSize: 200, status: 1 }); papers.value = p.data.records ?? [] } catch { }
-  try { const u = await listUsers({ pageNum: 1, pageSize: 500, role: 'STUDENT' }); students.value = u.data.records ?? [] } catch { }
+const loadPickers = (): Promise<void> => {
+  if (pickerLoadTask) return pickerLoadTask
+  pickerLoading.value = true
+  pickerLoadTask = Promise.allSettled([
+    listPapers({ pageNum: 1, pageSize: 200, status: 1 }),
+    listUsers({ pageNum: 1, pageSize: 500, role: 'STUDENT' }),
+  ]).then(([paperResult, studentResult]) => {
+    if (paperResult.status === 'fulfilled') {
+      papers.value = paperResult.value.data.records ?? []
+    } else if (dialogVisible.value) {
+      ElMessage.error('试卷列表加载失败，请稍后重试')
+    }
+
+    if (studentResult.status === 'fulfilled') {
+      students.value = studentResult.value.data.records ?? []
+    } else if (dialogVisible.value) {
+      ElMessage.error('学生列表加载失败，请稍后重试')
+    }
+  }).finally(() => {
+    pickerLoading.value = false
+    pickerLoadTask = undefined
+  })
+  return pickerLoadTask
 }
 
-const openCreate = async () => {
+const openCreate = () => {
   editMode.value = 'create'
   Object.assign(form, { id: 0, sessionName: '', paperId: undefined, duration: 60, timeRange: [], maxAttempts: 1, showScoreImmediately: true, allowResume: true, status: 1, studentIds: [] })
-  if (!papers.value.length || !students.value.length) await loadPickers()
   dialogVisible.value = true
+  if (!papers.value.length || !students.value.length) void loadPickers()
 }
 
 const openEdit = async (row: ExamSession) => {
@@ -185,6 +232,97 @@ const submitRate = (row: ExamSession) => {
 }
 
 onMounted(() => { load(); loadPickers() })
+
+const diffLabel = (d?: Difficulty | number | string) => {
+  if (d === 1 || d === '1' || d === 'EASY' || d === '简单') return '简单'
+  if (d === 2 || d === '2' || d === 'MEDIUM' || d === '中等') return '中等'
+  if (d === 3 || d === '3' || d === 'HARD' || d === '困难') return '困难'
+  return '-'
+}
+
+const diffTagType = (d?: Difficulty | number | string): 'success' | 'warning' | 'danger' | 'info' => {
+  if (d === 1 || d === '1' || d === 'EASY' || d === '简单') return 'success'
+  if (d === 2 || d === '2' || d === 'MEDIUM' || d === '中等') return 'warning'
+  if (d === 3 || d === '3' || d === 'HARD' || d === '困难') return 'danger'
+  return 'info'
+}
+
+const typeLabel = (t?: string) => {
+  if (!t) return ''
+  switch (t.toUpperCase()) {
+    case 'SINGLE': return '单选题'
+    case 'MULTIPLE': return '多选题'
+    case 'JUDGE': return '判断题'
+    case 'FILL':
+    case 'FILL_HINT': return '填空题'
+    case 'READING': return '阅读理解'
+    default: return t
+  }
+}
+
+
+// 考生考勤分类过滤 Tab（按场次 ID）
+const examineeTabMap = ref<Record<number, string>>({})
+const filteredExaminees = (sessionId: number) => {
+  const all = examineesMap.value[sessionId] || []
+  const tab = examineeTabMap.value[sessionId] || 'all'
+  if (tab === 'submitted') return all.filter((r: any) => r.submitStatus === 1 || r.submitStatus === 2)
+  if (tab === 'ongoing') return all.filter((r: any) => r.submitStatus === 0)
+  if (tab === 'missed') return all.filter((r: any) => r.submitStatus == null)
+  return all
+}
+
+// 提前公开标准答案
+const handlePublishAnswers = async (row: ExamSession) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定提前向学生公开考试《${row.sessionName}》的标准答案与解析吗？公开后考生可在成绩页随时查阅。`,
+      '提前公开答案',
+      { type: 'warning' }
+    )
+    await publishSessionAnswers(row.id)
+    ElMessage.success('已提前公开本场考试标准答案与解析')
+    row.isAnswerPublished = true
+    load()
+  } catch {}
+}
+
+// 快速克隆场次
+const handleCopySession = async (row: ExamSession) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定快速克隆考试场次《${row.sessionName}》吗？将复制相同试卷、时长与规则设置，初始为草稿状态。`,
+      '克隆考试',
+      { type: 'info' }
+    )
+    const res = await copySession(row.id)
+    ElMessage.success(`克隆成功：《${res.data.sessionName}》`)
+    load()
+  } catch {}
+}
+
+// 试卷及解析查看抽屉状态
+const paperDrawerVisible = ref(false)
+const paperDetailLoading = ref(false)
+const currentViewingSession = ref<ExamSession | null>(null)
+const currentViewingPaper = ref<Paper | null>(null)
+const showAnswersInDrawer = ref(true)
+
+const openExamPaperView = async (row: ExamSession) => {
+  currentViewingSession.value = row
+  currentViewingPaper.value = null
+  paperDrawerVisible.value = true
+  paperDetailLoading.value = true
+  try {
+    const res = await getPaperDetail(row.paperId)
+    currentViewingPaper.value = res.data
+  } catch (err: any) {
+    ElMessage.error(err?.message || '加载试卷详情失败')
+  } finally {
+    paperDetailLoading.value = false
+  }
+}
+
 </script>
 
 <template>
@@ -233,6 +371,24 @@ onMounted(() => { load(); loadPickers() })
         <el-form-item label="考试名称">
           <el-input v-model="query.sessionName" clearable placeholder="搜索" style="width:200px" />
         </el-form-item>
+        <el-form-item label="参考学生">
+          <el-select
+            v-model="query.studentIds"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="多选批量学生筛选"
+            style="width:220px"
+          >
+            <el-option
+              v-for="s in students"
+              :key="s.id"
+              :label="`${s.realName || s.username} (${s.username})`"
+              :value="s.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="query.status" clearable placeholder="全部" style="width:120px">
             <el-option label="草稿" :value="0" /><el-option label="已发布" :value="1" /><el-option label="已结束" :value="2" />
@@ -260,92 +416,196 @@ onMounted(() => { load(); loadPickers() })
           @expand-change="(row: ExamSession, rows: ExamSession[]) => onExpand(row, rows)">
           <el-table-column type="expand">
             <template #default="{ row }">
-              <div v-loading="expandLoading[row.id]" style="padding:12px 24px">
-                <template v-if="examineesMap[row.id]?.length">
-                  <div class="expand-header">
-                    <span>考生明细（指派 {{ row.assignedCount ?? 0 }} 人 / 已进入 {{ row.attendedCount ?? 0 }} 人 / 已提交 {{ row.submittedCount ?? 0 }} 人）</span>
-                    <span v-if="row.averageScore != null" style="margin-left:16px">平均分：<b :style="{color:scoreColor(row.averageScore)}">{{ row.averageScore?.toFixed(1) }}</b></span>
+              <div v-loading="expandLoading[row.id]" class="exam-expand-box">
+                <!-- 本场深度数据统计条（多表动态计算） -->
+                <div class="sess-metrics-bar">
+                  <div class="sm-item">
+                    <span class="sm-label">实考率：</span>
+                    <span class="sm-val" :style="{ color: (row.attendanceRate ?? 0) >= 50 ? '#67c23a' : '#e6a23c' }">
+                      {{ row.attendanceRate != null ? Number(row.attendanceRate).toFixed(1) + '%' : '-' }}
+                    </span>
                   </div>
-                  <el-table :data="examineesMap[row.id]" style="margin-top:8px">
+                  <div class="sm-item">
+                    <span class="sm-label">缺考人数：</span>
+                    <span class="sm-val" :style="{ color: (row.missedCount ?? 0) > 0 ? '#f56c6c' : '#909399' }">
+                      {{ row.missedCount ?? 0 }} 人 ({{ row.missRate != null ? Number(row.missRate).toFixed(1) + '%' : '0%' }})
+                    </span>
+                  </div>
+                  <div class="sm-item">
+                    <span class="sm-label">及格率：</span>
+                    <span class="sm-val" :style="{ color: (row.passRate ?? 0) >= 60 ? '#67c23a' : '#f56c6c' }">
+                      {{ row.passRate != null ? Number(row.passRate).toFixed(1) + '%' : '-' }}
+                    </span>
+                  </div>
+                  <div class="sm-item">
+                    <span class="sm-label">最高 / 最低分：</span>
+                    <span class="sm-val">{{ row.highestScore ?? '-' }} / {{ row.lowestScore ?? '-' }}</span>
+                  </div>
+                  <div class="sm-item">
+                    <span class="sm-label">平均答题用时：</span>
+                    <span class="sm-val">{{ row.avgDurationMinutes != null ? row.avgDurationMinutes + ' 分钟' : '-' }}</span>
+                  </div>
+                  <div class="sm-item">
+                    <span class="sm-label">答案公开状态：</span>
+                    <el-tag :type="row.isAnswerPublished ? 'success' : 'info'" size="small">
+                      {{ row.isAnswerPublished ? '已公开（防泄密已解禁）' : '未到公开时间（阻断中）' }}
+                    </el-tag>
+                  </div>
+                </div>
+
+                <!-- 考生考勤分类过滤 -->
+                <div class="examinee-filter-bar">
+                  <el-radio-group v-model="examineeTabMap[row.id]" size="small">
+                    <el-radio-button label="all">全部考生 ({{ examineesMap[row.id]?.length || 0 }})</el-radio-button>
+                    <el-radio-button label="submitted">已提交 ({{ (examineesMap[row.id] || []).filter((r: any) => r.submitStatus === 1 || r.submitStatus === 2).length }})</el-radio-button>
+                    <el-radio-button label="ongoing">进行中 ({{ (examineesMap[row.id] || []).filter((r: any) => r.submitStatus === 0).length }})</el-radio-button>
+                    <el-radio-button label="missed">缺考未交 ({{ (examineesMap[row.id] || []).filter((r: any) => r.submitStatus == null).length }})</el-radio-button>
+                  </el-radio-group>
+                  <div class="examinee-quick-acts">
+                    <el-button size="small" type="primary" plain @click="openExamPaperView(row)">
+                      <el-icon><Document /></el-icon> 查看本场试卷与解析
+                    </el-button>
+                    <el-button v-if="!row.isAnswerPublished" size="small" type="warning" plain @click="handlePublishAnswers(row)">
+                      <el-icon><DocumentChecked /></el-icon> 提前公开标准答案
+                    </el-button>
+                  </div>
+                </div>
+
+                <template v-if="filteredExaminees(row.id).length">
+                  <el-table :data="filteredExaminees(row.id)" style="margin-top:8px" size="small">
                     <el-table-column type="index" label="#" width="50" />
-                    <el-table-column label="头像" width="70" align="center">
+                    <el-table-column label="头像" width="60" align="center">
                       <template #default="{ row: r }">
-                        <el-avatar :size="32" :src="r.avatar || ''">
+                        <el-avatar :size="28" :src="r.avatar || ''">
                           <el-icon><User /></el-icon>
                         </el-avatar>
                       </template>
                     </el-table-column>
                     <el-table-column label="学生" min-width="140">
-                      <template #default="{ row: r }">{{ r.realName || r.username }}<span v-if="r.englishName" style="color:#909399;margin-left:4px">{{ r.englishName }}</span><span v-if="r.realName && r.username" style="color:#909399;margin-left:4px">({{ r.username }})</span></template>
-                    </el-table-column>
-                    <el-table-column label="状态" width="100" align="center">
                       <template #default="{ row: r }">
-                        <el-tag :type="submitStatusTag(r.submitStatus).type">{{ submitStatusTag(r.submitStatus).text }}</el-tag>
+                        {{ r.realName || r.username }}
+                        <span v-if="r.englishName" style="color:#909399;margin-left:4px">{{ r.englishName }}</span>
+                        <span v-if="r.realName && r.username" style="color:#909399;margin-left:4px">({{ r.username }})</span>
                       </template>
                     </el-table-column>
-                    <el-table-column label="得分" width="100" align="center">
+                    <el-table-column label="状态" width="110" align="center">
+                      <template #default="{ row: r }">
+                        <el-tag :type="submitStatusTag(r.submitStatus).type" size="small">{{ submitStatusTag(r.submitStatus).text }}</el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column label="得分" width="90" align="center">
                       <template #default="{ row: r }">
                         <span :style="{color:scoreColor(r.totalScore), fontWeight:600}">{{ r.totalScore ?? '-' }}</span>
                       </template>
                     </el-table-column>
-                    <el-table-column label="开始时间" width="170">
+                    <el-table-column label="开始时间" width="160">
                       <template #default="{ row: r }">{{ r.startTime?.replace('T',' ')?.substring(0,19) || '-' }}</template>
                     </el-table-column>
-                    <el-table-column label="提交时间" width="170">
+                    <el-table-column label="提交时间" width="160">
                       <template #default="{ row: r }">{{ r.submitTime?.replace('T',' ')?.substring(0,19) || '-' }}</template>
                     </el-table-column>
-                    <el-table-column label="用时" width="90" align="center">
+                    <el-table-column label="用时" width="85" align="center">
                       <template #default="{ row: r }">{{ r.durationSeconds ? Math.round(r.durationSeconds/60)+'分钟' : '-' }}</template>
                     </el-table-column>
-                    <el-table-column label="IP" width="140" prop="clientIp" />
+                    <el-table-column label="IP" width="130" prop="clientIp" />
                   </el-table>
                 </template>
-                <el-empty v-else description="暂无考生数据" :image-size="60" />
+                <el-empty v-else description="无符合条件的考生记录" :image-size="50" />
               </div>
             </template>
           </el-table-column>
 
-          <el-table-column type="index" label="#" width="55" />
-          <el-table-column prop="sessionName" label="考试名称" min-width="180" show-overflow-tooltip />
-          <el-table-column prop="paperName" label="试卷" min-width="140" show-overflow-tooltip />
-          <el-table-column label="时间段" min-width="280">
+          <el-table-column type="index" label="#" width="50" />
+          <el-table-column prop="sessionName" label="考试名称" min-width="170" show-overflow-tooltip />
+          <el-table-column prop="paperName" label="试卷" min-width="130" show-overflow-tooltip />
+          <el-table-column label="考试时间" min-width="260">
             <template #default="{ row }">
-              <span style="font-size:13px">{{ formatTime(row.startTime) }}</span>
-              <span style="margin:0 6px;color:#909399">→</span>
-              <span style="font-size:13px">{{ formatTime(row.endTime) }}</span>
+              <span style="font-size:12px">{{ formatTime(row.startTime) }}</span>
+              <span style="margin:0 4px;color:#909399">→</span>
+              <span style="font-size:12px">{{ formatTime(row.endTime) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="时长" width="80" align="center">
-            <template #default="{ row }">{{ row.duration }}分钟</template>
+          <el-table-column label="时长" width="75" align="center">
+            <template #default="{ row }">{{ row.duration }}m</template>
           </el-table-column>
-          <el-table-column label="指派" width="70" align="center">
+          <el-table-column label="指派/已考" width="100" align="center">
             <template #default="{ row }">
-              <span style="font-weight:600">{{ row.assignedCount ?? '-' }}</span>
+              <span>{{ row.assignedCount ?? 0 }}</span>
+              <span style="color:#909399"> / </span>
+              <span :style="{ fontWeight:600, color:(row.submittedCount??0)>0?'#67c23a':'#909399' }">{{ row.submittedCount ?? 0 }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="已考" width="70" align="center">
+          <el-table-column label="实考率" width="80" align="center">
             <template #default="{ row }">
-              <span :style="{color: (row.submittedCount??0) > 0 ? '#67c23a' : '#909399', fontWeight:600}">{{ row.submittedCount ?? 0 }}</span>
+              <span v-if="row.attendanceRate != null" :style="{ fontWeight:600, color: Number(row.attendanceRate) >= 50 ? '#67c23a' : '#e6a23c' }">
+                {{ Number(row.attendanceRate).toFixed(1) }}%
+              </span>
+              <span v-else style="color:#c0c4cc">-</span>
             </template>
           </el-table-column>
-          <el-table-column label="平均分" width="85" align="center">
+          <el-table-column label="及格率" width="80" align="center">
             <template #default="{ row }">
-              <span v-if="row.averageScore != null" :style="{color:scoreColor(row.averageScore), fontWeight:600}">{{ row.averageScore?.toFixed(1) }}</span>
+              <span v-if="row.passRate != null" :style="{ fontWeight:600, color: Number(row.passRate) >= 60 ? '#67c23a' : '#f56c6c' }">
+                {{ Number(row.passRate).toFixed(1) }}%
+              </span>
+              <span v-else style="color:#c0c4cc">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="平均分" width="80" align="center">
+            <template #default="{ row }">
+              <span v-if="row.averageScore != null" :style="{color:scoreColor(row.averageScore), fontWeight:600}">
+                {{ Number(row.averageScore).toFixed(1) }}
+              </span>
               <span v-else style="color:#909399">-</span>
             </template>
           </el-table-column>
-          <el-table-column label="状态" width="90">
+          <el-table-column label="答案公开" width="95" align="center">
             <template #default="{ row }">
-              <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
+              <el-tag :type="row.isAnswerPublished ? 'success' : 'info'" size="small">
+                {{ row.isAnswerPublished ? '已公开' : '未到时间' }}
+              </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="320" align="center" fixed="right">
+          <el-table-column label="状态" width="80" align="center">
             <template #default="{ row }">
-              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-              <el-button link type="primary" @click="router.push('/admin/exams/'+row.id+'/monitor')">监控</el-button>
-              <el-button link type="primary" @click="router.push('/admin/exams/'+row.id+'/statistics')">统计</el-button>
-              <el-button v-if="row.status===1" link type="warning" @click="confirmForceSubmit(row)">强制收卷</el-button>
-              <el-button link type="danger" @click="confirmDelete(row)">删除</el-button>
+              <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="280" align="center" fixed="right">
+            <template #default="{ row }">
+              <el-button link type="primary" size="small" @click="openExamPaperView(row)">
+                <el-icon><Document /></el-icon>看卷及解析
+              </el-button>
+              <el-button link type="primary" size="small" @click="router.push('/admin/exams/'+row.id+'/monitor')">
+                <el-icon><Monitor /></el-icon>监控
+              </el-button>
+              <el-button link type="primary" size="small" @click="router.push('/admin/exams/'+row.id+'/statistics')">
+                <el-icon><DataAnalysis /></el-icon>统计
+              </el-button>
+              <el-dropdown trigger="click" style="margin-left:8px">
+                <el-button link type="info" size="small">
+                  更多<el-icon><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-if="!row.isAnswerPublished" @click="handlePublishAnswers(row)">
+                      <el-icon><DocumentChecked /></el-icon>提前公布标准答案
+                    </el-dropdown-item>
+                    <el-dropdown-item v-if="row.status === 1" @click="confirmForceSubmit(row)">
+                      <el-icon><Finished /></el-icon>强制收卷 / 结算
+                    </el-dropdown-item>
+                    <el-dropdown-item @click="handleCopySession(row)">
+                      <el-icon><CopyDocument /></el-icon>快速克隆场次
+                    </el-dropdown-item>
+                    <el-dropdown-item @click="openEdit(row)">
+                      <el-icon><Edit /></el-icon>编辑场次
+                    </el-dropdown-item>
+                    <el-dropdown-item divided style="color:#f56c6c" @click="confirmDelete(row)">
+                      <el-icon><Delete /></el-icon>删除场次
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </template>
           </el-table-column>
         </el-table>
@@ -454,7 +714,7 @@ onMounted(() => { load(); loadPickers() })
       <el-form ref="formRef" :model="form" :rules="rules" label-width="110px">
         <el-form-item label="考试名称" prop="sessionName"><el-input v-model="form.sessionName" placeholder="如：期中考试" /></el-form-item>
         <el-form-item label="选择试卷" prop="paperId">
-          <el-select v-model="form.paperId" filterable placeholder="选择已发布试卷" style="width:100%">
+          <el-select v-model="form.paperId" filterable :loading="pickerLoading" placeholder="选择已发布试卷" style="width:100%">
             <el-option v-for="p in papers" :key="p.id" :label="`${p.paperName} (${p.questionCount}题 / ${p.totalScore}分)`" :value="p.id" />
           </el-select>
         </el-form-item>
@@ -474,7 +734,7 @@ onMounted(() => { load(); loadPickers() })
           <el-radio-group v-model="form.status"><el-radio :value="0">草稿</el-radio><el-radio :value="1">已发布</el-radio><el-radio :value="2">已结束</el-radio></el-radio-group>
         </el-form-item>
         <el-form-item label="参与学生">
-          <el-select v-model="form.studentIds" multiple filterable collapse-tags collapse-tags-tooltip placeholder="不选则全体可参加" style="width:100%">
+          <el-select v-model="form.studentIds" multiple filterable :loading="pickerLoading" collapse-tags collapse-tags-tooltip placeholder="不选则全体可参加" style="width:100%">
             <el-option v-for="s in students" :key="s.id" :label="`${s.realName||s.username}（${s.username}）`" :value="s.id" />
           </el-select>
           <div class="hint">共 {{ students.length }} 名学生；不指派则全体可参加</div>
@@ -482,6 +742,140 @@ onMounted(() => { load(); loadPickers() })
       </el-form>
       <template #footer><el-button @click="dialogVisible=false">取消</el-button><el-button type="primary" :loading="submitting" @click="submit">保存</el-button></template>
     </el-dialog>
+    <!-- 查看本场试卷与标准答案抽屉 -->
+    <el-drawer
+      v-model="paperDrawerVisible"
+      :title="`《${currentViewingSession?.sessionName || '考试'}》关联试卷详情`"
+      size="720px"
+      direction="rtl"
+      destroy-on-close
+    >
+      <div v-loading="paperDetailLoading" class="paper-drawer-container">
+        <template v-if="currentViewingPaper">
+          <div class="drawer-header-meta">
+            <h3 style="margin: 0 0 8px 0; font-size: 18px; color: #303133;">
+              {{ currentViewingPaper.paperName }}
+            </h3>
+            <div style="font-size: 13px; color: #606266; display: flex; gap: 16px; flex-wrap: wrap;">
+              <span>总分：<strong style="color: #409eff;">{{ currentViewingPaper.totalScore }}</strong> 分</span>
+              <span>题量：<strong>{{ currentViewingPaper.questionCount }}</strong> 题</span>
+              <span>及格分：<strong>{{ currentViewingPaper.passScore ?? '-' }}</strong></span>
+              <span>建议时长：<strong>{{ currentViewingPaper.suggestedDuration || 60 }}</strong> 分钟</span>
+              <span>加权难度：<strong>{{ currentViewingPaper.avgDifficulty != null ? Number(currentViewingPaper.avgDifficulty).toFixed(2) : '-' }}</strong></span>
+            </div>
+          </div>
+
+          <div class="drawer-ctrl-bar">
+            <span style="font-size: 13px; color: #606266; font-weight: 500;">
+              考卷题目与参考答案全景（含单选、多选、判断、填空、阅读理解）
+            </span>
+            <el-switch
+              v-model="showAnswersInDrawer"
+              active-text="显示标准答案与逐题解析"
+              style="--el-switch-on-color: #67c23a;"
+            />
+          </div>
+
+          <div class="drawer-question-list">
+            <div
+              v-for="(unit, idx) in (currentViewingPaper.questions || [])"
+              :key="unit.unitType === 'READING' ? `p-${unit.passageId || idx}` : `q-${unit.questionId || idx}`"
+              class="d-q-card"
+            >
+              <!-- 阅读理解单元 -->
+              <template v-if="unit.unitType === 'READING'">
+                <div class="d-q-head">
+                  <span class="d-q-no">第 {{ idx + 1 }} 题</span>
+                  <el-tag size="small" type="warning">阅读理解</el-tag>
+                  <span class="d-q-score">{{ unit.questionScore }} 分 · {{ unit.subQuestions?.length || 0 }} 小题</span>
+                </div>
+                <div v-if="unit.passageTitle || unit.passageContent" class="d-passage-box">
+                  <h4 v-if="unit.passageTitle">{{ unit.passageTitle }}</h4>
+                  <div class="d-passage-body" style="white-space: pre-wrap;">{{ unit.passageContent }}</div>
+                </div>
+
+                <div v-for="(sub, sIdx) in (unit.subQuestions || [])" :key="sub.questionId" class="d-sub-card">
+                  <div class="d-sub-head">
+                    <span>({{ sIdx + 1 }})</span>
+                    <el-tag size="small">{{ typeLabel(sub.questionType) }}</el-tag>
+                    <el-tag size="small" :type="diffTagType(sub.difficulty)">{{ diffLabel(sub.difficulty) }}</el-tag>
+                    <span style="color:#409eff;font-weight:600;margin-left:4px">{{ sub.questionScore }} 分</span>
+                  </div>
+                  <div class="d-q-stem">{{ sub.stem }}</div>
+                  <div v-if="sub.options && sub.options.length" class="d-opts-list">
+                    <div
+                      v-for="opt in sub.options"
+                      :key="opt.optionLabel"
+                      class="d-opt-item"
+                      :class="{ 'd-opt-correct': showAnswersInDrawer && (sub.standardAnswer && sub.standardAnswer.includes(opt.optionLabel)) }"
+                    >
+                      <strong style="margin-right: 6px;">{{ opt.optionLabel }}.</strong>
+                      <span>{{ opt.optionContent }}</span>
+                      <el-tag
+                        v-if="showAnswersInDrawer && (sub.standardAnswer && sub.standardAnswer.includes(opt.optionLabel))"
+                        size="small"
+                        type="success"
+                        style="margin-left: 8px;"
+                      >正确答案</el-tag>
+                    </div>
+                  </div>
+                  <div v-if="showAnswersInDrawer" class="d-ans-box">
+                    <div class="d-std-ans">
+                      <strong>标准答案：</strong>
+                      <span style="color: #67c23a; font-weight: 600;">{{ sub.standardAnswer || '-' }}</span>
+                    </div>
+                    <div v-if="sub.analysis" class="d-analysis">
+                      <strong>解析：</strong>
+                      <span>{{ sub.analysis }}</span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- 普通单题 -->
+              <template v-else>
+                <div class="d-q-head">
+                  <span class="d-q-no">第 {{ idx + 1 }} 题</span>
+                  <el-tag size="small" type="primary">{{ typeLabel(unit.questionType) }}</el-tag>
+                  <el-tag size="small" :type="diffTagType(unit.difficulty)">{{ diffLabel(unit.difficulty) }}</el-tag>
+                  <span class="d-q-score">{{ unit.questionScore }} 分</span>
+                </div>
+                <div class="d-q-stem">{{ unit.stem }}</div>
+                <div v-if="unit.options && unit.options.length" class="d-opts-list">
+                  <div
+                    v-for="opt in unit.options"
+                    :key="opt.optionLabel"
+                    class="d-opt-item"
+                    :class="{ 'd-opt-correct': showAnswersInDrawer && (unit.standardAnswer && unit.standardAnswer.includes(opt.optionLabel)) }"
+                  >
+                    <strong style="margin-right: 6px;">{{ opt.optionLabel }}.</strong>
+                    <span>{{ opt.optionContent }}</span>
+                    <el-tag
+                      v-if="showAnswersInDrawer && (unit.standardAnswer && unit.standardAnswer.includes(opt.optionLabel))"
+                      size="small"
+                      type="success"
+                      style="margin-left: 8px;"
+                    >正确答案</el-tag>
+                  </div>
+                </div>
+                <div v-if="showAnswersInDrawer" class="d-ans-box">
+                  <div class="d-std-ans">
+                    <strong>标准答案：</strong>
+                    <span style="color: #67c23a; font-weight: 600;">{{ unit.standardAnswer || '-' }}</span>
+                  </div>
+                  <div v-if="unit.analysis" class="d-analysis">
+                    <strong>解析：</strong>
+                    <span>{{ unit.analysis }}</span>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+        <el-empty v-else description="暂无试卷内容" />
+      </div>
+    </el-drawer>
+
   </div>
 </template>
 
@@ -609,4 +1003,182 @@ onMounted(() => { load(); loadPickers() })
 }
 
 .form-tip { margin-left: 8px; font-size: 12px; color: #909399; }
+
+/* ---------------- 顶部大盘与展开行样式 ---------------- */
+.stat-banner {
+  margin-bottom: 16px;
+}
+.stat-card {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 14px 16px;
+  transition: all 0.2s ease;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+.stat-card .stat-label {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 6px;
+}
+.stat-card .stat-num {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.stat-card .stat-sub {
+  font-size: 12px;
+  color: #a8abb2;
+  margin-top: 4px;
+}
+.text-primary { color: #409eff; }
+.text-success { color: #67c23a; }
+.text-info { color: #909399; }
+
+.exam-expand-box {
+  padding: 16px 20px;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+.sess-metrics-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.sess-metrics-bar .sm-label {
+  color: #909399;
+}
+.sess-metrics-bar .sm-val {
+  font-weight: 600;
+  color: #303133;
+}
+.examinee-filter-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.examinee-quick-acts {
+  display: flex;
+  gap: 8px;
+}
+
+/* 抽屉样式 */
+.drawer-header-meta {
+  margin-bottom: 12px;
+}
+.drawer-ctrl-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #ecf5ff;
+  border: 1px solid #d9ecff;
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+.drawer-question-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.d-q-card {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.d-q-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.d-q-no {
+  font-weight: 700;
+  font-size: 15px;
+  color: #303133;
+}
+.d-q-score {
+  font-weight: 600;
+  color: #409eff;
+  margin-left: 6px;
+}
+.d-q-stem {
+  font-size: 14px;
+  color: #303133;
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+.d-passage-box {
+  background: #fdf6ec;
+  border: 1px solid #faecd8;
+  border-radius: 4px;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+.d-passage-box h4 {
+  margin: 0 0 6px;
+  color: #b88230;
+}
+.d-passage-body {
+  font-size: 13px;
+  line-height: 1.6;
+  color: #606266;
+}
+.d-sub-card {
+  padding: 10px 12px;
+  background: #fafafa;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+.d-sub-head {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+.d-opts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.d-opt-item {
+  padding: 6px 10px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #606266;
+}
+.d-opt-correct {
+  background: #f0f9eb;
+  color: #67c23a;
+  font-weight: 600;
+  border-left: 3px solid #67c23a;
+}
+.d-ans-box {
+  background: #f0f9eb;
+  border: 1px dashed #67c23a;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.d-std-ans {
+  margin-bottom: 4px;
+}
+.d-analysis {
+  color: #529b2e;
+  line-height: 1.5;
+}
+
 </style>

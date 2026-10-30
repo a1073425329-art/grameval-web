@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { List, Grid } from '@element-plus/icons-vue'
+
 import {
   listPapers,
   createPaper,
@@ -13,17 +13,42 @@ import {
   listAdminQuestions,
   listReadingPassages,
   listCategoryTree,
+  getPaperUsageStats,
+  getPaperSummaryStats,
+  copyPaper,
   type AdminQuestionQuery,
 } from '@/api/admin'
+import { useRouter } from 'vue-router'
+import {
+  List, Grid, Plus, Search, Refresh, View, Edit, Delete,
+  CopyDocument, Download, ArrowDown, Timer, Calendar, DocumentChecked
+} from '@element-plus/icons-vue'
 import { getQuestionDetail } from '@/api/student'
-import type { Paper, PaperForm } from '@/types/paper'
+import type { Paper, PaperForm, PaperSummaryStats } from '@/types/paper'
+import type { PaperUsageStats } from '@/types/admin'
 import type { Question } from '@/types/question'
 import type { ReadingPassage } from '@/types/reading'
 import type { Category } from '@/types/category'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { useViewMode } from '@/composables/useViewMode'
 
+const router = useRouter()
 const { viewMode, toggleViewMode } = useViewMode('paper_manage')
+
+const summaryStats = ref<PaperSummaryStats | null>(null)
+const summaryLoading = ref(false)
+
+const loadSummaryStats = async () => {
+  summaryLoading.value = true
+  try {
+    const res = await getPaperSummaryStats()
+    summaryStats.value = res.data
+  } catch {
+    summaryStats.value = null
+  } finally {
+    summaryLoading.value = false
+  }
+}
 
 const query = reactive({
   paperName: '',
@@ -44,6 +69,7 @@ const statusType = (s?: number): 'info' | 'success' | 'danger' => (s === 1 ? 'su
 
 const load = async () => {
   loading.value = true
+  loadSummaryStats()
   try {
     const res = await listPapers({
       pageNum: query.pageNum,
@@ -390,16 +416,76 @@ const viewPaper = ref<Paper | null>(null)
 const viewQuestions = ref<PickedUnit[]>([])
 const viewAnswers = ref<Record<number, { standardAnswer?: string; analysis?: string; options?: Array<{ optionLabel: string; optionContent: string }> }>>({})
 const viewLoading = ref(false)
+/** [2026-10-30] 试卷使用统计（实时聚合，不落库） */
+const paperStats = ref<PaperUsageStats | null>(null)
+const paperStatsLoading = ref(false)
 
-const openView = async (row: Paper) => {
+/** 正确率配色：≥70 绿 / 40-70 橙 / <40 红 */
+const accColor = (rate?: number | null) => {
+  const v = Number(rate ?? 0)
+  if (v >= 70) return '#67C23A'
+  if (v >= 40) return '#E6A23C'
+  return '#F56C6C'
+}
+
+/** 分数配色：≥80 绿 / 60-80 橙 / <60 红 */
+const scoreColor = (score?: number | null) => {
+  if (score == null) return '#909399'
+  const v = Number(score)
+  if (v >= 80) return '#67C23A'
+  if (v >= 60) return '#E6A23C'
+  return '#F56C6C'
+}
+
+/** 加载试卷使用统计；失败不影响题目预览 */
+const loadPaperStats = async (paperId: number) => {
+  paperStatsLoading.value = true
+  paperStats.value = null
+  try {
+    const res = await getPaperUsageStats(paperId)
+    paperStats.value = res.data
+  } catch {
+    paperStats.value = null
+  } finally {
+    paperStatsLoading.value = false
+  }
+}
+
+const showAllAnswers = ref(false)
+
+const openView = async (row: Paper, defaultShowAnswers = false) => {
   viewPaper.value = row
   viewQuestions.value = []
   viewAnswers.value = {}
+  showAllAnswers.value = defaultShowAnswers
+  paperStats.value = null
   viewVisible.value = true
   viewLoading.value = true
+  loadPaperStats(row.id)
   try {
     const res = await getPaperDetail(row.id)
-    viewQuestions.value = (res.data.questions ?? []).map((unit): PickedUnit => {
+    const questions = res.data.questions ?? []
+    
+    // 一键预填充所有题目的标准答案、解析与选项（由后端多表联合下发，0ms响应）
+    for (const q of questions) {
+      if (q.unitType === 'READING') {
+        for (const sub of q.subQuestions ?? []) {
+          viewAnswers.value[sub.questionId] = {
+            standardAnswer: sub.standardAnswer ?? '',
+            analysis: sub.analysis ?? '',
+            options: (sub.options ?? []).map((o) => ({ optionLabel: o.optionLabel, optionContent: o.optionContent })),
+          }
+        }
+      } else if (q.questionId) {
+        viewAnswers.value[q.questionId] = {
+          standardAnswer: q.standardAnswer ?? '',
+          analysis: q.analysis ?? '',
+          options: (q.options ?? []).map((o) => ({ optionLabel: o.optionLabel, optionContent: o.optionContent })),
+        }
+      }
+    }
+
+    viewQuestions.value = questions.map((unit): PickedUnit => {
       if (unit.unitType === 'READING') {
         return {
           unitType: 'READING',
@@ -427,6 +513,107 @@ const openView = async (row: Paper) => {
       }
     })
   } catch { /* silent */ } finally { viewLoading.value = false }
+}
+
+/** 快速复制/克隆试卷 */
+const handleCopyPaper = async (row: Paper) => {
+  try {
+    await ElMessageBox.confirm(`确认复制试卷《${row.paperName}》为新副本？`, '复制试卷', { type: 'info' })
+    const res = await copyPaper(row.id)
+    ElMessage.success(`试卷已复制：${res.data.paperName}`)
+    load()
+  } catch { /* cancelled */ }
+}
+
+/** 以此试卷为模板快速创建考试 */
+const handleCreateExamFromPaper = (row: Paper) => {
+  router.push({ path: '/admin/exams', query: { createPaperId: row.id } })
+}
+
+/** 复制试卷全文到剪贴板 */
+const copyPaperText = async () => {
+  if (!viewPaper.value) return
+  let text = `# ${viewPaper.value.paperName}\n总分：${viewPaper.value.totalScore} 分 | 题量：${viewQuestions.value.length}\n\n`
+  viewQuestions.value.forEach((unit, idx) => {
+    if (unit.unitType === 'READING') {
+      text += `## ${idx + 1}. [阅读理解] ${unit.passageTitle} (${unitScore(unit)} 分)\n${unit.passageContent}\n\n`
+      unit.subQuestions.forEach((sub, subIdx) => {
+        text += `(${subIdx + 1}) [${typeLabel(sub.questionType)}] ${sub.stem} (${sub.score} 分)\n`
+        const ans = viewAnswers.value[sub.questionId]
+        if (ans?.options?.length) {
+          ans.options.forEach((opt: any) => { text += `  ${opt.optionLabel}. ${opt.optionContent}\n` })
+        }
+        if (showAllAnswers.value && ans) {
+          text += `  【标准答案】: ${formatAnswerText(ans.standardAnswer, sub.questionType)}\n  【解析】: ${ans.analysis || '无'}\n`
+        }
+        text += '\n'
+      })
+    } else {
+      text += `## ${idx + 1}. [${typeLabel(unit.questionType)}] ${unit.stem} (${unit.score} 分)\n`
+      const ans = viewAnswers.value[unit.questionId]
+      if (ans?.options?.length) {
+        ans.options.forEach((opt: any) => { text += `  ${opt.optionLabel}. ${opt.optionContent}\n` })
+      }
+      if (showAllAnswers.value && ans) {
+        text += `  【标准答案】: ${formatAnswerText(ans.standardAnswer, unit.questionType)}\n  【解析】: ${ans.analysis || '无'}\n`
+      }
+      text += '\n'
+    }
+  })
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('试卷文本已复制到剪贴板')
+  } catch {
+    ElMessage.error('复制失败，请手动选择复制')
+  }
+}
+
+/** 导出试卷为 Markdown 文件 */
+const exportPaper = (row: Paper, withAnswers = false) => {
+  let md = `# ${row.paperName}\n> 导出时间：${new Date().toLocaleString()} | 总分：${row.totalScore} 分\n\n`
+  const questions = row.questions || []
+  if (questions.length === 0) {
+    ElMessage.info('正在加载题目内容进行导出...')
+    openView(row, withAnswers)
+    return
+  }
+  questions.forEach((unit, idx) => {
+    if (unit.unitType === 'READING') {
+      md += `### ${idx + 1}. [阅读理解] ${unit.passageTitle || '阅读篇章'}\n\n${unit.passageContent}\n\n`
+      ;(unit.subQuestions || []).forEach((sub, subIdx) => {
+        md += `**(${subIdx + 1}) [${typeLabel(sub.questionType)}] ${sub.stem}** (${sub.questionScore}分)\n\n`
+        ;(sub.options || []).forEach(opt => {
+          md += `- ${opt.optionLabel}. ${opt.optionContent}\n`
+        })
+        if (withAnswers) {
+          md += `\n> **标准答案**：${sub.standardAnswer || '-'}\n> **解析**：${sub.analysis || '无'}\n\n`
+        }
+      })
+    } else {
+      md += `### ${idx + 1}. [${typeLabel(unit.questionType)}] ${unit.stem} (${unit.questionScore}分)\n\n`
+      ;(unit.options || []).forEach(opt => {
+        md += `- ${opt.optionLabel}. ${opt.optionContent}\n`
+      })
+      if (withAnswers) {
+        md += `\n> **标准答案**：${unit.standardAnswer || '-'}\n> **解析**：${unit.analysis || '无'}\n\n`
+      }
+    }
+  })
+  const blob = new Blob([md], { type: 'text/markdown;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${row.paperName}${withAnswers ? '-带答案解析版' : '-空白答卷版'}.md`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success('试卷 Markdown 已导出')
+}
+
+const diffLevelTag = (lvl?: string): 'info' | 'success' | 'warning' | 'danger' => {
+  if (lvl === '简单') return 'success'
+  if (lvl === '中等') return 'warning'
+  if (lvl === '困难') return 'danger'
+  return 'info'
 }
 
 const loadAnswer = async (questionId: number) => {
@@ -497,6 +684,58 @@ onMounted(async () => {
       若只需一份常规试卷，去「试卷模板」按配比自动生成更快。
       论文 §4.2.3：试卷只保存可复用的题目结构，开放时间与场次由「考试管理」单独维护。
     </el-alert>
+    <!-- 顶部多维动态汇总看板（全部多表实时聚合，零库表字段） -->
+    <div v-if="summaryStats" class="stat-banner" v-loading="summaryLoading">
+      <el-row :gutter="12">
+        <el-col :xs="12" :sm="8" :md="4">
+          <div class="stat-card">
+            <div class="stat-label">试卷总数</div>
+            <div class="stat-num text-primary">{{ summaryStats.totalPapers }}</div>
+            <div class="stat-sub">启用 {{ summaryStats.publishedPapers }} · 草稿 {{ summaryStats.draftPapers }}</div>
+          </div>
+        </el-col>
+        <el-col :xs="12" :sm="8" :md="4">
+          <div class="stat-card">
+            <div class="stat-label">累计组卷题数</div>
+            <div class="stat-num text-success">{{ summaryStats.totalQuestionsInPapers }}</div>
+            <div class="stat-sub">平均每卷约 {{ Math.round(summaryStats.totalQuestionsInPapers / (summaryStats.totalPapers || 1)) }} 题</div>
+          </div>
+        </el-col>
+        <el-col :xs="12" :sm="8" :md="4">
+          <div class="stat-card">
+            <div class="stat-label">试卷平均满分</div>
+            <div class="stat-num" style="color:#e6a23c">{{ summaryStats.avgPaperScore }}</div>
+            <div class="stat-sub">标准满分多为 100/120</div>
+          </div>
+        </el-col>
+        <el-col :xs="12" :sm="8" :md="4">
+          <div class="stat-card">
+            <div class="stat-label">试卷利用率</div>
+            <div class="stat-num" :style="{ color: (summaryStats.referenceRate ?? 0) >= 30 ? '#67c23a' : '#909399' }">
+              {{ summaryStats.referenceRate }}%
+            </div>
+            <div class="stat-sub">已被 {{ summaryStats.referencedPapers }} 场考试引用</div>
+          </div>
+        </el-col>
+        <el-col :xs="12" :sm="8" :md="4">
+          <div class="stat-card">
+            <div class="stat-label">累计答卷人次</div>
+            <div class="stat-num text-info">{{ summaryStats.totalExaminees }}</div>
+            <div class="stat-sub">全网有效考生试卷</div>
+          </div>
+        </el-col>
+        <el-col :xs="12" :sm="8" :md="4">
+          <div class="stat-card">
+            <div class="stat-label">全站综合及格率</div>
+            <div class="stat-num" :style="{ color: (summaryStats.overallPassRate ?? 0) >= 60 ? '#67c23a' : '#f56c6c' }">
+              {{ summaryStats.overallPassRate }}%
+            </div>
+            <div class="stat-sub">平均得分 {{ summaryStats.overallAvgScore }} 分</div>
+          </div>
+        </el-col>
+      </el-row>
+    </div>
+
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
         <el-row :gutter="8">
@@ -541,40 +780,174 @@ onMounted(async () => {
         <el-button type="primary" @click="openCreate"><el-icon><Plus /></el-icon>新建试卷</el-button>
       </div>
 
-      <!-- 表格布局 -->
-      <el-table v-if="viewMode === 'table'" :data="list" style="width:100%">
-        <el-table-column type="index" label="#" width="60" />
-        <el-table-column prop="paperName" label="试卷名称" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="description" label="描述" min-width="180" show-overflow-tooltip />
-        <el-table-column label="题量" width="80" align="center">
-          <template #default="{ row }">{{ row.questionCount ?? 0 }}</template>
-        </el-table-column>
-        <el-table-column label="总分" width="80" align="center">
-          <template #default="{ row }">{{ row.totalScore ?? 0 }}</template>
-        </el-table-column>
-        <el-table-column label="及格分" width="80" align="center">
-          <template #default="{ row }">{{ row.passScore ?? 60 }}</template>
-        </el-table-column>
-        <!-- [2026-10-28] 原「建议时长」列：后端 exam_paper.suggested_duration 无写入点恒 NULL，
-             该列实际恒渲染「-」，属空白列 ⇒ 整列删除 -->
-        <el-table-column label="状态" width="100">
+      <!-- 表格布局（支持多表计算展开行与丰富操作折叠） -->
+      <el-table v-if="viewMode === 'table'" :data="list" style="width:100%" row-key="id">
+        <!-- 列表折叠展开行：展示深度多维画像 -->
+        <el-table-column type="expand">
           <template #default="{ row }">
-            <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
+            <div class="expand-detail">
+              <!-- 题型与分值配比 -->
+              <div class="expand-section">
+                <div class="section-title">题型与分值配比（多表计算）</div>
+                <div class="type-badges">
+                  <el-tag effect="plain" type="primary" class="t-badge">
+                    单选题：{{ row.typeCounts?.['SINGLE'] || 0 }} 题 ({{ row.typeScores?.['SINGLE'] || 0 }} 分)
+                  </el-tag>
+                  <el-tag effect="plain" type="success" class="t-badge">
+                    多选题：{{ row.typeCounts?.['MULTIPLE'] || 0 }} 题 ({{ row.typeScores?.['MULTIPLE'] || 0 }} 分)
+                  </el-tag>
+                  <el-tag effect="plain" type="warning" class="t-badge">
+                    判断题：{{ row.typeCounts?.['JUDGE'] || 0 }} 题 ({{ row.typeScores?.['JUDGE'] || 0 }} 分)
+                  </el-tag>
+                  <el-tag effect="plain" type="info" class="t-badge">
+                    填空题：{{ (row.typeCounts?.['FILL'] || 0) + (row.typeCounts?.['FILL_HINT'] || 0) }} 题 ({{ ((row.typeScores?.['FILL'] || 0) + (row.typeScores?.['FILL_HINT'] || 0)) }} 分)
+                  </el-tag>
+                  <el-tag effect="plain" type="danger" class="t-badge">
+                    阅读理解：{{ row.typeCounts?.['READING'] || 0 }} 篇 ({{ row.typeScores?.['READING'] || 0 }} 分)
+                  </el-tag>
+                </div>
+              </div>
+
+              <!-- 考点雷达与难度画像 -->
+              <div class="expand-section">
+                <div class="section-title">难度指数与考点覆盖</div>
+                <div class="meta-row">
+                  <span class="meta-label">加权难度：</span>
+                  <el-tag :type="diffLevelTag(row.difficultyLevel)" size="small">
+                    {{ row.difficultyLevel || '中等' }} ({{ row.avgDifficulty != null ? Number(row.avgDifficulty).toFixed(2) : '2.00' }})
+                  </el-tag>
+                  <span class="meta-label" style="margin-left:16px">算法建议时长：</span>
+                  <span class="meta-val"><el-icon><Timer /></el-icon> {{ row.suggestedDuration || 60 }} 分钟</span>
+                  <span class="meta-label" style="margin-left:16px">覆盖语法分类：</span>
+                  <span class="meta-val">{{ row.categoryCount || 0 }} 个分类</span>
+                  <div v-if="row.categoryNames?.length" class="cat-tags" style="display:inline-flex; gap:4px; margin-left:8px">
+                    <el-tag v-for="cat in row.categoryNames" :key="cat" size="small" type="info">{{ cat }}</el-tag>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 历史考试表现 -->
+              <div class="expand-section">
+                <div class="section-title">历史考试与作答表现（多表动态聚合）</div>
+                <div class="stat-boxes">
+                  <div class="stat-box">
+                    <div class="sb-label">引用场次</div>
+                    <div class="sb-val">{{ row.sessionCount || 0 }} 场</div>
+                  </div>
+                  <div class="stat-box">
+                    <div class="sb-label">累计参考</div>
+                    <div class="sb-val">{{ row.totalExamined || 0 }} 人次</div>
+                  </div>
+                  <div class="stat-box">
+                    <div class="sb-label">平均得分</div>
+                    <div class="sb-val" :style="{ color: scoreColor(row.averageScore) }">{{ row.averageScore != null ? Number(row.averageScore).toFixed(1) : '-' }}</div>
+                  </div>
+                  <div class="stat-box">
+                    <div class="sb-label">综合及格率</div>
+                    <div class="sb-val" :style="{ color: (row.passRate ?? 0) >= 60 ? '#67c23a' : '#f56c6c' }">{{ row.passRate != null ? Number(row.passRate).toFixed(1) + '%' : '-' }}</div>
+                  </div>
+                  <div class="stat-box">
+                    <div class="sb-label">最高分 / 最低分</div>
+                    <div class="sb-val">{{ row.highestScore ?? '-' }} / {{ row.lowestScore ?? '-' }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 快捷操作栏 -->
+              <div class="expand-actions">
+                <el-button type="primary" size="small" @click="openView(row, false)"><el-icon><View /></el-icon> 试卷全景预览</el-button>
+                <el-button type="success" size="small" @click="openView(row, true)"><el-icon><DocumentChecked /></el-icon> 一键查看标准答案与解析</el-button>
+                <el-button type="warning" size="small" @click="handleCreateExamFromPaper(row)"><el-icon><Calendar /></el-icon> 以此卷创建考试</el-button>
+                <el-button size="small" @click="handleCopyPaper(row)"><el-icon><CopyDocument /></el-icon> 快速克隆试卷</el-button>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="归档" width="80" align="center">
+
+        <el-table-column type="index" label="#" width="55" />
+        <el-table-column prop="paperName" label="试卷名称" min-width="180" show-overflow-tooltip />
+        <el-table-column label="题量" width="70" align="center">
+          <template #default="{ row }">{{ row.questionCount ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column label="总分" width="70" align="center">
+          <template #default="{ row }">{{ row.totalScore ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column label="加权难度" width="95" align="center">
           <template #default="{ row }">
-            <el-tag v-if="row.archiveStatus === 1" type="info">已归档</el-tag>
+            <el-tag :type="diffLevelTag(row.difficultyLevel)" size="small">
+              {{ row.difficultyLevel || '中等' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="考场引用" width="85" align="center">
+          <template #default="{ row }">
+            <span :style="{ fontWeight:600, color: (row.sessionCount ?? 0) > 0 ? '#409eff' : '#909399' }">
+              {{ row.sessionCount ?? 0 }} 场
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="参考人次" width="85" align="center">
+          <template #default="{ row }">
+            <span :style="{ fontWeight:600, color: (row.totalExamined ?? 0) > 0 ? '#67c23a' : '#909399' }">
+              {{ row.totalExamined ?? 0 }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="及格率" width="85" align="center">
+          <template #default="{ row }">
+            <span v-if="row.passRate != null" :style="{ fontWeight:600, color: Number(row.passRate) >= 60 ? '#67c23a' : '#f56c6c' }">
+              {{ Number(row.passRate).toFixed(1) }}%
+            </span>
             <span v-else style="color:#c0c4cc">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="180" />
-        <el-table-column label="操作" width="200" align="center">
+        <el-table-column label="状态" width="85" align="center">
           <template #default="{ row }">
-            <el-button type="primary" @click="openView(row)">查看</el-button>
-            <el-button v-if="row.status !== 1" type="success" @click="publish(row)">发布</el-button>
-            <el-button v-else type="warning" @click="unpublish(row)">下架</el-button>
-            <el-button type="danger" @click="confirmDelete(row)">删除</el-button>
+            <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createTime" label="创建时间" width="165" show-overflow-tooltip />
+        <el-table-column label="操作" width="240" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="openView(row, false)">
+              <el-icon><View /></el-icon>查看
+            </el-button>
+            <el-button type="primary" link size="small" @click="openEdit(row)">
+              <el-icon><Edit /></el-icon>编辑
+            </el-button>
+            <el-dropdown trigger="click" style="margin-left:8px">
+              <el-button link type="info" size="small">
+                更多<el-icon><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item @click="openView(row, true)">
+                    <el-icon><DocumentChecked /></el-icon>一键查看答案与解析
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="handleCreateExamFromPaper(row)">
+                    <el-icon><Calendar /></el-icon>以此卷创建考试
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="handleCopyPaper(row)">
+                    <el-icon><CopyDocument /></el-icon>快速克隆试卷
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="exportPaper(row, false)">
+                    <el-icon><Download /></el-icon>导出学生答卷版
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="exportPaper(row, true)">
+                    <el-icon><Download /></el-icon>导出教师解析版
+                  </el-dropdown-item>
+                  <el-dropdown-item v-if="row.status !== 1" divided @click="publish(row)">
+                    发布上线
+                  </el-dropdown-item>
+                  <el-dropdown-item v-else divided @click="unpublish(row)">
+                    下架试卷
+                  </el-dropdown-item>
+                  <el-dropdown-item style="color:#f56c6c" @click="confirmDelete(row)">
+                    <el-icon><Delete /></el-icon>删除试卷
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </template>
         </el-table-column>
       </el-table>
@@ -866,13 +1239,127 @@ onMounted(async () => {
     </el-dialog>
 
     <!-- 查看试卷(含题目、答案、解析 —— 论文 4.2.2 管理员预览) -->
-    <el-dialog v-model="viewVisible" :title="'查看试卷：' + (viewPaper?.paperName || '')" width="900px" top="4vh">
+    <el-dialog v-model="viewVisible" :title="'查看试卷：' + (viewPaper?.paperName || '')" width="950px" top="4vh">
+      <!-- 预览操作工具栏：一键开关答案与解析、复制、导出 -->
+      <div class="view-ctrl-bar">
+        <div class="view-ctrl-left">
+          <el-switch
+            v-model="showAllAnswers"
+            active-text="👁️ 一键显示标准答案与逐题解析"
+            inactive-text="隐藏答案与解析（答卷视角）"
+            style="--el-switch-on-color: #67c23a"
+          />
+        </div>
+        <div class="view-ctrl-right">
+          <el-button size="small" @click="copyPaperText">
+            <el-icon><CopyDocument /></el-icon>复制试卷文本
+          </el-button>
+          <el-button size="small" type="primary" plain @click="exportPaper(viewPaper!, showAllAnswers)">
+            <el-icon><Download /></el-icon>导出 Markdown
+          </el-button>
+        </div>
+      </div>
+
       <el-descriptions :column="4" border style="margin-bottom:12px">
         <el-descriptions-item label="题量">{{ viewPaper?.questionCount ?? viewQuestions.length }}</el-descriptions-item>
         <el-descriptions-item label="总分">{{ viewPaper?.totalScore ?? viewQuestions.length * 2 }}</el-descriptions-item>
         <el-descriptions-item label="及格分">{{ viewPaper?.passScore ?? '-' }}</el-descriptions-item>
-        <el-descriptions-item label="状态">{{ statusText(viewPaper?.status ?? 0) }}</el-descriptions-item>
+        <el-descriptions-item label="建议时长">{{ viewPaper?.suggestedDuration || 60 }} 分钟</el-descriptions-item>
       </el-descriptions>
+
+      <!-- 使用统计：全部实时聚合 exam_session / exam_record / exam_score / answer_record，不落库 -->
+      <div v-loading="paperStatsLoading" class="paper-stats">
+        <template v-if="paperStats">
+          <div class="ps-row">
+            <div class="ps-item">
+              <div class="ps-num">{{ paperStats.sessionCount }}</div>
+              <div class="ps-name">引用场次</div>
+            </div>
+            <div class="ps-item">
+              <div class="ps-num">{{ paperStats.recordCount }}</div>
+              <div class="ps-name">参考人次</div>
+            </div>
+            <div class="ps-item">
+              <div class="ps-num">{{ paperStats.scoredCount }}</div>
+              <div class="ps-name">已出分</div>
+            </div>
+            <div class="ps-item">
+              <div class="ps-num" :style="{ color: accColor(paperStats.utilizationRate) }">
+                {{ Number(paperStats.utilizationRate ?? 0).toFixed(1) }}%
+              </div>
+              <div class="ps-name">利用率</div>
+            </div>
+            <div class="ps-item">
+              <div class="ps-num">{{ Number(paperStats.averageScore ?? 0).toFixed(1) }}</div>
+              <div class="ps-name">平均分</div>
+            </div>
+            <div class="ps-item">
+              <div class="ps-num">{{ Number(paperStats.highestScore ?? 0).toFixed(1) }}</div>
+              <div class="ps-name">最高分</div>
+            </div>
+            <div class="ps-item">
+              <div class="ps-num">{{ Number(paperStats.lowestScore ?? 0).toFixed(1) }}</div>
+              <div class="ps-name">最低分</div>
+            </div>
+            <div class="ps-item">
+              <div class="ps-num" :style="{ color: accColor(paperStats.overallAccuracy) }">
+                {{ Number(paperStats.overallAccuracy ?? 0).toFixed(1) }}%
+              </div>
+              <div class="ps-name">正确率</div>
+            </div>
+          </div>
+
+          <div v-if="paperStats.sessionCount === 0" class="ps-tip">
+            该试卷尚未被任何考试场次引用，统计为空
+          </div>
+          <div v-else-if="paperStats.scoredCount === 0" class="ps-tip">
+            已被 {{ paperStats.sessionCount }} 个场次引用，但还没有考生出分
+          </div>
+
+          <div class="ps-dims">
+            <div v-if="paperStats.typeAccuracies?.length" class="ps-dim">
+              <div class="ps-dim-title">按题型正确率</div>
+              <div v-for="r in paperStats.typeAccuracies" :key="r.name" class="ps-dim-row">
+                <span class="ps-dim-name">{{ r.name }}</span>
+                <el-progress
+                  :percentage="Number(Number(r.accuracy).toFixed(1))"
+                  :color="accColor(r.accuracy)"
+                  :stroke-width="14"
+                  :show-text="false"
+                  class="ps-bar"
+                />
+                <span class="ps-dim-val" :style="{ color: accColor(r.accuracy) }">
+                  {{ Number(r.accuracy).toFixed(1) }}%
+                </span>
+                <span class="ps-dim-cnt">({{ r.correctCount }}/{{ r.totalAttempts }})</span>
+              </div>
+            </div>
+            <div v-if="paperStats.categoryAccuracies?.length" class="ps-dim">
+              <div class="ps-dim-title">按语法分类正确率（作答量前 8）</div>
+              <div
+                v-for="r in paperStats.categoryAccuracies.slice(0, 8)"
+                :key="r.id ?? r.name"
+                class="ps-dim-row"
+              >
+                <span class="ps-dim-name" :title="r.name">{{ r.name }}</span>
+                <el-progress
+                  :percentage="Number(Number(r.accuracy).toFixed(1))"
+                  :color="accColor(r.accuracy)"
+                  :stroke-width="14"
+                  :show-text="false"
+                  class="ps-bar"
+                />
+                <span class="ps-dim-val" :style="{ color: accColor(r.accuracy) }">
+                  {{ Number(r.accuracy).toFixed(1) }}%
+                </span>
+                <span class="ps-dim-cnt">({{ r.correctCount }}/{{ r.totalAttempts }})</span>
+              </div>
+            </div>
+          </div>
+        </template>
+        <el-empty v-else-if="!paperStatsLoading" description="暂无统计数据" :image-size="50" />
+      </div>
+
       <div v-loading="viewLoading">
         <el-empty v-if="!viewLoading && viewQuestions.length === 0" description="卷内无题目" />
         <div v-for="(unit, idx) in viewQuestions" :key="unit.unitType === 'READING' ? `p-${unit.passageId}` : `q-${unit.questionId}`" class="view-q">
@@ -894,7 +1381,7 @@ onMounted(async () => {
                 </el-button>
               </div>
               <div class="q-stem">{{ question.stem }}</div>
-              <div v-if="viewAnswers[question.questionId]" class="q-answer">
+              <div v-if="showAllAnswers || viewAnswers[question.questionId]" class="q-answer">
                 <div v-for="option in (viewAnswers[question.questionId]?.options ?? [])" :key="option.optionLabel" class="q-opt">
                   <b>{{ option.optionLabel }}.</b> {{ option.optionContent }}
                 </div>
@@ -914,7 +1401,7 @@ onMounted(async () => {
               </el-button>
             </div>
             <div class="q-stem">{{ unit.stem }}</div>
-            <div v-if="viewAnswers[unit.questionId]" class="q-answer">
+            <div v-if="showAllAnswers || viewAnswers[unit.questionId]" class="q-answer">
               <template v-for="option in (viewAnswers[unit.questionId]?.options ?? [])" :key="option.optionLabel">
                 <div class="q-opt" :class="{ 'q-opt-right': option.optionLabel === viewAnswers[unit.questionId]?.standardAnswer }">
                   <b>{{ option.optionLabel }}.</b> {{ option.optionContent }}
@@ -1060,5 +1547,210 @@ onMounted(async () => {
 .passage-choice-title { font-weight: 600; margin-bottom: 4px; }
 .passage-choice-question { color: #606266; margin-top: 4px; font-size: 12px; }
 .view-sub-question { border-top: 1px solid #ebeef5; padding-top: 8px; margin-top: 8px; }
+
+/* ---------- 试卷使用统计（实时聚合） ---------- */
+.paper-stats {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: #fafbfc;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  min-height: 64px;
+}
+
+.ps-row {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+}
+
+.ps-item {
+  text-align: center;
+  padding: 6px 2px;
+  background: #fff;
+  border: 1px solid #f0f2f5;
+  border-radius: 6px;
+}
+
+.ps-num {
+  font-size: 17px;
+  font-weight: 650;
+  line-height: 1.2;
+  color: #303133;
+  font-variant-numeric: tabular-nums;
+}
+
+.ps-name {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #909399;
+}
+
+.ps-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #e6a23c;
+}
+
+.ps-dims {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #e4e7ed;
+}
+
+.ps-dim-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #606266;
+  margin-bottom: 6px;
+}
+
+.ps-dim-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 12px;
+}
+
+.ps-dim-name {
+  width: 96px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #606266;
+}
+
+.ps-bar { flex: 1; min-width: 40px; }
+
+.ps-dim-val {
+  width: 48px;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.ps-dim-cnt {
+  width: 62px;
+  text-align: right;
+  color: #909399;
+  font-size: 11px;
+}
+
+
+/* ---------------- 顶部大盘与折叠展开行样式 ---------------- */
+.stat-banner {
+  margin-bottom: 16px;
+}
+.stat-card {
+  background: #fff;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  padding: 14px 16px;
+  transition: all 0.2s ease;
+}
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+.stat-card .stat-label {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 6px;
+}
+.stat-card .stat-num {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.stat-card .stat-sub {
+  font-size: 12px;
+  color: #a8abb2;
+  margin-top: 4px;
+}
+.text-primary { color: #409eff; }
+.text-success { color: #67c23a; }
+.text-info { color: #909399; }
+
+.expand-detail {
+  padding: 16px 24px;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+.expand-section {
+  margin-bottom: 12px;
+}
+.expand-section .section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #303133;
+  margin-bottom: 8px;
+}
+.type-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.t-badge {
+  font-size: 13px;
+  padding: 6px 10px;
+}
+.meta-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.meta-label {
+  color: #606266;
+  font-weight: 500;
+}
+.meta-val {
+  color: #303133;
+  font-weight: 600;
+}
+.stat-boxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.stat-box {
+  background: #fff;
+  border: 1px solid #ebeef5;
+  border-radius: 6px;
+  padding: 8px 16px;
+  min-width: 120px;
+}
+.stat-box .sb-label {
+  font-size: 12px;
+  color: #909399;
+}
+.stat-box .sb-val {
+  font-size: 15px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.expand-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #dcdfe6;
+}
+
+.view-ctrl-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: #ecf5ff;
+  border: 1px solid #d9ecff;
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
 
 </style>

@@ -117,12 +117,13 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '工作台', icon: 'HomeFilled', roles: ['ADMIN'] },
   },
 
-  // 题库管理（出题流程第一步：智能出题→试题管理→语法分类→题目分析）
+  // 题库管理（2026-10-30 重排：语法分类 → 试题管理 → 题目分析 → 智能出题）
+  //   顺序依据用户要求：先建分类，再管题目，然后看分析，最后才是 AI 出题。
   {
-    path: 'admin/ai-compose',
-    name: 'AdminAiCompose',
-    component: () => import('@/views/admin/AiCompose.vue'),
-    meta: { title: '智能出题', icon: 'MagicStick', roles: ['ADMIN'], group: '题库管理' },
+    path: 'admin/categories',
+    name: 'AdminCategories',
+    component: () => import('@/views/admin/CategoryManage.vue'),
+    meta: { title: '语法分类', icon: 'Menu', roles: ['ADMIN'], group: '题库管理' },
   },
   {
     path: 'admin/questions',
@@ -131,22 +132,25 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '试题管理', icon: 'Notebook', roles: ['ADMIN'], group: '题库管理' },
   },
   {
-    path: 'admin/categories',
-    name: 'AdminCategories',
-    component: () => import('@/views/admin/CategoryManage.vue'),
-    meta: { title: '语法分类', icon: 'Menu', roles: ['ADMIN'], group: '题库管理' },
-  },
-  {
     path: 'admin/questions/analytics',
     name: 'AdminQuestionAnalytics',
     component: () => import('@/views/admin/QuestionAnalytics.vue'),
     meta: { title: '题目分析', icon: 'TrendCharts', roles: ['ADMIN'], group: '题库管理' },
   },
   {
+    path: 'admin/ai-compose',
+    name: 'AdminAiCompose',
+    component: () => import('@/views/admin/AiCompose.vue'),
+    meta: { title: '智能出题', icon: 'MagicStick', roles: ['ADMIN'], group: '题库管理' },
+  },
+  {
+    // [2026-10-30 合入试题管理] 阅读文章库不再是独立菜单项：
+    //   入口改为「试题管理 → 阅读文章」页签（QuestionManage 内嵌 ReadingPassageManage）。
+    //   路由保留并 hidden，保证书签 / 直达 URL 仍可用，也避免旧链接 404。
     path: 'admin/reading-passages',
     name: 'AdminReadingPassages',
     component: () => import('@/views/admin/ReadingPassageManage.vue'),
-    meta: { title: '阅读文章库', icon: 'Reading', roles: ['ADMIN'], group: '题库管理' },
+    meta: { title: '阅读文章库', icon: 'Reading', roles: ['ADMIN'], group: '题库管理', hidden: true },
   },
   // 考试管理（出题流程第二步：试卷管理→考试管理→成绩管理）
   {

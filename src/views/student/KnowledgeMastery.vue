@@ -1,100 +1,173 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useAuthStore } from '@/stores/auth'
-import { getStudentMastery } from '@/api/knowledgeMastery'
-import type { KnowledgeMastery as KM } from '@/types/knowledgeMastery'
+import { getStudentMastery, getStudentInsights } from '@/api/knowledgeMastery'
+import type { KnowledgeMastery as KM, KnowledgeInsights } from '@/types/knowledgeMastery'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { RadarChart } from 'echarts/charts'
-import { TitleComponent, TooltipComponent, LegendComponent, RadarComponent } from 'echarts/components'
-import { DataAnalysis, Aim } from '@element-plus/icons-vue'
+import { RadarChart, PieChart, BarChart } from 'echarts/charts'
+import { TitleComponent, TooltipComponent, LegendComponent, RadarComponent, GridComponent } from 'echarts/components'
+import { DataAnalysis, Aim, Grid, List } from '@element-plus/icons-vue'
 
-use([CanvasRenderer, RadarChart, TitleComponent, TooltipComponent, LegendComponent, RadarComponent])
+use([
+  CanvasRenderer, RadarChart, PieChart, BarChart,
+  TitleComponent, TooltipComponent, LegendComponent, RadarComponent, GridComponent,
+])
 
 const authStore = useAuthStore()
 const data = ref<KM[]>([])
+const insights = ref<KnowledgeInsights | null>(null)
 const loading = ref(false)
 
-// ---- 旧 load 函数（保留注释） ----
-// const load = async () => {
-//   loading.value = true
-//   try {
-//     const uid = authStore.userInfo?.id
-//     if (!uid) return
-//     const res = await getStudentMastery(uid)
-//     data.value = res.data ?? []
-//     renderChart()
-//   } finally { loading.value = false }
-// }
-
-// ---- 新 load 函数（不再需要手动 renderChart） ----
 const load = async () => {
   loading.value = true
   try {
     const uid = authStore.userInfo?.id
     if (!uid) return
-    const res = await getStudentMastery(uid)
-    data.value = res.data ?? []
+    const [m, i] = await Promise.all([
+      getStudentMastery(uid),
+      getStudentInsights(uid).catch(() => null),
+    ])
+    data.value = m.data ?? []
+    insights.value = i?.data ?? null
   } finally { loading.value = false }
 }
 
-// [2026-09-26 修复] 页面挂载时加载掌握度数据 —— 原代码定义了 load() 却从未调用，
-// 导致「知识点掌握度」页面进入后永远不加载数据（严格模式下 TS6133 暴露该缺陷）。
 onMounted(load)
 
-// ---- 旧 renderChart 函数（保留注释） ----
-// const renderChart = () => {
-//   const container = document.getElementById('mastery-radar-chart')
-//   if (!container || data.value.length === 0) return
-//   const chart = echarts.init(container)
-//   chart.setOption({
-//     tooltip: { formatter: (p: any) => `${p.name}: ${p.value?.toFixed(1)}分` },
-//     radar: {
-//       indicator: data.value.slice(0, 8).map(d => ({ name: (d.tagName ?? '').substring(0, 6), max: 100 })),
-//       shape: 'polygon',
-//     },
-//     series: [{
-//       type: 'radar',
-//       data: [{ value: data.value.slice(0, 8).map(d => d.proficiencyScore ?? 0), name: '掌握度', areaStyle: { opacity: 0.3 } }],
-//     }],
-//   })
-// }
+/* ============================================================
+ *  视图模式：分类视图（按语法专题分页签） / 拍平视图（全部平铺）
+ *  数据全部来自现有表，未新增数据库列。
+ * ============================================================ */
+type ViewMode = 'category' | 'flat'
+const viewMode = ref<ViewMode>('category')
+const activeCat = ref<string>('__all__')
 
-// ---- 新雷达图配置（增强版：色彩分区、多边形面积、详细 tooltip） ----
+/* ---------------- 概览指标 ---------------- */
+const overview = computed(() => {
+  const rows = data.value
+  const total = rows.length
+  const mastered = rows.filter(d => d.masteryLevel >= 4).length
+  const weak = rows.filter(d => d.masteryLevel > 0 && d.masteryLevel <= 2).length
+  const avgScore = total ? rows.reduce((s, d) => s + (d.proficiencyScore ?? 0), 0) / total : 0
+  const avgAccuracy = total ? rows.reduce((s, d) => s + (d.accuracy ?? 0), 0) / total : 0
+  return {
+    total, mastered, weak,
+    avgScore: Math.round(avgScore * 10) / 10,
+    avgAccuracy: Math.round(avgAccuracy * 10) / 10,
+    coverage: insights.value?.coverage?.percent ?? 0,
+    neverTouched: insights.value?.coverage?.neverTouched ?? 0,
+  }
+})
+
+/* ---------------- 按语法专题分组（键用 categoryId，名称有重名） ---------------- */
+interface CategoryGroup {
+  key: string; id: number | null; name: string; count: number
+  avgScore: number; avgAccuracy: number; totalAnswers: number; weakCount: number
+  items: KM[]
+}
+
+const categoryGroups = computed<CategoryGroup[]>(() => {
+  if (!data.value.length) return []
+  const map = new Map<string, CategoryGroup>()
+  data.value.forEach(d => {
+    const id = d.categoryId ?? null
+    const name = d.categoryName || '未分类'
+    const key = id != null ? `c-${id}` : `n-${name}`
+    if (!map.has(key)) {
+      map.set(key, { key, id, name, count: 0, avgScore: 0, avgAccuracy: 0, totalAnswers: 0, weakCount: 0, items: [] })
+    }
+    const g = map.get(key)!
+    g.items.push(d); g.count += 1; g.totalAnswers += d.totalAnswers
+    if (d.masteryLevel > 0 && d.masteryLevel <= 2) g.weakCount += 1
+  })
+  return Array.from(map.values()).map(g => ({
+    ...g,
+    avgScore: Math.round(g.items.reduce((s, d) => s + (d.proficiencyScore ?? 0), 0) / g.count * 10) / 10,
+    avgAccuracy: Math.round(g.items.reduce((s, d) => s + (d.accuracy ?? 0), 0) / g.count * 10) / 10,
+    items: [...g.items].sort((a, b) => (a.proficiencyScore ?? 0) - (b.proficiencyScore ?? 0)),
+  })).sort((a, b) => b.count - a.count)
+})
+
+const currentGroup = computed<CategoryGroup | null>(() =>
+  activeCat.value === '__all__' ? null : categoryGroups.value.find(g => g.key === activeCat.value) ?? null
+)
+
+const ensureActiveCat = () => {
+  if (activeCat.value !== '__all__' && !categoryGroups.value.some(g => g.key === activeCat.value)) {
+    activeCat.value = '__all__'
+  }
+}
+
+/* ---------------- 拍平视图：筛选 + 排序 ---------------- */
+const flatLevel = ref<string>('all')
+const flatCat = ref<string>('all')
+const flatSort = ref<string>('score-asc')
+const flatKeyword = ref('')
+
+const levelFilterOptions = [
+  { label: '全部等级', value: 'all' },
+  { label: '未接触(0)', value: '0' },
+  { label: '入门(1)', value: '1' },
+  { label: '基础(2)', value: '2' },
+  { label: '进阶(3)', value: '3' },
+  { label: '熟练(4)', value: '4' },
+  { label: '精通(5)', value: '5' },
+]
+
+const sortOptions = [
+  { label: '熟练度 低→高', value: 'score-asc' },
+  { label: '熟练度 高→低', value: 'score-desc' },
+  { label: '正确率 低→高', value: 'acc-asc' },
+  { label: '正确率 高→低', value: 'acc-desc' },
+  { label: '答题量 多→少', value: 'ans-desc' },
+  { label: '最近练习 新→旧', value: 'time-desc' },
+]
+
+const flatRows = computed<KM[]>(() => {
+  let rows = data.value
+  if (flatLevel.value !== 'all') {
+    const lv = Number(flatLevel.value)
+    rows = rows.filter(d => d.masteryLevel === lv)
+  }
+  if (flatCat.value !== 'all') {
+    rows = rows.filter(d => String(d.categoryId ?? 'none') === flatCat.value)
+  }
+  const kw = flatKeyword.value.trim()
+  if (kw) rows = rows.filter(d => (d.tagName ?? '').includes(kw))
+
+  const sorted = [...rows]
+  switch (flatSort.value) {
+    case 'score-asc': sorted.sort((a, b) => (a.proficiencyScore ?? 0) - (b.proficiencyScore ?? 0)); break
+    case 'score-desc': sorted.sort((a, b) => (b.proficiencyScore ?? 0) - (a.proficiencyScore ?? 0)); break
+    case 'acc-asc': sorted.sort((a, b) => (a.accuracy ?? 0) - (b.accuracy ?? 0)); break
+    case 'acc-desc': sorted.sort((a, b) => (b.accuracy ?? 0) - (a.accuracy ?? 0)); break
+    case 'ans-desc': sorted.sort((a, b) => b.totalAnswers - a.totalAnswers); break
+    case 'time-desc': sorted.sort((a, b) => (b.lastPracticeTime ?? '').localeCompare(a.lastPracticeTime ?? '')); break
+  }
+  return sorted
+})
+
+/* ---------------- 图表：雷达（最弱 8 项） ---------------- */
 const radarChartOption = computed(() => {
   if (!data.value.length) return {}
-  const top = data.value.slice(0, 8)
+  const top = [...data.value].sort((a, b) => (a.proficiencyScore ?? 0) - (b.proficiencyScore ?? 0)).slice(0, 8)
   return {
-    tooltip: {
-      trigger: 'item' as const,
-      formatter: (params: any) => {
-        const vals = params.value as number[]
-        let html = `<b>${params.name}</b><br/>`
-        top.forEach((d, i) => {
-          const v = vals[i] ?? 0
-          const color = v >= 70 ? '#67c23a' : v >= 40 ? '#e6a23c' : '#f56c6c'
-          html += `${d.tagName ?? ''}: <span style="color:${color};font-weight:600">${v.toFixed(1)}</span><br/>`
-        })
-        return html
-      },
-    },
-    legend: { bottom: 0, data: ['掌握度'], textStyle: { fontSize: 12 } },
+    tooltip: { trigger: 'item' as const },
     radar: {
       indicator: top.map(d => ({
         name: (d.tagName ?? '').length > 6 ? (d.tagName ?? '').substring(0, 6) + '…' : (d.tagName ?? ''),
         max: 100,
       })),
-      shape: 'polygon',
+      shape: 'polygon' as const,
       splitNumber: 5,
       center: ['50%', '52%'],
-      radius: '65%',
-      axisName: { color: '#606266', fontSize: 12 },
+      radius: '62%',
+      axisName: { color: '#606266', fontSize: 11 },
       splitLine: { lineStyle: { color: ['#f56c6c', '#e6a23c', '#e6a23c', '#67c23a', '#67c23a'] } },
       splitArea: {
-        areaStyle: {
-          color: ['rgba(245,108,108,0.06)', 'rgba(230,162,60,0.06)', 'rgba(230,162,60,0.04)', 'rgba(103,194,58,0.04)', 'rgba(103,194,58,0.06)'],
-        },
+        areaStyle: { color: ['rgba(245,108,108,0.06)', 'rgba(230,162,60,0.06)', 'rgba(230,162,60,0.04)', 'rgba(103,194,58,0.04)', 'rgba(103,194,58,0.06)'] },
       },
       axisLine: { lineStyle: { color: '#dcdfe6' } },
     },
@@ -111,53 +184,79 @@ const radarChartOption = computed(() => {
   }
 })
 
-// ---- 新增：视觉掌握度网格（按分类分组，带进度条） ----
-const masteryGrid = computed(() => {
-  if (!data.value.length) return []
-  // 按 categoryName 分组，取每组的平均熟练度
-  const grouped = new Map<string, KM[]>()
-  data.value.forEach(d => {
-    const cn = d.categoryName || d.tagName || '未分类'
-    if (!grouped.has(cn)) grouped.set(cn, [])
-    grouped.get(cn)!.push(d)
-  })
-  return Array.from(grouped.entries()).map(([categoryName, items]) => {
-    const avgScore = items.reduce((s, d) => s + (d.proficiencyScore ?? 0), 0) / items.length
-    const avgAccuracy = items.reduce((s, d) => s + (d.accuracy ?? 0), 0) / items.length
-    const totalAnswers = items.reduce((s, d) => s + d.totalAnswers, 0)
-    const weakCount = items.filter(d => d.masteryLevel <= 2).length
-    return {
-      categoryName,
-      avgScore: Math.round(avgScore * 10) / 10,
-      avgAccuracy: Math.round(avgAccuracy * 10) / 10,
-      totalAnswers,
-      itemCount: items.length,
-      weakCount,
-      items: items.sort((a, b) => (a.proficiencyScore ?? 0) - (b.proficiencyScore ?? 0)),
-    }
-  }).sort((a, b) => a.avgScore - b.avgScore)
+/* ---------------- 图表：掌握等级分布（6 档饼图） ---------------- */
+const levelPieOption = computed(() => {
+  const rows = insights.value?.levelDistribution ?? []
+  const colors = ['#909399', '#F56C6C', '#E6A23C', '#409EFF', '#67C23A', '#00D100']
+  return {
+    tooltip: { trigger: 'item' as const, formatter: '{b}<br/>{c} 个（{d}%）' },
+    legend: { bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11 } },
+    series: [{
+      type: 'pie',
+      radius: ['42%', '66%'],
+      center: ['50%', '44%'],
+      avoidLabelOverlap: true,
+      label: { show: true, formatter: '{c}', fontSize: 11 },
+      data: rows.map((r, i) => ({
+        name: r.label, value: r.count, itemStyle: { color: colors[i] ?? '#c0c4cc' },
+      })),
+    }],
+  }
 })
 
-// ---- 新增：薄弱知识点建议 ----
-const weakPointRecommendations = computed(() => {
-  const weak = data.value.filter(d => d.masteryLevel <= 2).sort((a, b) => (a.proficiencyScore ?? 0) - (b.proficiencyScore ?? 0))
-  return weak.slice(0, 5).map(d => {
-    let suggestion = ''
-    if (d.masteryLevel === 0) {
-      suggestion = `尚未开始练习「${d.tagName}」，建议从基础题目入手，每次完成 5-10 题。`
-    } else if (d.masteryLevel === 1) {
-      suggestion = `「${d.tagName}」正确率较低，建议先复习相关语法规则，再从简单题目开始练习。`
-    } else if (d.masteryLevel === 2) {
-      suggestion = `「${d.tagName}」掌握处于基础水平，需要增加练习量，重点攻克易错题型。`
-    }
-    return { ...d, suggestion }
-  })
+/* ---------------- 图表：熟练度分档（柱状图） ---------------- */
+const bandBarOption = computed(() => {
+  const rows = insights.value?.scoreBands ?? []
+  const colors = ['#F56C6C', '#E6A23C', '#F0C040', '#409EFF', '#67C23A']
+  return {
+    tooltip: { trigger: 'axis' as const, axisPointer: { type: 'shadow' as const } },
+    grid: { left: 12, right: 16, top: 20, bottom: 8, containLabel: true },
+    xAxis: { type: 'category' as const, data: rows.map(r => r.label), axisLabel: { fontSize: 10, interval: 0 } },
+    yAxis: { type: 'value' as const, minInterval: 1 },
+    series: [{
+      type: 'bar',
+      barMaxWidth: 38,
+      data: rows.map((r, i) => ({ value: r.count, itemStyle: { color: colors[i] ?? '#c0c4cc', borderRadius: [4, 4, 0, 0] } })),
+      label: { show: true, position: 'top' as const, fontSize: 11 },
+    }],
+  }
 })
 
+/* ---------------- 图表：练习活跃度（环形） ---------------- */
+const activityPieOption = computed(() => {
+  const a = insights.value?.activity
+  const rows = a
+    ? [
+        { name: '7 天内', value: a.within7, color: '#67C23A' },
+        { name: '8-30 天', value: Math.max(0, a.within30 - a.within7), color: '#409EFF' },
+        { name: '30 天前', value: a.older, color: '#E6A23C' },
+        { name: '从未练习', value: a.never, color: '#C0C4CC' },
+      ]
+    : []
+  return {
+    tooltip: { trigger: 'item' as const, formatter: '{b}<br/>{c} 个（{d}%）' },
+    legend: { bottom: 0, itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11 } },
+    series: [{
+      type: 'pie',
+      radius: ['48%', '68%'],
+      center: ['50%', '44%'],
+      label: { show: false },
+      data: rows.map(r => ({ name: r.name, value: r.value, itemStyle: { color: r.color } })),
+    }],
+  }
+})
+
+/* ---------------- 学习建议（study_suggestions 有值的） ---------------- */
+const suggestions = computed(() =>
+  data.value
+    .filter(d => d.studySuggestions && d.studySuggestions.trim())
+    .sort((a, b) => (a.proficiencyScore ?? 0) - (b.proficiencyScore ?? 0))
+    .slice(0, 6)
+)
+
+/* ---------------- 等级字典 ---------------- */
 const levelColors: Record<number, string> = { 0: '#909399', 1: '#F56C6C', 2: '#E6A23C', 3: '#409EFF', 4: '#67C23A', 5: '#00D100' }
 const levelLabels: Record<number, string> = { 0: '未接触', 1: '入门', 2: '基础', 3: '进阶', 4: '熟练', 5: '精通' }
-
-/** 等级判定的详细标准 */
 const levelCriteria: Record<number, string> = {
   0: '还未做过该知识点的题目',
   1: '正确率<50%或答题数<5道',
@@ -167,263 +266,612 @@ const levelCriteria: Record<number, string> = {
   5: '正确率≥95%（答题≥5道）',
 }
 
-const formulaTooltip = '综合评分 = 正确率×50% + 连续正确/10×30% + 答题量/50×20%。不只是看正确率，还考虑稳定性和练习量。'
+const formulaTooltip = '综合评分 = 正确率×70% + 练习量×30%。不只是看正确率，还考虑练习的充分程度。'
 
-/** 获取掌握度对应的进度条颜色 */
 const proficiencyColor = (score: number) => {
   if (score >= 70) return '#67C23A'
   if (score >= 40) return '#E6A23C'
   return '#F56C6C'
 }
+
+const goPractice = () => { window.location.hash = '#/student/practice' }
+
+/** 题型正确率底色（知识点 × 题型矩阵用） */
+const accBg = (acc: number) => {
+  if (acc >= 80) return 'rgba(103,194,58,0.16)'
+  if (acc >= 60) return 'rgba(230,162,60,0.16)'
+  return 'rgba(245,108,108,0.16)'
+}
 </script>
 
 <template>
   <div class="page-container" v-loading="loading">
-    <!-- 顶部说明卡片 -->
-    <el-alert type="info" :closable="false" style="margin-bottom:16px">
+    <!-- 说明 -->
+    <el-alert type="info" :closable="false">
       <template #title>
         <span style="font-weight:600">掌握度计算逻辑</span>
         <el-tooltip :content="formulaTooltip" placement="bottom" effect="light">
           <el-icon style="margin-left:4px;cursor:help;color:#909399"><QuestionFilled /></el-icon>
         </el-tooltip>
       </template>
-      系统根据你每道题的答题结果，自动计算每个知识点的掌握程度（0-5级）。等级越高说明掌握越扎实。点击下方表格行可查看详情。
+      系统根据你每道题的答题结果，自动计算每个知识点的掌握程度（0-5 级）。下方依次为：
+      <b>学习画像</b>（分布与活跃度）→ <b>知识点明细</b>（分类 / 拍平）→ <b>行动建议</b> → <b>深度分析</b>。
     </el-alert>
 
-    <!-- 雷达图 + 薄弱知识点 -->
-    <el-row :gutter="16">
-      <el-col :span="16">
-        <el-card shadow="never" class="section-card">
+    <!-- ① 概览 6 卡 -->
+    <el-row :gutter="12">
+      <el-col :xs="12" :sm="8" :md="4">
+        <div class="ov-card">
+          <div class="ov-num">{{ overview.total }}</div>
+          <div class="ov-label">已统计知识点</div>
+        </div>
+      </el-col>
+      <el-col :xs="12" :sm="8" :md="4">
+        <div class="ov-card">
+          <div class="ov-num" style="color:#67C23A">{{ overview.mastered }}</div>
+          <div class="ov-label">已掌握（≥4级）</div>
+        </div>
+      </el-col>
+      <el-col :xs="12" :sm="8" :md="4">
+        <div class="ov-card">
+          <div class="ov-num" style="color:#F56C6C">{{ overview.weak }}</div>
+          <div class="ov-label">待加强（1-2级）</div>
+        </div>
+      </el-col>
+      <el-col :xs="12" :sm="8" :md="4">
+        <div class="ov-card">
+          <div class="ov-num" style="color:#409EFF">{{ overview.coverage }}%</div>
+          <div class="ov-label">知识点覆盖率</div>
+        </div>
+      </el-col>
+      <el-col :xs="12" :sm="8" :md="4">
+        <div class="ov-card">
+          <div class="ov-num" :style="{ color: proficiencyColor(overview.avgScore) }">{{ overview.avgScore }}</div>
+          <div class="ov-label">平均熟练度</div>
+        </div>
+      </el-col>
+      <el-col :xs="12" :sm="8" :md="4">
+        <div class="ov-card">
+          <div class="ov-num" :style="{ color: proficiencyColor(overview.avgAccuracy) }">{{ overview.avgAccuracy }}%</div>
+          <div class="ov-label">平均正确率</div>
+        </div>
+      </el-col>
+    </el-row>
+
+    <!-- ② 学习画像：雷达 / 等级分布 / 熟练度分档 -->
+    <el-row :gutter="14">
+      <el-col :xs="24" :md="8">
+        <el-card shadow="never" class="section-card h-full">
           <template #header>
-            <div style="display:flex;align-items:center;gap:8px">
+            <div class="card-head">
               <el-icon><DataAnalysis /></el-icon>
-              <span>知识点掌握雷达图</span>
-              <el-tooltip content="雷达图展示掌握度最低的 8 个知识点（最弱项优先，便于定位薄弱点）。越靠近外圈代表掌握越好（满分100）。多边形越大越均衡。" placement="top" effect="light">
-                <el-icon style="cursor:help;color:#909399"><QuestionFilled /></el-icon>
+              <span>最弱 8 项雷达</span>
+              <el-tooltip content="取熟练度最低的 8 个知识点。越靠近外圈掌握越好（满分 100）。" placement="top" effect="light">
+                <el-icon class="help-ico"><QuestionFilled /></el-icon>
               </el-tooltip>
             </div>
           </template>
-          <!-- 旧图表容器（保留注释）：<div id="mastery-radar-chart" style="width:100%;height:400px" v-if="data.length > 0" /> -->
-          <VChart v-if="radarChartOption.series" :option="radarChartOption" autoresize style="height:400px" />
-          <el-empty v-else description="暂无数据，先去专项练习或考试获取答题数据" />
-          <!-- 色彩分区图例 -->
-          <div class="radar-legend">
-            <span class="rl-item"><i class="rl-dot" style="background:#f56c6c"></i>薄弱 (&lt;40)</span>
-            <span class="rl-item"><i class="rl-dot" style="background:#e6a23c"></i>一般 (40-70)</span>
-            <span class="rl-item"><i class="rl-dot" style="background:#67c23a"></i>良好 (&gt;70)</span>
-          </div>
+          <VChart v-if="(radarChartOption as any).series" :option="radarChartOption" autoresize style="height:260px" />
+          <el-empty v-else description="暂无数据" :image-size="60" />
         </el-card>
       </el-col>
-      <el-col :span="8">
-        <el-card shadow="never" class="section-card">
+      <el-col :xs="24" :md="8">
+        <el-card shadow="never" class="section-card h-full">
           <template #header>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span>薄弱知识点</span>
-              <el-tooltip content="掌握等级<=2（基础以下）的知识点。这些是建议优先复习的内容。点击标签可跳转到对应练习。" placement="top" effect="light">
-                <el-icon style="cursor:help;color:#F56C6C"><WarningFilled /></el-icon>
-              </el-tooltip>
+            <div class="card-head">
+              <el-icon><Aim /></el-icon>
+              <span>掌握等级分布</span>
+              <span class="head-sub">6 档</span>
             </div>
           </template>
-          <div v-if="data.filter(d => d.masteryLevel <= 2).length > 0">
-            <el-tag
-              v-for="d in data.filter(d => d.masteryLevel <= 2).slice(0, 10)" :key="d.id"
-              :color="levelColors[d.masteryLevel]" style="margin:4px;color:#fff;cursor:pointer"
-              @click="$router.push('/student/practice')"
-            >{{ d.tagName }} ({{ d.accuracy?.toFixed(1) }}%)</el-tag>
-          </div>
-          <el-empty v-else description="掌握良好！所有知识点都在基础以上" :image-size="60" />
+          <VChart v-if="(levelPieOption as any).series" :option="levelPieOption" autoresize style="height:260px" />
+          <el-empty v-else description="暂无数据" :image-size="60" />
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :md="8">
+        <el-card shadow="never" class="section-card h-full">
+          <template #header>
+            <div class="card-head">
+              <el-icon><List /></el-icon>
+              <span>熟练度分档</span>
+              <span class="head-sub">5 档</span>
+            </div>
+          </template>
+          <VChart v-if="(bandBarOption as any).series" :option="bandBarOption" autoresize style="height:260px" />
+          <el-empty v-else description="暂无数据" :image-size="60" />
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- ====== 新增：视觉掌握度网格（按分类分组，带进度条） ====== -->
-    <el-card v-if="masteryGrid.length" shadow="never" class="section-card" style="margin-top:16px">
-      <template #header>
-        <div style="display:flex;align-items:center;gap:8px">
-          <el-icon><Aim /></el-icon>
-          <!-- [2026-10-16 术语对齐] 学生端统一用「语法专题」：论文表 3.2 明确
-               「英语语法分类信息表」是数据实体、其 category_name 的语义是「语法专题名称」，
-               面向学生的业务概念一律称「专题」（管理端菜单仍叫「语法分类」，因为它维护的是分类数据本身）。 -->
-          <span>语法专题掌握度网格</span>
-          <el-tag type="info">共 {{ masteryGrid.length }} 个专题</el-tag>
-        </div>
-      </template>
-      <div class="mastery-grid">
-        <div v-for="g in masteryGrid" :key="g.categoryName" class="mg-card" @click="$router.push('/student/practice')">
-          <div class="mg-header">
-            <span class="mg-name">{{ g.categoryName }}</span>
-            <span class="mg-score" :style="{ color: proficiencyColor(g.avgScore) }">{{ g.avgScore.toFixed(1) }}</span>
-          </div>
-          <el-progress
-            :percentage="Math.min(100, g.avgScore)"
-            :stroke-width="14"
-            :color="proficiencyColor(g.avgScore)"
-            :show-text="false"
-          />
-          <div class="mg-footer">
-            <span class="mg-stat">正确率 {{ g.avgAccuracy.toFixed(1) }}%</span>
-            <span class="mg-stat">答题 {{ g.totalAnswers }}</span>
-            <span class="mg-stat" v-if="g.weakCount > 0" style="color:#f56c6c">薄弱 {{ g.weakCount }}个</span>
-            <span class="mg-stat" v-else style="color:#67c23a">全部达标</span>
-          </div>
-        </div>
-      </div>
-    </el-card>
-
-    <!-- ====== 新增：薄弱知识点练习建议 ====== -->
-    <el-card v-if="weakPointRecommendations.length" shadow="never" class="section-card" style="margin-top:16px">
-      <template #header>
-        <div style="display:flex;align-items:center;gap:8px">
-          <el-icon><WarningFilled /></el-icon>
-          <span>薄弱知识点练习建议</span>
-          <el-button type="primary" link @click="$router.push('/student/practice')">
-            去练习 →
-          </el-button>
-        </div>
-      </template>
-      <div class="recommendation-list">
-        <div v-for="(rec, idx) in weakPointRecommendations" :key="rec.id" class="rec-item">
-          <div class="rec-left">
-            <div class="rec-rank" :style="{ background: levelColors[rec.masteryLevel] }">{{ idx + 1 }}</div>
-            <div class="rec-content">
-              <div class="rec-title">
-                {{ rec.tagName }}
-                <el-tag :color="levelColors[rec.masteryLevel]" effect="dark" style="margin-left:8px">
-                  {{ levelLabels[rec.masteryLevel] }}
-                </el-tag>
+    <!-- ③ 活跃度 / 覆盖率 / 薄弱 Top10 -->
+    <el-row :gutter="14">
+      <el-col :xs="24" :md="8">
+        <el-card shadow="never" class="section-card h-full">
+          <template #header>
+            <div class="card-head"><span>练习活跃度</span><span class="head-sub">按最近练习时间</span></div>
+          </template>
+          <VChart v-if="(activityPieOption as any).series" :option="activityPieOption" autoresize style="height:220px" />
+          <el-empty v-else description="暂无数据" :image-size="60" />
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :md="8">
+        <el-card shadow="never" class="section-card h-full">
+          <template #header>
+            <div class="card-head"><span>知识点覆盖率</span></div>
+          </template>
+          <div class="cover-box">
+            <el-progress
+              type="dashboard"
+              :percentage="overview.coverage"
+              :width="130"
+              :color="overview.coverage >= 70 ? '#67C23A' : overview.coverage >= 40 ? '#E6A23C' : '#F56C6C'"
+            />
+            <div class="cover-text">
+              <div>已覆盖 <b>{{ overview.total }}</b> / {{ insights?.coverage?.totalActive ?? '-' }} 个知识点</div>
+              <div class="cover-warn" v-if="overview.neverTouched > 0">
+                还有 <b>{{ overview.neverTouched }}</b> 个知识点从未练习
               </div>
-              <div class="rec-suggestion">{{ rec.suggestion }}</div>
-              <div class="rec-meta">
-                <span>熟练度: <b :style="{ color: proficiencyColor(rec.proficiencyScore ?? 0) }">{{ rec.proficiencyScore?.toFixed(1) }}</b></span>
-                <span>正确率: <b>{{ rec.accuracy?.toFixed(1) }}%</b></span>
-                <span>答题: <b>{{ rec.totalAnswers }}</b></span>
+              <el-button type="primary" link @click="goPractice">去练习 →</el-button>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :md="8">
+        <el-card shadow="never" class="section-card h-full">
+          <template #header>
+            <div class="card-head"><span>薄弱标记 Top 10</span><span class="head-sub">按出错次数</span></div>
+          </template>
+          <div class="weak-list">
+            <div v-for="(w, i) in (insights?.weakTop ?? [])" :key="w.tagId" class="weak-row">
+              <span class="wr-rank">{{ i + 1 }}</span>
+              <span class="wr-name" :title="w.tagName">{{ w.tagName }}</span>
+              <span class="wr-cat">{{ w.categoryName }}</span>
+              <span class="wr-cnt">{{ w.weakPointCount }} 次</span>
+            </div>
+            <el-empty v-if="!(insights?.weakTop ?? []).length" description="暂无薄弱标记" :image-size="50" />
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- ④ 知识点明细：分类 / 拍平 -->
+    <el-card shadow="never" class="section-card">
+      <template #header>
+        <div class="view-head">
+          <div class="vh-left">
+            <el-icon><Aim /></el-icon>
+            <span>知识点明细</span>
+            <el-tag type="info" size="small">共 {{ categoryGroups.length }} 个语法专题</el-tag>
+          </div>
+          <el-radio-group v-model="viewMode" size="small">
+            <el-radio-button value="category"><el-icon><Grid /></el-icon> 分类视图</el-radio-button>
+            <el-radio-button value="flat"><el-icon><List /></el-icon> 拍平视图</el-radio-button>
+          </el-radio-group>
+        </div>
+      </template>
+
+      <!-- 分类视图 -->
+      <template v-if="viewMode === 'category'">
+        <el-tabs v-model="activeCat" class="cat-tabs" @tab-change="ensureActiveCat">
+          <el-tab-pane name="__all__">
+            <template #label>全部 <span class="tab-count">{{ overview.total }}</span></template>
+          </el-tab-pane>
+          <el-tab-pane v-for="g in categoryGroups" :key="g.key" :name="g.key">
+            <template #label>{{ g.name }} <span class="tab-count">{{ g.count }}</span></template>
+          </el-tab-pane>
+        </el-tabs>
+
+        <!-- 全部：专题概览 -->
+        <div v-if="!currentGroup" class="mastery-grid">
+          <div v-for="g in categoryGroups" :key="g.key" class="mg-card" @click="activeCat = g.key">
+            <div class="mg-header">
+              <span class="mg-name">{{ g.name }}</span>
+              <span class="mg-score" :style="{ color: proficiencyColor(g.avgScore) }">{{ g.avgScore.toFixed(1) }}</span>
+            </div>
+            <el-progress :percentage="Math.min(100, g.avgScore)" :stroke-width="12" :color="proficiencyColor(g.avgScore)" :show-text="false" />
+            <div class="mg-footer">
+              <span class="mg-stat">{{ g.count }} 个</span>
+              <span class="mg-stat">正确率 {{ g.avgAccuracy.toFixed(1) }}%</span>
+              <span class="mg-stat">答题 {{ g.totalAnswers }}</span>
+              <span class="mg-stat" :style="{ color: g.weakCount ? '#f56c6c' : '#67c23a' }">
+                {{ g.weakCount ? '薄弱 ' + g.weakCount : '全部达标' }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 某专题：知识点卡 -->
+        <div v-else>
+          <div class="group-summary">
+            <span class="gs-name">{{ currentGroup.name }}</span>
+            <span class="gs-item">知识点 <b>{{ currentGroup.count }}</b></span>
+            <span class="gs-item">平均熟练度 <b :style="{ color: proficiencyColor(currentGroup.avgScore) }">{{ currentGroup.avgScore }}</b></span>
+            <span class="gs-item">平均正确率 <b>{{ currentGroup.avgAccuracy }}%</b></span>
+            <span class="gs-item">累计答题 <b>{{ currentGroup.totalAnswers }}</b></span>
+            <span v-if="currentGroup.weakCount" class="gs-item" style="color:#f56c6c">薄弱 <b>{{ currentGroup.weakCount }}</b></span>
+          </div>
+          <div class="tag-grid">
+            <div v-for="t in currentGroup.items" :key="t.id" class="tag-card">
+              <div class="tc-head">
+                <span class="tc-name" :title="t.tagName">{{ t.tagName }}</span>
+                <el-tooltip :content="levelCriteria[t.masteryLevel]" placement="top" effect="light">
+                  <el-tag :color="levelColors[t.masteryLevel]" effect="dark" size="small" class="tc-level">
+                    {{ levelLabels[t.masteryLevel] }}
+                  </el-tag>
+                </el-tooltip>
+              </div>
+              <el-progress
+                :percentage="Math.min(100, t.proficiencyScore ?? 0)"
+                :stroke-width="10"
+                :color="proficiencyColor(t.proficiencyScore ?? 0)"
+                :format="() => (t.proficiencyScore ?? 0).toFixed(1)"
+              />
+              <div class="tc-meta">
+                <span>正确率 <b :style="{ color: (t.accuracy ?? 0) >= 80 ? '#67C23A' : (t.accuracy ?? 0) >= 60 ? '#E6A23C' : '#F56C6C' }">{{ (t.accuracy ?? 0).toFixed(1) }}%</b></span>
+                <span>答题 <b>{{ t.totalAnswers }}</b></span>
+                <span v-if="t.weakPointCount > 0" style="color:#F56C6C">薄弱 {{ t.weakPointCount }}</span>
+              </div>
+              <div class="tc-foot">
+                <span class="tc-time">{{ t.lastPracticeTime?.substring(0, 10) ?? '未练习' }}</span>
+                <el-button type="primary" link size="small" @click="goPractice">练习 →</el-button>
               </div>
             </div>
           </div>
-          <el-button type="primary" @click="$router.push('/student/practice')">立即练习</el-button>
-        </div>
-      </div>
-    </el-card>
-
-    <!-- 知识点详情表格 -->
-    <el-card shadow="never" class="section-card" style="margin-top:16px">
-      <template #header>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span>知识点详情</span>
-          <el-tooltip :content="formulaTooltip" placement="top" effect="light">
-            <el-icon style="cursor:help;color:#909399"><QuestionFilled /></el-icon>
-          </el-tooltip>
         </div>
       </template>
-      <el-table :data="data" stripe border max-height="500">
-        <el-table-column prop="tagName" label="知识点" width="140" />
-        <el-table-column label="掌握等级" width="110">
-          <template #default="{ row }">
-            <el-tooltip :content="levelCriteria[row.masteryLevel]" placement="top" effect="light">
-              <el-tag :color="levelColors[row.masteryLevel]" effect="dark" style="cursor:help">
-                {{ levelLabels[row.masteryLevel] }}
-              </el-tag>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column label="熟练度评分" width="120">
-          <template #default="{ row }">
-            <el-tooltip content="综合评分(满分100)=正确率x50%+连续正确x30%+练习量x20%" placement="top" effect="light">
-              <div style="cursor:help">
-                <el-progress
-                  :percentage="Math.min(100, row.proficiencyScore ?? 0)"
-                  :stroke-width="8"
-                  :color="proficiencyColor(row.proficiencyScore ?? 0)"
-                />
+
+      <!-- 拍平视图（精简为 7 列） -->
+      <template v-else>
+        <div class="flat-filters">
+          <el-input v-model="flatKeyword" placeholder="搜索知识点" clearable style="width:170px" />
+          <el-select v-model="flatCat" style="width:170px">
+            <el-option label="全部专题" value="all" />
+            <el-option v-for="g in categoryGroups" :key="g.key" :label="`${g.name} (${g.count})`" :value="String(g.id ?? 'none')" />
+          </el-select>
+          <el-select v-model="flatLevel" style="width:130px">
+            <el-option v-for="o in levelFilterOptions" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+          <el-select v-model="flatSort" style="width:150px">
+            <el-option v-for="o in sortOptions" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+          <span class="flat-count">筛选出 <b>{{ flatRows.length }}</b> / {{ overview.total }}</span>
+        </div>
+
+        <el-table :data="flatRows" stripe border max-height="540">
+          <el-table-column label="知识点" min-width="150">
+            <template #default="{ row }">
+              <div class="cell-tag">
+                <span class="ct-name">{{ row.tagName }}</span>
+                <span class="ct-cat">{{ row.categoryName }}</span>
               </div>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column label="正确率" width="90">
-          <template #default="{ row }">
-            <span :style="{ color: (row.accuracy ?? 0) >= 80 ? '#67C23A' : (row.accuracy ?? 0) >= 60 ? '#E6A23C' : '#F56C6C', fontWeight: 600 }">
-              {{ row.accuracy?.toFixed(1) ?? '-' }}%
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="答题/正确" width="90">
-          <template #default="{ row }">{{ row.totalAnswers }} / {{ row.correctCount }}</template>
-        </el-table-column>
-        <!-- [2026-10-28 清除] 「连续正确」列随 knowledge_mastery.consecutive_correct /
-             max_consecutive_correct 两列一起删除（用户拍板：算不出来的统计连功能一起砍）。
-             原列体：row.consecutiveCorrect + 历史最高 maxConsecutiveCorrect 的 tooltip。 -->
-        <el-table-column prop="weakPointCount" label="薄弱标记" width="90">
-          <template #default="{ row }">
-            <span v-if="row.weakPointCount > 0" style="color:#F56C6C;font-weight:600">{{ row.weakPointCount }}次</span>
-            <span v-else style="color:#67C23A">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="lastPracticeTime" label="最近练习" width="150">
-          <template #default="{ row }">{{ row.lastPracticeTime?.substring(0, 10) ?? '-' }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right">
-          <template #default="{ row: _row }">
-            <el-button type="primary" link @click="$router.push('/student/practice')">练习</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+            </template>
+          </el-table-column>
+          <el-table-column label="掌握等级" width="95" align="center">
+            <template #default="{ row }">
+              <el-tooltip :content="levelCriteria[row.masteryLevel]" placement="top" effect="light">
+                <el-tag :color="levelColors[row.masteryLevel]" effect="dark" style="cursor:help;border:none">
+                  {{ levelLabels[row.masteryLevel] }}
+                </el-tag>
+              </el-tooltip>
+            </template>
+          </el-table-column>
+          <el-table-column label="熟练度" width="140">
+            <template #default="{ row }">
+              <el-progress
+                :percentage="Math.min(100, row.proficiencyScore ?? 0)"
+                :stroke-width="8"
+                :color="proficiencyColor(row.proficiencyScore ?? 0)"
+              />
+            </template>
+          </el-table-column>
+          <el-table-column label="正确率" width="90" align="center">
+            <template #default="{ row }">
+              <span :style="{ color: (row.accuracy ?? 0) >= 80 ? '#67C23A' : (row.accuracy ?? 0) >= 60 ? '#E6A23C' : '#F56C6C', fontWeight: 600 }">
+                {{ row.accuracy?.toFixed(1) ?? '-' }}%
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="答题量" width="95" align="center">
+            <template #default="{ row }">
+              <el-tooltip :content="`答对 ${row.correctCount} / 共 ${row.totalAnswers}；薄弱标记 ${row.weakPointCount} 次`" placement="top">
+                <span style="cursor:help">{{ row.totalAnswers }}</span>
+              </el-tooltip>
+            </template>
+          </el-table-column>
+          <el-table-column label="最近练习" width="110" align="center">
+            <template #default="{ row }">{{ row.lastPracticeTime?.substring(0, 10) ?? '-' }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="75" align="center" fixed="right">
+            <template #default>
+              <el-button type="primary" link @click="goPractice">练习</el-button>
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
     </el-card>
+
+    <!-- ⑤ 行动建议：升级路径 + 学习建议 -->
+    <el-row :gutter="14">
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never" class="section-card h-full">
+          <template #header>
+            <div class="card-head"><span>升级路径</span><span class="head-sub">距下一级还差多少分（差得最少的排前面）</span></div>
+          </template>
+          <div class="upgrade-list">
+            <div v-for="u in (insights?.upgradePath ?? [])" :key="u.tagId" class="up-row">
+              <div class="up-left">
+                <span class="up-name" :title="u.tagName">{{ u.tagName }}</span>
+                <span class="up-flow">
+                  <el-tag size="small" :color="levelColors[u.currentLevel]" effect="dark" style="border:none">{{ u.currentLabel }}</el-tag>
+                  <span class="up-arrow">→</span>
+                  <el-tag size="small" :color="levelColors[u.nextLevel]" effect="dark" style="border:none">{{ u.nextLabel }}</el-tag>
+                </span>
+              </div>
+              <div class="up-right">
+                <span class="up-gap">还差 {{ u.scoreGap }} 分</span>
+              </div>
+            </div>
+            <el-empty v-if="!(insights?.upgradePath ?? []).length" description="暂无待升级知识点" :image-size="50" />
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never" class="section-card h-full">
+          <template #header>
+            <div class="card-head"><span>学习建议</span><span class="head-sub">系统按你的答题情况生成</span></div>
+          </template>
+          <div class="sug-list">
+            <div v-for="s in suggestions" :key="s.id" class="sug-item">
+              <div class="sug-head">
+                <el-tag :color="levelColors[s.masteryLevel]" effect="dark" size="small" style="border:none">
+                  {{ levelLabels[s.masteryLevel] }}
+                </el-tag>
+                <span class="sug-name">{{ s.tagName }}</span>
+                <span class="sug-score" :style="{ color: proficiencyColor(s.proficiencyScore ?? 0) }">{{ (s.proficiencyScore ?? 0).toFixed(1) }}</span>
+              </div>
+              <div class="sug-text">{{ s.studySuggestions }}</div>
+            </div>
+            <el-empty v-if="!suggestions.length" description="暂无学习建议" :image-size="50" />
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <!-- ⑥ 深度分析：近期 vs 历史 / 知识点 × 题型 -->
+    <el-row :gutter="14">
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never" class="section-card h-full">
+          <template #header>
+            <div class="card-head">
+              <span>近期 vs 历史正确率</span>
+              <span class="head-sub">近 30 天对比全部历史，正值为进步</span>
+            </div>
+          </template>
+          <el-table :data="(insights?.trend ?? []).slice(0, 12)" size="small" max-height="330">
+            <el-table-column prop="tagName" label="知识点" min-width="110" show-overflow-tooltip />
+            <el-table-column label="近期" width="90" align="center">
+              <template #default="{ row }">
+                <span v-if="row.recentAnswers > 0">{{ row.recentAccuracy?.toFixed(1) }}%</span>
+                <span v-else class="muted">无</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="历史" width="80" align="center">
+              <template #default="{ row }">{{ row.overallAccuracy?.toFixed(1) }}%</template>
+            </el-table-column>
+            <el-table-column label="变化" width="90" align="center">
+              <template #default="{ row }">
+                <span v-if="row.delta == null" class="muted">-</span>
+                <span v-else :style="{ color: row.delta >= 0 ? '#67C23A' : '#F56C6C', fontWeight: 600 }">
+                  {{ row.delta >= 0 ? '+' : '' }}{{ row.delta.toFixed(1) }}
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="样本" width="70" align="center">
+              <template #default="{ row }"><span class="muted">{{ row.recentAnswers }}</span></template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="!(insights?.trend ?? []).length" description="暂无答题记录" :image-size="50" />
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never" class="section-card h-full">
+          <template #header>
+            <div class="card-head"><span>知识点 × 题型表现</span><span class="head-sub">按答题量排序</span></div>
+          </template>
+          <div class="matrix-list">
+            <div v-for="m in (insights?.typeMatrix ?? []).slice(0, 8)" :key="m.tagId" class="mx-row">
+              <div class="mx-name" :title="m.tagName">{{ m.tagName }}</div>
+              <div class="mx-cells">
+                <el-tooltip
+                  v-for="c in m.cells" :key="c.questionType"
+                  :content="`${c.label}：答对 ${c.correct} / 共 ${c.total}`"
+                  placement="top"
+                >
+                  <span class="mx-cell" :style="{ background: accBg(c.accuracy) }">
+                    {{ c.label }} {{ c.accuracy.toFixed(0) }}%
+                  </span>
+                </el-tooltip>
+              </div>
+            </div>
+            <el-empty v-if="!(insights?.typeMatrix ?? []).length" description="暂无答题记录" :image-size="50" />
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
+
+<script lang="ts">
+/** 题型正确率底色（供模板使用） */
+export default {
+  methods: {
+    accBg(acc: number) {
+      if (acc >= 80) return 'rgba(103,194,58,0.16)'
+      if (acc >= 60) return 'rgba(230,162,60,0.16)'
+      return 'rgba(245,108,108,0.16)'
+    },
+  },
+}
+</script>
 
 <style scoped lang="scss">
 .page-container { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
 
 .section-card {
   border-radius: 8px;
-  :deep(.el-card__header) { padding: 12px 20px; font-weight: 600; font-size: 14px; }
+  :deep(.el-card__header) { padding: 10px 18px; font-weight: 600; font-size: 14px; }
+  :deep(.el-card__body) { padding: 14px 18px; }
+}
+.h-full { height: 100%; }
+
+.card-head {
+  display: flex; align-items: center; gap: 8px;
+  .help-ico { cursor: help; color: #909399; }
+  .head-sub { margin-left: auto; font-size: 11px; font-weight: 400; color: #909399; }
 }
 
-// 雷达图图例
-.radar-legend {
-  display: flex; justify-content: center; gap: 20px; margin-top: 10px;
-  .rl-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #606266; }
-  .rl-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
+/* ---------- 概览 ---------- */
+.ov-card {
+  background: #fff; border: 1px solid #ebeef5; border-radius: 10px;
+  padding: 12px 10px; text-align: center;
+  .ov-num { font-size: 22px; font-weight: 700; line-height: 1.2; color: #303133; font-variant-numeric: tabular-nums; }
+  .ov-label { margin-top: 3px; font-size: 11px; color: #909399; }
 }
 
-// 掌握度网格
-.mastery-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px;
+/* ---------- 覆盖率 ---------- */
+.cover-box { display: flex; align-items: center; gap: 18px; }
+.cover-text { font-size: 13px; color: #606266; line-height: 1.9; b { color: #303133; font-size: 15px; } }
+.cover-warn { color: #e6a23c; font-size: 12px; }
+
+/* ---------- 薄弱 Top10 ---------- */
+.weak-list { max-height: 220px; overflow-y: auto; }
+.weak-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0; font-size: 12px; border-bottom: 1px dashed #f2f3f5;
+  &:last-child { border-bottom: none; }
+  .wr-rank {
+    width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: #fff; background: #f56c6c;
+  }
+  .wr-name { flex: 1; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wr-cat { color: #c0c4cc; font-size: 11px; max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wr-cnt { color: #f56c6c; font-weight: 600; }
 }
+
+/* ---------- 明细卡头部 ---------- */
+.view-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  .vh-left { display: flex; align-items: center; gap: 8px; }
+}
+
+/* ---------- 分类页签 ---------- */
+.cat-tabs {
+  :deep(.el-tabs__header) { margin-bottom: 14px; }
+  :deep(.el-tabs__item) { height: 36px; line-height: 36px; font-size: 13px; }
+}
+.tab-count {
+  display: inline-block; margin-left: 4px; padding: 0 5px;
+  font-size: 11px; line-height: 16px; color: #909399;
+  background: #f2f3f5; border-radius: 8px;
+}
+
+/* ---------- 专题概览网格 ---------- */
+.mastery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
 .mg-card {
-  background: #fafbfc; border: 1px solid #ebeef5; border-radius: 10px; padding: 14px;
+  background: #fafbfc; border: 1px solid #ebeef5; border-radius: 10px; padding: 12px;
   cursor: pointer; transition: all 0.2s;
   &:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-color: #c0c4cc; }
 }
 .mg-header {
-  display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;
-  .mg-name { font-size: 14px; font-weight: 600; color: #303133; }
-  .mg-score { font-size: 20px; font-weight: 700; }
+  display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;
+  .mg-name { font-size: 13px; font-weight: 600; color: #303133; }
+  .mg-score { font-size: 18px; font-weight: 700; }
 }
 .mg-footer {
-  display: flex; gap: 12px; margin-top: 8px; flex-wrap: wrap;
+  display: flex; gap: 10px; margin-top: 7px; flex-wrap: wrap;
   .mg-stat { font-size: 11px; color: #909399; }
 }
 
-// 薄弱知识点建议
-.recommendation-list { display: flex; flex-direction: column; gap: 12px; }
-.rec-item {
-  display: flex; align-items: center; justify-content: space-between;
-  background: #fff8f8; border: 1px solid #fde2e2; border-radius: 8px; padding: 14px;
+/* ---------- 专题汇总条 ---------- */
+.group-summary {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 16px;
+  padding: 9px 14px; margin-bottom: 12px;
+  background: #f5f8ff; border: 1px solid #e4ecff; border-radius: 8px;
+  .gs-name { font-size: 14px; font-weight: 700; color: #303133; }
+  .gs-item { font-size: 12px; color: #909399; b { color: #303133; font-size: 13px; } }
+}
+
+/* ---------- 知识点卡 ---------- */
+.tag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(215px, 1fr)); gap: 10px; }
+.tag-card {
+  background: #fff; border: 1px solid #ebeef5; border-radius: 10px; padding: 11px;
   transition: all 0.2s;
-  &:hover { box-shadow: 0 2px 8px rgba(245,108,108,0.12); }
+  &:hover { box-shadow: 0 3px 10px rgba(0,0,0,0.07); border-color: #dcdfe6; }
 }
-.rec-left { display: flex; align-items: flex-start; gap: 12px; flex: 1; }
-.rec-rank {
-  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  color: #fff; font-size: 14px; font-weight: 700;
+.tc-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 7px;
+  .tc-name { font-size: 13px; font-weight: 600; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tc-level { flex-shrink: 0; border: none; color: #fff; }
 }
-.rec-content { flex: 1; }
-.rec-title { font-size: 14px; font-weight: 600; color: #303133; margin-bottom: 4px; }
-.rec-suggestion { font-size: 13px; color: #606266; line-height: 1.5; margin-bottom: 6px; }
-.rec-meta {
-  display: flex; gap: 16px; font-size: 12px; color: #909399;
-  b { color: #303133; font-size: 13px; }
+.tc-meta {
+  display: flex; gap: 9px; flex-wrap: wrap; margin-top: 5px;
+  font-size: 11px; color: #909399;
+  b { color: #303133; font-size: 12px; }
+}
+.tc-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: 7px; padding-top: 7px; border-top: 1px dashed #f0f2f5;
+  .tc-time { font-size: 11px; color: #c0c4cc; }
+}
+
+/* ---------- 拍平 ---------- */
+.flat-filters {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px;
+  .flat-count { font-size: 12px; color: #909399; b { color: #303133; } }
+}
+.cell-tag {
+  display: flex; flex-direction: column; line-height: 1.35;
+  .ct-name { font-size: 13px; color: #303133; }
+  .ct-cat { font-size: 11px; color: #c0c4cc; }
+}
+.muted { color: #c0c4cc; }
+
+/* ---------- 升级路径 ---------- */
+.upgrade-list { max-height: 300px; overflow-y: auto; }
+.up-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 7px 0; border-bottom: 1px dashed #f2f3f5;
+  &:last-child { border-bottom: none; }
+}
+.up-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.up-name { font-size: 13px; color: #303133; max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up-flow { display: flex; align-items: center; gap: 5px; .up-arrow { color: #c0c4cc; font-size: 12px; } }
+.up-gap { font-size: 12px; color: #e6a23c; font-weight: 600; white-space: nowrap; }
+
+/* ---------- 学习建议 ---------- */
+.sug-list { max-height: 300px; overflow-y: auto; }
+.sug-item {
+  padding: 9px 0; border-bottom: 1px dashed #f2f3f5;
+  &:last-child { border-bottom: none; }
+}
+.sug-head {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+  .sug-name { font-size: 13px; font-weight: 600; color: #303133; }
+  .sug-score { margin-left: auto; font-size: 13px; font-weight: 700; }
+}
+.sug-text { font-size: 12px; color: #606266; line-height: 1.55; }
+
+/* ---------- 题型矩阵 ---------- */
+.matrix-list { max-height: 330px; overflow-y: auto; }
+.mx-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 0; border-bottom: 1px dashed #f2f3f5;
+  &:last-child { border-bottom: none; }
+}
+.mx-name { width: 110px; flex-shrink: 0; font-size: 12px; color: #303133; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-cells { display: flex; gap: 6px; flex-wrap: wrap; }
+.mx-cell {
+  padding: 2px 7px; border-radius: 4px; font-size: 11px; color: #303133; cursor: help;
 }
 </style>

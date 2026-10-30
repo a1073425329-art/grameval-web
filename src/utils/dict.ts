@@ -1,4 +1,4 @@
-export interface DictOption {
+﻿export interface DictOption {
   value: string | number
   label: string
 }
@@ -33,8 +33,9 @@ export const questionTypeDict: DictOption[] = [
   { value: 'SINGLE', label: '单选题' },
   { value: 'MULTIPLE', label: '多选题' },
   { value: 'JUDGE', label: '判断题' },
+  { value: 'FILL', label: '填空题' },
   { value: 'FILL_HINT', label: '填空题' },
-  { value: 'READING', label: '阅读理解' },
+  { value: 'READING', label: '阅读理解题' },
 ]
 
 /**
@@ -62,8 +63,20 @@ export const readingSubtypeDict: DictOption[] = [
   { value: 'TABLE_COMPLETION', label: '表格填空' },
 ]
 
-export const readingSubtypeLabel = (v?: string | undefined): string =>
-  readingSubtypeDict.find(d => d.value === v)?.label || ''
+export const readingSubtypeLabel = (v?: string | undefined): string => {
+  const normalized = v?.trim().toUpperCase()
+  return readingSubtypeDict.find(d => d.value === normalized)?.label || ''
+}
+
+export const readingKnowledgePointLabel = (value?: string | null): string => {
+  if (!value) return ''
+  return readingSubtypeLabel(value) || value
+}
+
+export const questionAnalysisDisplayText = (analysis?: string | null): string => {
+  if (!analysis?.trim()) return ''
+  return analysis === 'Grammar rule explanation.' ? '暂无有效解析' : analysis
+}
 
 // ========== 用户角色相关 ==========
 

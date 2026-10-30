@@ -25,7 +25,38 @@ export interface ExamSession {
   attendedCount?: number
   assignedCount?: number
   submittedCount?: number
+  ongoingCount?: number
   averageScore?: number
+  paperTotalScore?: number
+  questionCount?: number
+
+  // ===== 多表多维深度计算统计字段（零库表字段） =====
+  missedCount?: number
+  attendanceRate?: number
+  missRate?: number
+  highestScore?: number
+  lowestScore?: number
+  passCount?: number
+  passRate?: number
+  excellentCount?: number
+  excellentRate?: number
+  avgDurationMinutes?: number
+  isAnswerPublished?: boolean
+  sessionState?: 'NOT_STARTED' | 'RUNNING' | 'ENDED'
+}
+
+/** 考试场次大盘汇总统计 */
+export interface SessionSummaryStats {
+  totalSessions: number
+  runningSessions: number
+  endedSessions: number
+  notStartedSessions: number
+  totalAssigned: number
+  totalAttended: number
+  totalSubmitted: number
+  overallAttendanceRate: number
+  overallPassRate: number
+  overallAvgScore: number
 }
 
 /** 场次创建/更新请求 —— 对齐后端 SessionRequest */

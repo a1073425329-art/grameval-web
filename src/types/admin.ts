@@ -183,6 +183,52 @@ export interface SessionStatistics {
   passRate: number
   overallAccuracy: number
   distribution: Array<{ range: string; count: number }>
+  /** [2026-10-30] 每种题型正确率（后端实时聚合） */
+  typeAccuracies?: AccuracyRow[]
+  /** [2026-10-30] 每种语法分类正确率（后端实时聚合） */
+  categoryAccuracies?: AccuracyRow[]
+}
+
+/** 正确率行 —— 题型 / 语法维度共用（对齐后端 SessionStatisticsVO.AccuracyRow） */
+export interface AccuracyRow {
+  /** 语法维度为 categoryId；题型维度为 null */
+  id?: number | null
+  name: string
+  totalAttempts: number
+  correctCount: number
+  accuracy: number
+}
+
+/**
+ * 试卷使用统计 —— 对齐后端 PaperUsageStatsVO
+ * GET /api/admin/papers/{paperId}/usage-stats
+ * 全部实时聚合，数据库无统计列。
+ */
+export interface PaperUsageStats {
+  paperId: number
+  paperName: string
+  totalScore?: number
+  passScore?: number
+  questionCount?: number
+  /** 被引用为考试场次的次数 */
+  sessionCount: number
+  /** 有考生提交过的场次数 */
+  submittedSessionCount: number
+  /** 考试记录总数（参考人次） */
+  recordCount: number
+  /** 已出分人数 */
+  scoredCount: number
+  /** 利用率 % = 有提交场次 / 引用场次 */
+  utilizationRate: number
+  averageScore: number
+  highestScore: number
+  lowestScore: number
+  passCount: number
+  passRate: number
+  overallAccuracy: number
+  distribution: Array<{ range: string; count: number }>
+  typeAccuracies?: AccuracyRow[]
+  categoryAccuracies?: AccuracyRow[]
 }
 
 /** 聚合行（分类/题型/子题型共用结构） */

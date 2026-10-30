@@ -8,7 +8,7 @@ import type { AvailableExam } from '@/types/exam'
 const router = useRouter()
 
 /** 当前 tab：all=全部 / available=待考 / resume=续考 / attended=已参加 */
-const tab = ref<'all' | 'available' | 'resume' | 'attended'>('all')
+const tab = ref<'all' | 'available' | 'resume' | 'attended' | 'missed'>('all')
 
 const availableExams = ref<AvailableExam[]>([])
 const attendedExams = ref<AvailableExam[]>([])
@@ -46,16 +46,19 @@ const isOngoing = (e: AvailableExam) => {
 
 const isNotStarted = (e: AvailableExam) => now.value < Date.parse(e.startTime)
 const isEnded = (e: AvailableExam) => now.value > Date.parse(e.endTime)
+/** 缺考 / 已过期未提交：场次已结束，且未参与或进入后未提交 */
+const isMissed = (e: AvailableExam) => isEnded(e) && (e.submitStatus == null || e.submitStatus === 0)
 
 /** 有未完成答卷（意外退出/断点）→ 列表按钮显示「续考」 */
-const isResume = (e: AvailableExam) => e.submitStatus === 0 && e.examRecordId != null
+const isResume = (e: AvailableExam) => e.submitStatus === 0 && e.examRecordId != null && !isEnded(e)
 
 /** 严格模式：不允许续考 */
 const cannotResume = (e: AvailableExam) => isResume(e) && e.allowResume === false
 
 const statusInfo = (e: AvailableExam) => {
+  if (isMissed(e)) return { text: '已缺考', type: 'danger' as const }
   if (isNotStarted(e)) return { text: '未开始', type: 'info' as const }
-  if (isEnded(e)) return { text: '已结束', type: 'danger' as const }
+  if (isEnded(e)) return { text: '已结束', type: 'info' as const }
   return { text: '进行中', type: 'success' as const }
 }
 
@@ -69,21 +72,23 @@ const attendedStatusInfo = (e: AvailableExam) => {
 
 /* ---------------- 汇总统计（客户端从已加载数据聚合） ---------------- */
 const stats = computed(() => {
-  const av = availableExams.value
   const at = attendedExams.value
-  const resumeCount = av.filter(isResume).length
-  const liveCount = av.filter((e) => isOngoing(e) && !isResume(e)).length
-  const notStartedCount = av.filter(isNotStarted).length
+  const all = allExams.value
+  const resumeCount = all.filter(isResume).length
+  const liveCount = all.filter((e) => isOngoing(e) && !isResume(e)).length
+  const notStartedCount = all.filter(isNotStarted).length
+  const missedCount = all.filter(isMissed).length
   const submittedCount = at.filter((e) => e.submitStatus === 1 || e.submitStatus === 2).length
   const scoreList = at.map((e) => e.myScore).filter((s): s is number => s != null)
   const avgScore = scoreList.length
     ? scoreList.reduce((a, b) => a + b, 0) / scoreList.length
     : null
   return {
-    available: av.length,
+    available: all.filter((e) => isPending(e) && !isEnded(e)).length,
     resumeCount,
     liveCount,
     notStartedCount,
+    missedCount,
     attended: at.length,
     submittedCount,
     avgScore,
@@ -93,7 +98,7 @@ const stats = computed(() => {
 /* ---------------- 查询条件（客户端过滤） ---------------- */
 const query = reactive({
   keyword: '',
-  status: '' as '' | 'live' | 'not_started' | 'ended' | 'resume' | 'submitted' | 'unfinished',
+  status: '' as '' | 'live' | 'not_started' | 'ended' | 'resume' | 'submitted' | 'unfinished' | 'missed',
 })
 
 const matchKeyword = (e: AvailableExam) => {
@@ -143,6 +148,8 @@ const applyStatusFilter = (list: AvailableExam[]) => {
         return e.submitStatus === 1 || e.submitStatus === 2
       case 'unfinished':
         return e.submitStatus === 0
+      case 'missed':
+        return isMissed(e)
       default:
         return true
     }
@@ -172,8 +179,11 @@ const filteredResume = computed(() =>
 )
 const filteredAttended = computed(() =>
   applyStatusFilter(
-    attendedExams.value.filter((e) => matchKeyword(e) && !isResume(e))
+    attendedExams.value.filter((e) => matchKeyword(e) && !isResume(e) && !isMissed(e))
   ).sort(bySort)
+)
+const filteredMissed = computed(() =>
+  applyStatusFilter(allExams.value.filter((e) => matchKeyword(e) && isMissed(e))).sort(bySort)
 )
 
 /** 当前 tab 渲染列表 */
@@ -187,6 +197,8 @@ const currentList = computed(() => {
       return filteredResume.value
     case 'attended':
       return filteredAttended.value
+    case 'missed':
+      return filteredMissed.value
     default:
       return filteredAll.value
   }
@@ -261,6 +273,7 @@ const allCount = computed(() => filteredAll.value.length)
 const availableCount = computed(() => filteredAvailable.value.length)
 const resumeCount = computed(() => filteredResume.value.length)
 const attendedCount = computed(() => filteredAttended.value.length)
+const missedCount = computed(() => filteredMissed.value.length)
 
 /** 时间显示：去掉秒，统一短格式 */
 const fmtTime = (v: string) => (v || '').slice(0, 16)
@@ -274,30 +287,37 @@ const fmtTime = (v: string) => (v || '').slice(0, 16)
       <el-button @click="refresh"><el-icon><Refresh /></el-icon>刷新</el-button>
     </div>
 
-    <!-- ============================ 汇总统计 ============================ -->
+    <!-- ============================ 汇总统计（纯客户端动态计算） ============================ -->
     <el-row :gutter="12" class="stat-row">
-      <el-col :span="6">
+      <el-col :span="5">
         <div class="stat-card">
           <div class="stat-label">待考场次</div>
           <div class="stat-value text-primary">{{ stats.available }}</div>
           <div class="stat-sub">开放中 {{ stats.liveCount }} · 未开始 {{ stats.notStartedCount }}</div>
         </div>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="4">
         <div class="stat-card">
-          <div class="stat-label">未完成答卷</div>
+          <div class="stat-label">可续考答卷</div>
           <div class="stat-value text-warning">{{ stats.resumeCount }}</div>
-          <div class="stat-sub">可续考 {{ stats.resumeCount }} 场</div>
+          <div class="stat-sub">{{ stats.resumeCount > 0 ? '进行中可继续' : '暂无未完答卷' }}</div>
         </div>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="5">
         <div class="stat-card">
-          <div class="stat-label">已参加</div>
+          <div class="stat-label">已参加考试</div>
           <div class="stat-value">{{ stats.attended }}</div>
-          <div class="stat-sub">已提交 {{ stats.submittedCount }}</div>
+          <div class="stat-sub">已提交 {{ stats.submittedCount }} 场</div>
         </div>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="5">
+        <div class="stat-card">
+          <div class="stat-label">缺考 / 已过期</div>
+          <div class="stat-value text-danger" style="color:#f56c6c">{{ stats.missedCount }}</div>
+          <div class="stat-sub">{{ stats.missedCount > 0 ? '场次已截止未参与' : '无缺考场次' }}</div>
+        </div>
+      </el-col>
+      <el-col :span="5">
         <div class="stat-card">
           <div class="stat-label">平均得分</div>
           <div class="stat-value text-success">
@@ -606,6 +626,71 @@ const fmtTime = (v: string) => (v || '').slice(0, 16)
                   style="width: 100%"
                   @click="viewResult(e)"
                 >查看成绩详情</el-button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </el-tab-pane>
+      <!-- ============================ 缺考 ============================ -->
+      <el-tab-pane :name="'missed'">
+        <template #label>
+          <span class="tab-label">
+            缺考 / 已过期
+            <el-badge :value="missedCount" :max="99" :hidden="!missedCount" class="tab-badge" type="danger" />
+          </span>
+        </template>
+        <div v-loading="loadingAvailable || loadingAttended">
+          <el-empty
+            v-if="!currentList.length && !(loadingAvailable || loadingAttended)"
+            description="没有缺考场次"
+          />
+          <div class="exam-grid">
+            <div
+              v-for="e in currentList"
+              :key="'missed-' + e.id"
+              class="exam-card is-ended"
+            >
+              <div class="card-head">
+                <h4 class="exam-name" :title="e.sessionName">{{ e.sessionName }}</h4>
+                <div class="head-tags">
+                  <el-tag type="danger">已缺考</el-tag>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="row">
+                  <el-icon><Document /></el-icon>
+                  <span class="row-text" :title="e.paperName">{{ e.paperName || `试卷 #${e.paperId}` }}</span>
+                </div>
+                <div class="row">
+                  <el-icon><Timer /></el-icon>
+                  <span>{{ e.duration }} 分钟</span>
+                </div>
+                <div class="row">
+                  <el-icon><Clock /></el-icon>
+                  <span>{{ fmtTime(e.startTime) }}</span>
+                </div>
+                <div class="row">
+                  <el-icon><Clock /></el-icon>
+                  <span>{{ fmtTime(e.endTime) }} (已截止)</span>
+                </div>
+                <div class="row score-row">
+                  <el-icon><Warning /></el-icon>
+                  <span style="color:#f56c6c">状态：未在开放时间内参加 / 未交卷</span>
+                </div>
+              </div>
+              <div class="card-foot">
+                <el-button
+                  v-if="e.examRecordId != null"
+                  type="primary"
+                  style="width: 100%"
+                  @click="viewResult(e)"
+                >查看答卷/成绩</el-button>
+                <el-button
+                  v-else
+                  disabled
+                  type="info"
+                  style="width: 100%"
+                >考试已截止（缺考）</el-button>
               </div>
             </div>
           </div>

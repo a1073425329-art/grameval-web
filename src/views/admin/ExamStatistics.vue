@@ -29,6 +29,14 @@ const load = async () => {
 
 onMounted(load)
 
+/** [2026-10-30] 正确率配色：≥70 绿 / 40-70 橙 / <40 红 */
+const accColor = (rate?: number | null) => {
+  const v = Number(rate ?? 0)
+  if (v >= 70) return '#67C23A'
+  if (v >= 40) return '#E6A23C'
+  return '#F56C6C'
+}
+
 /* ---------------- 图表配置 ---------------- */
 const distributionOption = computed(() => ({
   title: { text: '分数区间分布', left: 'center', textStyle: { fontSize: 15 } },
@@ -162,6 +170,64 @@ const passRateOption = computed(() => {
         </el-col>
       </el-row>
 
+      <!-- 按题型 / 按语法分类正确率（实时聚合 answer_record + question，不落库） -->
+      <el-row :gutter="16" class="dim-row">
+        <el-col :md="12" :xs="24">
+          <el-card shadow="never" class="dim-card">
+            <template #header>
+              <div class="dim-head">
+                <span>按题型正确率</span>
+                <span class="dim-sub">实时聚合</span>
+              </div>
+            </template>
+            <el-empty v-if="!stat.typeAccuracies?.length" description="暂无作答数据" :image-size="48" />
+            <div v-for="r in stat.typeAccuracies" :key="r.name" class="dim-line">
+              <span class="dim-name">{{ r.name }}</span>
+              <el-progress
+                :percentage="Number(Number(r.accuracy).toFixed(1))"
+                :color="accColor(r.accuracy)"
+                :stroke-width="14"
+                :show-text="false"
+                class="dim-bar"
+              />
+              <span class="dim-val" :style="{ color: accColor(r.accuracy) }">
+                {{ Number(r.accuracy).toFixed(1) }}%
+              </span>
+              <span class="dim-cnt">{{ r.correctCount }}/{{ r.totalAttempts }}</span>
+            </div>
+          </el-card>
+        </el-col>
+        <el-col :md="12" :xs="24">
+          <el-card shadow="never" class="dim-card">
+            <template #header>
+              <div class="dim-head">
+                <span>按语法分类正确率</span>
+                <span class="dim-sub">作答量前 10</span>
+              </div>
+            </template>
+            <el-empty v-if="!stat.categoryAccuracies?.length" description="暂无作答数据" :image-size="48" />
+            <div
+              v-for="r in (stat.categoryAccuracies ?? []).slice(0, 10)"
+              :key="r.id ?? r.name"
+              class="dim-line"
+            >
+              <span class="dim-name" :title="r.name">{{ r.name }}</span>
+              <el-progress
+                :percentage="Number(Number(r.accuracy).toFixed(1))"
+                :color="accColor(r.accuracy)"
+                :stroke-width="14"
+                :show-text="false"
+                class="dim-bar"
+              />
+              <span class="dim-val" :style="{ color: accColor(r.accuracy) }">
+                {{ Number(r.accuracy).toFixed(1) }}%
+              </span>
+              <span class="dim-cnt">{{ r.correctCount }}/{{ r.totalAttempts }}</span>
+            </div>
+          </el-card>
+        </el-col>
+      </el-row>
+
       <!-- 及格率进度条 -->
       <el-card shadow="never">
         <div class="pass-row">
@@ -212,4 +278,63 @@ const passRateOption = computed(() => {
 .pass-title { font-size: 14px; color: #606266; margin-bottom: 4px; }
 .pass-detail { font-size: 18px; }
 .pass-bar { flex: 1; }
+
+/* ---------- 按题型 / 按语法正确率 ---------- */
+.dim-row { margin-top: 16px; }
+
+.dim-card {
+  height: 100%;
+  :deep(.el-card__header) { padding: 10px 16px; }
+}
+
+.dim-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.dim-sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: #7c4dff;
+  background: rgba(124, 77, 255, 0.1);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.dim-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+  font-size: 12px;
+}
+
+.dim-name {
+  width: 110px;
+  flex-shrink: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #606266;
+}
+
+.dim-bar { flex: 1; min-width: 50px; }
+
+.dim-val {
+  width: 48px;
+  text-align: right;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.dim-cnt {
+  width: 64px;
+  text-align: right;
+  color: #909399;
+  font-size: 11px;
+}
 </style>

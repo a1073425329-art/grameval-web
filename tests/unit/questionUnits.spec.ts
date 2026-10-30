@@ -58,6 +58,11 @@ describe('question unit projections', () => {
     })
   })
 
+  it('treats missing answer units as an empty result list', () => {
+    expect(flattenAnswerUnits(null)).toEqual([])
+    expect(flattenAnswerUnits(undefined)).toEqual([])
+  })
+
   it('flattens practice units without losing the article group context', () => {
     const questions = flattenPracticeQuestionUnits([
       {

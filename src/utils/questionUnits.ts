@@ -37,8 +37,8 @@ export const flattenExamQuestionUnits = (units: ExamQuestionUnit[]): ExamQuestio
     return unit.questionId == null ? [] : [{ ...unit, questionId: unit.questionId } as ExamQuestionItem]
   })
 
-export const flattenAnswerUnits = (units: AnswerUnit[]): AnswerReviewItem[] =>
-  units.flatMap((unit): AnswerReviewItem[] => {
+export const flattenAnswerUnits = (units: AnswerUnit[] | null | undefined): AnswerReviewItem[] =>
+  (units ?? []).flatMap((unit): AnswerReviewItem[] => {
     if (unit.unitType === 'READING') {
       return (unit.subQuestions ?? []).map((answer) => ({
         ...answer,

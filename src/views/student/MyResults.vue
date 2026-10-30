@@ -40,6 +40,7 @@ const loading = ref(false)
 const query = reactive({
   keyword: '',
   isPass: undefined as boolean | undefined,
+  submitStatus: undefined as number | undefined,
   minScore: undefined as number | undefined,
   maxScore: undefined as number | undefined,
   pageNum: 1,
@@ -56,6 +57,7 @@ const load = async () => {
         pageSize: query.pageSize,
         keyword: query.keyword || undefined,
         isPass: query.isPass,
+        submitStatus: query.submitStatus,
         minScore: query.minScore,
         maxScore: query.maxScore,
       }),
@@ -74,7 +76,7 @@ const load = async () => {
 }
 
 const search = () => { query.pageNum = 1; load() }
-const reset = () => { query.keyword = ''; query.isPass = undefined; query.minScore = undefined; query.maxScore = undefined; query.pageNum = 1; load() }
+const reset = () => { query.keyword = ''; query.isPass = undefined; query.submitStatus = undefined; query.minScore = undefined; query.maxScore = undefined; query.pageNum = 1; load() }
 
 /** 用百分制成绩上色 */
 const scoreColor = (row: ExamResultItem) => {
@@ -293,30 +295,42 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="page">
-    <!-- 汇总卡片 -->
-    <el-row :gutter="16" class="stat-row">
-      <el-col :span="6">
+    <!-- 汇总卡片（纯动态计算聚合，不增库表字段） -->
+    <el-row :gutter="12" class="stat-row">
+      <el-col :span="4">
         <div class="stat-card">
           <div class="stat-label">考试次数</div>
-          <div class="stat-value">{{ summary.totalCount }}</div>
+          <div class="stat-value text-primary">{{ summary.totalCount }}</div>
         </div>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="4">
         <div class="stat-card">
-          <div class="stat-label">平均分</div>
+          <div class="stat-label">平均得分</div>
           <div class="stat-value">{{ (summary.averageScore ?? 0).toFixed(1) }}</div>
         </div>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="4">
         <div class="stat-card">
-          <div class="stat-label">最高分</div>
-          <div class="stat-value" style="color:#67c23a">{{ summary.highestScore }}</div>
+          <div class="stat-label">综合及格率</div>
+          <div class="stat-value text-success" style="color:#67c23a">{{ (summary.passRate ?? 0).toFixed(1) }}%</div>
         </div>
       </el-col>
-      <el-col :span="6">
+      <el-col :span="4">
         <div class="stat-card">
-          <div class="stat-label">总正确率</div>
-          <div class="stat-value" style="color:#409eff">{{ (summary.totalAccuracy ?? 0).toFixed(1) }}%</div>
+          <div class="stat-label">最高得分</div>
+          <div class="stat-value" style="color:#409eff">{{ summary.highestScore }}</div>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="stat-card">
+          <div class="stat-label">缺考 / 未交</div>
+          <div class="stat-value" :style="{ color: (summary.missedCount ?? 0) > 0 ? '#f56c6c' : '#909399' }">{{ summary.missedCount ?? 0 }}</div>
+        </div>
+      </el-col>
+      <el-col :span="4">
+        <div class="stat-card">
+          <div class="stat-label">总答题正确率</div>
+          <div class="stat-value" style="color:#e6a23c">{{ (summary.totalAccuracy ?? 0).toFixed(1) }}%</div>
         </div>
       </el-col>
     </el-row>
@@ -349,8 +363,15 @@ onBeforeUnmount(() => {
           <el-form-item label="考试名称">
             <el-input v-model="query.keyword" placeholder="搜索考试" clearable style="width:200px" />
           </el-form-item>
+          <el-form-item label="提交状态">
+            <el-select v-model="query.submitStatus" clearable placeholder="全部" style="width:130px">
+              <el-option label="正常提交" :value="1" />
+              <el-option label="超时提交" :value="2" />
+              <el-option label="未交卷/缺考" :value="0" />
+            </el-select>
+          </el-form-item>
           <el-form-item label="及格状态">
-            <el-select v-model="query.isPass" clearable placeholder="全部" style="width:120px">
+            <el-select v-model="query.isPass" clearable placeholder="全部" style="width:110px">
               <el-option label="及格" :value="true" />
               <el-option label="不及格" :value="false" />
             </el-select>
@@ -436,12 +457,21 @@ onBeforeUnmount(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column type="index" label="#" width="60" />
+        <el-table-column type="index" label="#" width="50" />
         <el-table-column prop="sessionName" label="考试名称" min-width="150" show-overflow-tooltip />
         <el-table-column prop="paperName" label="试卷" min-width="120" show-overflow-tooltip />
+        <el-table-column label="状态" width="105" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.submitStatus === 1" type="success" size="small">已提交</el-tag>
+            <el-tag v-else-if="row.submitStatus === 2" type="info" size="small">超时提交</el-tag>
+            <el-tag v-else-if="row.submitStatus === 0" type="danger" size="small">未交卷/缺考</el-tag>
+            <el-tag v-else type="info" size="small">-</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="分数" width="140" align="center">
           <template #default="{ row }">
-            <span :style="{ color: scoreColor(row) }">{{ row.totalScore ?? '-' }}</span>
+            <span v-if="row.totalScore != null" :style="{ color: scoreColor(row) }">{{ row.totalScore }}</span>
+            <span v-else style="color:#f56c6c">0.00</span>
             <span style="color:#c0c4cc">/ {{ row.paperTotalScore ?? '-' }}</span>
           </template>
         </el-table-column>

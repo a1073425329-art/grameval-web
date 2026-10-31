@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCategoryTree, getPracticeQuestions, submitPractice, listPractices, startPractice as openPracticeSession, answerInPractice, finishPractice, generateStudentQuestions, getPracticeAnswers } from '@/api/student'
+import { streamPost } from '@/utils/streamAi'
+import { renderMarkdown } from '@/utils/markdown'
 import { getAlgorithmAdaptiveNext, startAlgorithmAdaptivePractice, submitAlgorithmAdaptiveAnswer } from '@/api/algorithms'
 import { algorithmAdaptiveStopLabel, type AlgorithmAdaptivePracticeResult } from '@/types/algorithms'
 import type { QuestionUnit } from '@/types/reading'
@@ -431,6 +433,21 @@ const answerDisplay = (a: unknown, t?: QuestionType): string => {
   return str
 }
 
+// [2026-11-01] AI 错题解析增量获取：流式拉取，逐段填充到 feedbacks
+const fetchWrongAiAnalysis = async (qid: number, stem: string, studentAns: string, correctAns: string, category: string) => {
+  await streamPost('/api/student/ai/wrong-analysis/stream', {
+    body: { stem, studentAnswer: studentAns, correctAnswer: correctAns, category },
+    onChunk: (text) => {
+      const fb = feedbacks.value[qid]
+      if (fb) { fb.aiAnalysis = (fb.aiAnalysis || '') + text; feedbacks.value = { ...feedbacks.value } }
+    },
+    onDone: () => {},
+    onError: (err) => {
+      console.warn('AI 错题解析流式失败', err)
+    },
+  })
+}
+
 const submit = async () => {
   if (!current.value) return
   const ans = formatAnswer(current.value.questionType, userAnswers.value[current.value.id])
@@ -447,6 +464,11 @@ const submit = async () => {
       ? await submitAlgorithmAdaptiveAnswer(pid, answer)
       : await submitPractice(answer)
     feedbacks.value = { ...feedbacks.value, [current.value.id]: res.data }
+    // [2026-11-01] AI 错题解析改增量：答错后异步拉流式解析，不阻塞提交
+    if (!res.data.isCorrect && !res.data.aiAnalysis) {
+      fetchWrongAiAnalysis(current.value.id, current.value.stem ?? '',
+        ans, res.data.standardAnswer, current.value.categoryName ?? '')
+    }
     // 普通练习沿用原落库行为；CAT 必须以会话答案接口成功作为推进条件。
     if (practiceMode.value === 'CAT' && pid != null) {
       persistedAnswerIds.value.add(current.value.id)
@@ -906,7 +928,8 @@ const submitAiGenerate = async () => {
                 <span class="fb-label fb-ai-label">
                   <el-icon><MagicStick /></el-icon> AI 解析：
                 </span>
-                <span class="analysis ai-text">{{ currentFeedback.aiAnalysis || 'AI 解析生成中，可稍后回顾查看…' }}</span>
+                <!-- eslint-disable-next-line vue/no-v-html —— AI 解析为可信后端 Markdown，已经 renderMarkdown 转义 -->
+                <span class="analysis ai-text" v-html="currentFeedback.aiAnalysis ? renderMarkdown(currentFeedback.aiAnalysis) : 'AI 解析加载中…'" />
               </div>
             </div>
           </div>
@@ -1002,7 +1025,9 @@ const submitAiGenerate = async () => {
           <!-- AI 错题解析：仅错题且已入库时展示，与提交时生成的是同一份 -->
           <div v-if="a.isCorrect === 0 && a.aiAnalysis" class="pd-ai">
             <el-icon><MagicStick /></el-icon>
-            <div><strong>AI 错题解析：</strong>{{ a.aiAnalysis }}</div>
+            <div><strong>AI 错题解析：</strong>
+              <!-- eslint-disable-next-line vue/no-v-html —— AI 解析为可信后端 Markdown，已经 renderMarkdown 转义 -->
+              <span v-html="renderMarkdown(a.aiAnalysis)" /></div>
           </div>
         </div>
       </div>

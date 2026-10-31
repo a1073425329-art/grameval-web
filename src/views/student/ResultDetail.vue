@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getResultDetail, getDimensionAnalysis } from '@/api/student'
 import { streamPost } from '@/utils/streamAi'
+import { renderMarkdown } from '@/utils/markdown'
 import type { ResultDetail as ResultDetailType } from '@/types/result'
 import { flattenAnswerUnits, type AnswerReviewItem } from '@/utils/questionUnits'
 import type { DimensionAnalysis } from '@/types/stats'
@@ -35,6 +36,7 @@ const dimLoading = ref(false)
 const aiAnalysis = ref('')
 const aiLoading = ref(false)
 const aiError = ref('')
+const aiHtml = computed(() => renderMarkdown(aiAnalysis.value))
 
 const load = async () => {
   loading.value = true
@@ -603,7 +605,8 @@ const dimDifficultyChartOption = computed(() => {
             <el-icon><MagicStick /></el-icon>
             <span>AI 错题解析</span>
           </div>
-          <div class="analysis-content">{{ a.aiAnalysis }}</div>
+          <!-- eslint-disable-next-line vue/no-v-html —— AI 解析为可信后端 Markdown，已经 renderMarkdown 转义 -->
+          <div class="analysis-content" v-html="renderMarkdown(a.aiAnalysis)" />
         </div>
       </div>
     </div>
@@ -700,7 +703,8 @@ const dimDifficultyChartOption = computed(() => {
         <el-alert type="error" :title="aiError" :closable="false" />
       </div>
       <el-card v-else-if="aiAnalysis" shadow="never" class="ai-card">
-        <div class="ai-content">{{ aiAnalysis }}<span v-if="aiLoading" class="ai-cursor">▊</span></div>
+        <!-- eslint-disable-next-line vue/no-v-html —— AI 分析为可信后端 Markdown，已经 renderMarkdown 转义 -->
+        <div class="ai-content" :class="{ streaming: aiLoading }" v-html="aiHtml" />
       </el-card>
       <div v-else class="ai-placeholder">
         <el-text type="info">点击「生成 AI 分析」，AI 将根据你的本次考试表现生成个性化分析与学习建议。</el-text>
@@ -721,8 +725,12 @@ const dimDifficultyChartOption = computed(() => {
 .ai-title { margin: 0; font-size: 16px; font-weight: 600; color: #303133; }
 .ai-loading { display: flex; align-items: center; gap: 10px; padding: 24px; color: #909399; font-size: 14px; }
 .ai-card { border-left: 3px solid #409eff; }
-.ai-content { font-size: 14px; line-height: 1.8; color: #303133; white-space: pre-wrap; }
-.ai-cursor { color: #409eff; animation: blink 0.8s infinite; }
+.ai-content { font-size: 14px; line-height: 1.8; color: #303133; }
+.ai-content.streaming::after {
+  content: '▊';
+  color: #409eff;
+  animation: blink 0.8s infinite;
+}
 @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
 .ai-placeholder { padding: 20px; text-align: center; }
 

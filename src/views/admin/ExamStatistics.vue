@@ -8,6 +8,7 @@ import { BarChart, PieChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import { getSessionStatistics } from '@/api/admin'
 import { streamPost } from '@/utils/streamAi'
+import { renderMarkdown } from '@/utils/markdown'
 import type { SessionStatistics } from '@/types/admin'
 import { Cpu, Loading } from '@element-plus/icons-vue'
 
@@ -24,6 +25,7 @@ const loading = ref(false)
 const aiAnalysis = ref('')
 const aiLoading = ref(false)
 const aiError = ref('')
+const aiHtml = computed(() => renderMarkdown(aiAnalysis.value))
 
 const load = async () => {
   loading.value = true
@@ -283,7 +285,8 @@ const passRateOption = computed(() => {
         <el-alert type="error" :title="aiError" :closable="false" />
       </div>
       <el-card v-else-if="aiAnalysis" shadow="never" class="ai-card">
-        <div class="ai-content">{{ aiAnalysis }}<span v-if="aiLoading" class="ai-cursor">▊</span></div>
+        <!-- eslint-disable-next-line vue/no-v-html —— AI 分析为可信后端 Markdown，已经 renderMarkdown 转义 -->
+        <div class="ai-content" :class="{ streaming: aiLoading }" v-html="aiHtml" />
       </el-card>
       <div v-else class="ai-placeholder">
         <el-text type="info">点击右上角「AI 整卷分析」，AI 将根据全班成绩生成教学分析与建议。</el-text>
@@ -385,8 +388,12 @@ const passRateOption = computed(() => {
 .ai-title { margin: 0; font-size: 16px; font-weight: 600; color: #303133; }
 .ai-loading { display: flex; align-items: center; gap: 10px; padding: 24px; color: #909399; font-size: 14px; }
 .ai-card { border-left: 3px solid #409eff; }
-.ai-content { font-size: 14px; line-height: 1.8; color: #303133; white-space: pre-wrap; }
-.ai-cursor { color: #409eff; animation: blink 0.8s infinite; }
+.ai-content { font-size: 14px; line-height: 1.8; color: #303133; }
+.ai-content.streaming::after {
+  content: '▊';
+  color: #409eff;
+  animation: blink 0.8s infinite;
+}
 @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
 .ai-placeholder { padding: 20px; text-align: center; }
 </style>

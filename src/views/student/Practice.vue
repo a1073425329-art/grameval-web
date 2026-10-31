@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getCategoryTree, getPracticeQuestions, submitPractice, listPractices, startPractice as openPracticeSession, answerInPractice, finishPractice, generateStudentQuestions } from '@/api/student'
+import { getCategoryTree, getPracticeQuestions, submitPractice, listPractices, startPractice as openPracticeSession, answerInPractice, finishPractice, generateStudentQuestions, getPracticeAnswers } from '@/api/student'
 import { getAlgorithmAdaptiveNext, startAlgorithmAdaptivePractice, submitAlgorithmAdaptiveAnswer } from '@/api/algorithms'
 import { algorithmAdaptiveStopLabel, type AlgorithmAdaptivePracticeResult } from '@/types/algorithms'
 import type { QuestionUnit } from '@/types/reading'
 import type { Category } from '@/types/category'
-import type { QuickPracticeResult, PracticeRecord } from '@/types/question'
+import type { QuickPracticeResult, PracticeRecord, PracticeAnswerDetail } from '@/types/question'
 import { flattenPracticeQuestionUnits, type PracticeQuestionItem } from '@/utils/questionUnits'
 import type { QuestionType, Difficulty } from '@/types/common'
 import { ElMessage } from 'element-plus'
@@ -13,7 +13,7 @@ import { useAuthStore } from '@/stores/auth'
 import PassageCard from '@/components/PassageCard.vue'
 // [2026-10-16] 复用既有的分类多选组件（带搜索/全选/分组折叠/计数），替代原先平铺 127 项的下拉
 import CategoryMultiPicker from '@/components/CategoryMultiPicker.vue'
-import { readingSubtypeLabel, getJudgeOptionLabel } from '@/utils/dict'
+import { readingSubtypeLabel, getJudgeOptionLabel, questionTypeDict } from '@/utils/dict'
 
 const authStore = useAuthStore()
 
@@ -76,6 +76,10 @@ const passageGroupIndex = (idx: number): number | undefined => {
 
 /** 阅读子题型的中文名（细节题/主旨题/推断题…）；非阅读题为空串，模板据此隐藏标签 */
 const subtypeLabel = computed(() => readingSubtypeLabel(current.value?.questionSubtype))
+
+/** 题型中文名（单选/多选/判断/填空/阅读理解）；未知类型回落原值 */
+const questionTypeLabel = (v?: string | null): string =>
+  questionTypeDict.find(d => d.value === v?.trim().toUpperCase())?.label || (v || '')
 
 /* ============================================================ *
  *  练习会话（落库）：startPractice / answerInPractice / finishPractice
@@ -213,6 +217,27 @@ const recordDuration = (r: PracticeRecord) => {
   return mins + ' 分钟'
 }
 const recordDate = (r: PracticeRecord) => (r.startTime || '').slice(0, 10)
+
+/* [2026-10-31 新增] 练习答题明细弹窗（入口 C：历史回顾，错题含入库的 AI 解析） */
+const detailVisible = ref(false)
+const detailLoading = ref(false)
+const detailRecord = ref<PracticeRecord | null>(null)
+const detailAnswers = ref<PracticeAnswerDetail[]>([])
+
+const openPracticeDetail = async (r: PracticeRecord) => {
+  detailRecord.value = r
+  detailAnswers.value = []
+  detailVisible.value = true
+  detailLoading.value = true
+  try {
+    const res = await getPracticeAnswers(r.id)
+    detailAnswers.value = res.data ?? []
+  } catch {
+    /* 静默：明细加载失败不阻塞弹窗，可重试 */
+  } finally {
+    detailLoading.value = false
+  }
+}
 
 /** 练习进度看板统计：累计练习题数 / 综合正确率 / 连续天数 / 专题覆盖 */
 const practiceStats = computed(() => {
@@ -876,6 +901,13 @@ const submitAiGenerate = async () => {
                 <span class="fb-label">解析：</span>
                 <span class="analysis">{{ currentFeedback.analysis }}</span>
               </div>
+              <!-- [2026-10-31 新增] AI 错题解析：仅答错时展示，内容按学生所选错误答案动态生成 -->
+              <div class="fb-row fb-ai" v-if="!currentFeedback.isCorrect">
+                <span class="fb-label fb-ai-label">
+                  <el-icon><MagicStick /></el-icon> AI 解析：
+                </span>
+                <span class="analysis ai-text">{{ currentFeedback.aiAnalysis || 'AI 解析生成中，可稍后回顾查看…' }}</span>
+              </div>
             </div>
           </div>
 
@@ -909,7 +941,12 @@ const submitAiGenerate = async () => {
             <span><el-icon><Clock /></el-icon> 最近练习记录</span>
           </div>
           <el-scrollbar height="calc(100vh - 300px)" v-loading="recordsLoading">
-            <div v-for="r in practiceRecords" :key="r.id" class="record-item">
+            <div
+              v-for="r in practiceRecords"
+              :key="r.id"
+              class="record-item clickable"
+              @click="openPracticeDetail(r)"
+            >
               <div class="ri-top">
                 <span class="ri-cat">{{ r.categoryName || '专题练习' }}</span>
                 <span class="ri-score" :style="{ color: recordScoreColor(r) }">{{ recordScore(r) }}</span>
@@ -931,6 +968,48 @@ const submitAiGenerate = async () => {
         </div>
       </transition>
     </div>
+
+    <!-- [2026-10-31 新增] 练习答题明细：入口 C，历史回顾查看每次练习的逐题结果与 AI 错题解析 -->
+    <el-dialog v-model="detailVisible" width="820px" top="6vh" destroy-on-close>
+      <template #header>
+        <div class="pd-header">
+          <el-icon><Document /></el-icon>
+          <span>练习答题明细</span>
+          <el-tag v-if="detailRecord" size="small" effect="plain" style="margin-left:8px">
+            {{ detailRecord.categoryName || '专题练习' }}
+          </el-tag>
+          <el-tag v-if="detailRecord" size="small" :type="recordScoreColor(detailRecord) === '#67c23a' ? 'success' : recordScoreColor(detailRecord) === '#e6a23c' ? 'warning' : 'danger'" effect="plain" style="margin-left:6px">
+            正确率 {{ recordScore(detailRecord) }}
+          </el-tag>
+        </div>
+      </template>
+      <div v-loading="detailLoading" style="min-height:160px">
+        <el-empty v-if="!detailLoading && !detailAnswers.length" description="本次练习没有答题明细" :image-size="60" />
+        <div v-for="(a, i) in detailAnswers" :key="a.questionId" class="pd-item">
+          <div class="pd-item-head">
+            <span class="pd-no">{{ i + 1 }}</span>
+            <el-tag v-if="a.questionType" size="small" effect="plain" style="margin-right:6px">{{ questionTypeLabel(a.questionType) }}</el-tag>
+            <el-icon :class="a.isCorrect === 1 ? 'pd-ok' : 'pd-ng'">
+              <CircleCheck v-if="a.isCorrect === 1" /><CircleClose v-else />
+            </el-icon>
+            <span class="pd-stem">{{ a.stem || '（题干缺失）' }}</span>
+          </div>
+          <div class="pd-answers">
+            <span>你的答案：<b :class="a.isCorrect === 1 ? 'pd-ok' : 'pd-ng'">{{ a.userAnswer || '（未作答）' }}</b></span>
+            <span>正确答案：<b class="pd-ok">{{ a.standardAnswer || '—' }}</b></span>
+          </div>
+          <div v-if="a.analysis" class="pd-analysis">解析：{{ a.analysis }}</div>
+          <!-- AI 错题解析：仅错题且已入库时展示，与提交时生成的是同一份 -->
+          <div v-if="a.isCorrect === 0 && a.aiAnalysis" class="pd-ai">
+            <el-icon><MagicStick /></el-icon>
+            <div><strong>AI 错题解析：</strong>{{ a.aiAnalysis }}</div>
+          </div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="detailVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -1217,6 +1296,21 @@ const submitAiGenerate = async () => {
 .ok-text { color: #67c23a; font-weight: 600; }
 .analysis { color: #606266; }
 
+/* [2026-10-31 新增] AI 错题解析块（与固定解析区分：紫色强调 + 图标） */
+.fb-ai {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #d3c9ff;
+}
+.fb-ai-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #7c5cff;
+  font-weight: 600;
+}
+.ai-text { color: #4b3ca8; }
+
 .footer {
   padding-top: 16px;
   border-top: 1px solid #f0f0f0;
@@ -1270,6 +1364,74 @@ const submitAiGenerate = async () => {
   overflow: hidden;
 }
 .ri-bar-correct { height: 100%; border-radius: 2px; transition: width 0.4s; }
+
+/* [2026-10-31 新增] 练习记录可点击 → 查看答题明细（入口 C） */
+.record-item.clickable { cursor: pointer; }
+
+/* [2026-10-31 新增] 练习答题明细弹窗 */
+.pd-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+.pd-item {
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: 8px;
+  background: #fafcff;
+  border: 1px solid #f0f2f5;
+}
+.pd-item-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.pd-no {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  border-radius: 50%;
+  background: #409eff;
+  color: #fff;
+  font-size: 12px;
+  margin-right: 4px;
+}
+.pd-stem { color: #303133; }
+.pd-answers {
+  display: flex;
+  gap: 24px;
+  margin-top: 6px;
+  font-size: 13px;
+  color: #606266;
+}
+.pd-ok { color: #67c23a; }
+.pd-ng { color: #f56c6c; }
+.pd-analysis {
+  margin-top: 6px;
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.6;
+}
+.pd-ai {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #f4f4fd;
+  border-left: 3px solid #7c5cff;
+  font-size: 13px;
+  color: #4b3ca8;
+  line-height: 1.6;
+}
+.pd-ai .el-icon { color: #7c5cff; flex-shrink: 0; margin-top: 3px; }
 
 /* 侧栏收起过渡 */
 .slide-fade-enter-active, .slide-fade-leave-active {

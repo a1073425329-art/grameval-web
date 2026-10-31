@@ -7,7 +7,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, PieChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import { getSessionStatistics } from '@/api/admin'
-import { getExamAiAnalysisForTeacher } from '@/api/system'
+import { streamPost } from '@/utils/streamAi'
 import type { SessionStatistics } from '@/types/admin'
 import { Cpu, Loading } from '@element-plus/icons-vue'
 
@@ -15,7 +15,8 @@ use([CanvasRenderer, BarChart, PieChart, TitleComponent, TooltipComponent, Legen
 
 const route = useRoute()
 const router = useRouter()
-const sessionId = Number(route.params.sessionId)
+// [2026-10-31 修] route.params 在某些时机为 undefined 导致 TypeError，加安全取值
+const sessionId = Number(route.params?.sessionId ?? route.query?.sessionId ?? 0)
 
 const stat = ref<SessionStatistics | null>(null)
 const loading = ref(false)
@@ -34,18 +35,19 @@ const load = async () => {
 
 onMounted(load)
 
-// [2026-10-31 新增] AI 整卷解析：每次点击实时调用大模型计算
+// [2026-10-31 新增] AI 整卷解析：流式渲染（SSE 逐段到达）
 const loadAiAnalysis = async () => {
   aiLoading.value = true
   aiError.value = ''
-  try {
-    const res = await getExamAiAnalysisForTeacher(sessionId)
-    aiAnalysis.value = res.data?.analysis || 'AI 暂时无法生成分析，请稍后重试。'
-  } catch (e: any) {
-    aiError.value = e?.message || 'AI 分析请求失败，请稍后重试'
-  } finally {
-    aiLoading.value = false
-  }
+  aiAnalysis.value = ''
+  await streamPost(`/api/admin/ai-analysis/exam/${sessionId}/stream`, {
+    onChunk: (text) => { aiAnalysis.value += text },
+    onDone: () => { aiLoading.value = false },
+    onError: (err) => {
+      aiError.value = err.message || 'AI 分析请求失败，请稍后重试'
+      aiLoading.value = false
+    },
+  })
 }
 
 /** [2026-10-30] 正确率配色：≥70 绿 / 40-70 橙 / <40 红 */
@@ -273,15 +275,15 @@ const passRateOption = computed(() => {
       <div class="ai-header">
         <h4 class="ai-title">🤖 AI 整卷分析</h4>
       </div>
-      <div v-if="aiLoading" class="ai-loading">
+      <div v-if="aiLoading && !aiAnalysis" class="ai-loading">
         <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-        <span>AI 正在分析全班成绩，约需 10-30 秒，请稍候…</span>
+        <span>AI 正在分析全班成绩…</span>
       </div>
       <div v-else-if="aiError" class="ai-error">
         <el-alert type="error" :title="aiError" :closable="false" />
       </div>
       <el-card v-else-if="aiAnalysis" shadow="never" class="ai-card">
-        <div class="ai-content">{{ aiAnalysis }}</div>
+        <div class="ai-content">{{ aiAnalysis }}<span v-if="aiLoading" class="ai-cursor">▊</span></div>
       </el-card>
       <div v-else class="ai-placeholder">
         <el-text type="info">点击右上角「AI 整卷分析」，AI 将根据全班成绩生成教学分析与建议。</el-text>
@@ -384,5 +386,7 @@ const passRateOption = computed(() => {
 .ai-loading { display: flex; align-items: center; gap: 10px; padding: 24px; color: #909399; font-size: 14px; }
 .ai-card { border-left: 3px solid #409eff; }
 .ai-content { font-size: 14px; line-height: 1.8; color: #303133; white-space: pre-wrap; }
+.ai-cursor { color: #409eff; animation: blink 0.8s infinite; }
+@keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
 .ai-placeholder { padding: 20px; text-align: center; }
 </style>

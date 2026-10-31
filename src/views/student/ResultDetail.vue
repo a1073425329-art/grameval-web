@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getResultDetail, getDimensionAnalysis, getExamAiAnalysis } from '@/api/student'
+import { getResultDetail, getDimensionAnalysis } from '@/api/student'
+import { streamPost } from '@/utils/streamAi'
 import type { ResultDetail as ResultDetailType } from '@/types/result'
 import { flattenAnswerUnits, type AnswerReviewItem } from '@/utils/questionUnits'
 import type { DimensionAnalysis } from '@/types/stats'
@@ -13,7 +14,7 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
-import { ArrowLeft, CircleCheck, CircleClose, Clock, PriceTag, Bell, Trophy, Aim, Loading } from '@element-plus/icons-vue'
+import { ArrowLeft, CircleCheck, CircleClose, Clock, PriceTag, Bell, Trophy, Aim, Loading, MagicStick } from '@element-plus/icons-vue'
 // [2026-10-28] 本行原还导入 EditPen 图标，随「修改 N 次」徽标一并移出（types 层 noUnusedLocals 会拦未使用导入）
 // [2026-10-28] 本行原还导入 Flag 图标，随「已标记」标签一并移出（同上）
 // [2026-10-28] 原「标记」相关展示整套下线：后端 answer_record.marked_flag 无写入点，恒为 0，
@@ -63,18 +64,20 @@ onMounted(async () => {
   loadDimension()
 })
 
-// [2026-10-31 新增] AI 整卷解析：每次点击实时调用大模型计算
+// [2026-10-31 新增] AI 整卷解析：流式渲染（SSE 逐段到达）
 const loadAiAnalysis = async () => {
   aiLoading.value = true
   aiError.value = ''
-  try {
-    const res = await getExamAiAnalysis(detail.value?.id || resultId)
-    aiAnalysis.value = res.data?.analysis || 'AI 暂时无法生成分析，请稍后重试。'
-  } catch (e: any) {
-    aiError.value = e?.message || 'AI 分析请求失败，请稍后重试'
-  } finally {
-    aiLoading.value = false
-  }
+  aiAnalysis.value = ''  // 清空旧内容，开始流式填充
+  const examId = detail.value?.id || resultId
+  await streamPost(`/api/student/ai/exam-analysis/${examId}/stream`, {
+    onChunk: (text) => { aiAnalysis.value += text },
+    onDone: () => { aiLoading.value = false },
+    onError: (err) => {
+      aiError.value = err.message || 'AI 分析请求失败，请稍后重试'
+      aiLoading.value = false
+    },
+  })
 }
 
 const rate = computed(() => {
@@ -593,6 +596,15 @@ const dimDifficultyChartOption = computed(() => {
           </div>
           <div class="analysis-content">{{ a.analysis }}</div>
         </div>
+
+        <!-- [2026-10-31 新增] AI 错题解析：仅错题展示，按学生所选错误答案动态生成（后端已入库） -->
+        <div class="analysis-box ai-box" v-if="a.isCorrect === 0 && a.aiAnalysis">
+          <div class="analysis-header ai-header">
+            <el-icon><MagicStick /></el-icon>
+            <span>AI 错题解析</span>
+          </div>
+          <div class="analysis-content">{{ a.aiAnalysis }}</div>
+        </div>
       </div>
     </div>
 
@@ -680,15 +692,15 @@ const dimDifficultyChartOption = computed(() => {
           {{ aiLoading ? 'AI 分析中…' : aiAnalysis ? '重新分析' : '生成 AI 分析' }}
         </el-button>
       </div>
-      <div v-if="aiLoading" class="ai-loading">
+      <div v-if="aiLoading && !aiAnalysis" class="ai-loading">
         <el-icon class="is-loading" :size="24"><Loading /></el-icon>
-        <span>AI 正在分析你的考试表现，约需 10-30 秒，请稍候…</span>
+        <span>AI 正在分析你的考试表现…</span>
       </div>
       <div v-else-if="aiError" class="ai-error">
         <el-alert type="error" :title="aiError" :closable="false" />
       </div>
       <el-card v-else-if="aiAnalysis" shadow="never" class="ai-card">
-        <div class="ai-content">{{ aiAnalysis }}</div>
+        <div class="ai-content">{{ aiAnalysis }}<span v-if="aiLoading" class="ai-cursor">▊</span></div>
       </el-card>
       <div v-else class="ai-placeholder">
         <el-text type="info">点击「生成 AI 分析」，AI 将根据你的本次考试表现生成个性化分析与学习建议。</el-text>
@@ -710,6 +722,8 @@ const dimDifficultyChartOption = computed(() => {
 .ai-loading { display: flex; align-items: center; gap: 10px; padding: 24px; color: #909399; font-size: 14px; }
 .ai-card { border-left: 3px solid #409eff; }
 .ai-content { font-size: 14px; line-height: 1.8; color: #303133; white-space: pre-wrap; }
+.ai-cursor { color: #409eff; animation: blink 0.8s infinite; }
+@keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
 .ai-placeholder { padding: 20px; text-align: center; }
 
 .title-block { display: flex; flex-direction: column; gap: 4px; }
@@ -985,6 +999,14 @@ const dimDifficultyChartOption = computed(() => {
   font-size: 14px; line-height: 1.8; color: #606266;
   white-space: pre-wrap;
 }
+
+/* [2026-10-31 新增] AI 错题解析块：与固定解析区分色系（蓝紫） */
+.ai-box {
+  margin-top: 10px;
+  background: #f4f4fd;
+  border-left-color: #7c5cff;
+}
+.ai-header { color: #7c5cff; }
 
 // ===== 多维度分析 =====
 .dim-section { margin-top: 20px; }

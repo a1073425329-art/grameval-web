@@ -8,6 +8,7 @@ import type {
   QuickPracticeResult,
   PracticeRecord,
   PracticeAnswerForm,
+  PracticeAnswerDetail,
 } from '@/types/question'
 import type {
   AvailableExam,
@@ -113,6 +114,10 @@ export const finishPractice = (practiceId: number) =>
 /** 练习详情 */
 export const getPracticeDetail = (id: number) =>
   request.get<ApiResponse<PracticeRecord>>(`/practices/${id}`)
+
+/** [2026-10-31 新增] 练习答题明细（含 AI 错题解析，仅本人可见） */
+export const getPracticeAnswers = (id: number) =>
+  request.get<ApiResponse<PracticeAnswerDetail[]>>(`/practices/${id}/answers`)
 
 /** 分页查询练习记录 */
 export interface PracticeListQuery extends PageQuery {

@@ -195,6 +195,8 @@ export interface QuickPracticeResult {
   userAnswer: string
   standardAnswer: string
   analysis?: string
+  /** [2026-10-31 新增] AI 错题解析（答错时由大模型按所选错误答案动态生成） */
+  aiAnalysis?: string
 }
 
 /** 专项练习会话 —— PracticeVO */
@@ -210,6 +212,19 @@ export interface PracticeRecord {
   wrongCount: number
   accuracy?: number
   status: 0 | 1
+}
+
+/** [2026-10-31 新增] 练习答题明细（含 AI 错题解析） —— GET /practices/{id}/answers */
+export interface PracticeAnswerDetail {
+  questionId: number
+  stem?: string
+  questionType?: QuestionType
+  userAnswer?: string
+  standardAnswer?: string
+  isCorrect?: 0 | 1
+  analysis?: string
+  aiAnalysis?: string
+  answerTime?: string
 }
 
 /** 练习中提交单题答案 */

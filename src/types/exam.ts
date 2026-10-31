@@ -230,6 +230,8 @@ export interface AnswerDetail {
   isCorrect?: 0 | 1 | null
   obtainedScore?: number
   analysis?: string
+  /** [2026-10-31 新增] AI 错题解析（根据学生错误答案动态生成，后端入库后返回） */
+  aiAnalysis?: string
   difficulty?: Difficulty
   questionScore?: number
   questionOrder?: number

@@ -281,7 +281,8 @@ export const getExamAiAnalysisForTeacher = (sessionId: number) =>
   request.post<ApiResponse<{ analysis: string }>>(
     `/admin/ai-analysis/exam/${sessionId}`,
     null,
-    { timeout: 120_000 }
+    // [2026-10-31] 实测 137 人 / 160 题的场次整卷分析耗时 122.7s，120s 会把成功结果当超时丢弃，放宽到 300s
+    { timeout: 300_000 }
   )
 
 // ==================== 接口一键测试 ====================

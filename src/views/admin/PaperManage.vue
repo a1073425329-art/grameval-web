@@ -499,12 +499,18 @@ const loadPaperStats = async (paperId: number) => {
 }
 
 const showAllAnswers = ref(false)
+// [2026-10-31 修] 原实现把 viewAnswers 全量预填充，导致 showAllAnswers 开关失效
+//   （v-if="showAllAnswers || viewAnswers[id]" 恒为 true），单题按钮也点不动
+//   （loadAnswer 里 if (viewAnswers[id]) return 恒提前返回）。
+//   现在：viewAnswers 只存数据，revealedIds 单独管显示状态。
+const revealedIds = ref(new Set<number>())
 
 const openView = async (row: Paper, defaultShowAnswers = false) => {
   viewPaper.value = row
   viewQuestions.value = []
   viewAnswers.value = {}
   showAllAnswers.value = defaultShowAnswers
+  revealedIds.value = new Set()
   paperStats.value = null
   viewVisible.value = true
   viewLoading.value = true
@@ -666,15 +672,23 @@ const diffLevelTag = (lvl?: string): 'info' | 'success' | 'warning' | 'danger' =
 }
 
 const loadAnswer = async (questionId: number) => {
-  if (viewAnswers.value[questionId]) return
-  try {
-    const res = await getQuestionDetail(questionId)
-    viewAnswers.value[questionId] = {
-      standardAnswer: res.data.standardAnswer ?? '',
-      analysis: res.data.analysis ?? '',
-      options: (res.data.options ?? []).map((o) => ({ optionLabel: o.optionLabel, optionContent: o.optionContent })),
-    }
-  } catch { ElMessage.error('答案加载失败') }
+  // [2026-10-31 修] 改为显示/隐藏切换：数据已预填充，只需切换 revealedIds
+  if (revealedIds.value.has(questionId)) {
+    revealedIds.value.delete(questionId)
+    return
+  }
+  // 数据如果没预填充（老接口兜底），现场拉一次
+  if (!viewAnswers.value[questionId]) {
+    try {
+      const res = await getQuestionDetail(questionId)
+      viewAnswers.value[questionId] = {
+        standardAnswer: res.data.standardAnswer ?? '',
+        analysis: res.data.analysis ?? '',
+        options: (res.data.options ?? []).map((o) => ({ optionLabel: o.optionLabel, optionContent: o.optionContent })),
+      }
+    } catch { ElMessage.error('答案加载失败'); return }
+  }
+  revealedIds.value.add(questionId)
 }
 
 const formatAnswerText = (ans?: string, type?: string) => {
@@ -1463,11 +1477,11 @@ onMounted(async () => {
                 <el-tag>{{ typeLabel(question.questionType) }}</el-tag>
                 <span class="q-score">{{ question.score }} 分</span>
                 <el-button link type="primary" style="margin-left:auto" @click="loadAnswer(question.questionId)">
-                  {{ viewAnswers[question.questionId] ? '隐藏答案' : '查看答案与解析' }}
+                  {{ revealedIds.has(question.questionId) ? '隐藏答案' : '查看答案与解析' }}
                 </el-button>
               </div>
               <div class="q-stem">{{ question.stem }}</div>
-              <div v-if="showAllAnswers || viewAnswers[question.questionId]" class="q-answer">
+              <div v-if="showAllAnswers || revealedIds.has(question.questionId)" class="q-answer">
                 <div v-for="option in (viewAnswers[question.questionId]?.options ?? [])" :key="option.optionLabel" class="q-opt">
                   <b>{{ option.optionLabel }}.</b> {{ option.optionContent }}
                 </div>
@@ -1483,11 +1497,11 @@ onMounted(async () => {
               <el-tag :type="diffTagType(unit.difficulty)" style="margin-right:6px">{{ diffLabel(unit.difficulty) }}</el-tag>
               <span class="q-score">{{ unit.score }} 分</span>
               <el-button link type="primary" style="margin-left:auto" @click="loadAnswer(unit.questionId)">
-                {{ viewAnswers[unit.questionId] ? '隐藏答案' : '查看答案与解析' }}
+                {{ revealedIds.has(unit.questionId) ? '隐藏答案' : '查看答案与解析' }}
               </el-button>
             </div>
             <div class="q-stem">{{ unit.stem }}</div>
-            <div v-if="showAllAnswers || viewAnswers[unit.questionId]" class="q-answer">
+            <div v-if="showAllAnswers || revealedIds.has(unit.questionId)" class="q-answer">
               <template v-for="option in (viewAnswers[unit.questionId]?.options ?? [])" :key="option.optionLabel">
                 <div class="q-opt" :class="{ 'q-opt-right': option.optionLabel === viewAnswers[unit.questionId]?.standardAnswer }">
                   <b>{{ option.optionLabel }}.</b> {{ option.optionContent }}

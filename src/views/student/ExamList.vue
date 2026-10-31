@@ -178,8 +178,11 @@ const filteredResume = computed(() =>
   applyStatusFilter(allExams.value.filter((e) => matchKeyword(e) && isResume(e))).sort(bySort)
 )
 const filteredAttended = computed(() =>
+  // [2026-10-31 修] 原实现再排除 isResume（未提交且未结束），导致「已参加」页签只剩已交卷的场次，
+  //   与「参加场次」统计卡、我的成绩列表口径不一致（21 条里会少掉 6 条续考）。
+  //   已参加 = 有答卷记录且非缺考；续考是「已参加」的子集，两个页签允许重叠。
   applyStatusFilter(
-    attendedExams.value.filter((e) => matchKeyword(e) && !isResume(e) && !isMissed(e))
+    attendedExams.value.filter((e) => matchKeyword(e) && !isMissed(e))
   ).sort(bySort)
 )
 const filteredMissed = computed(() =>

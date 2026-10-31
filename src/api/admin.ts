@@ -100,6 +100,9 @@ export interface AdminQuestionQuery extends PageQuery {
   status?: number | undefined
   auditStatus?: QuestionAuditStatus | undefined
   createBy?: number | undefined
+  // [2026-10-31] 创建时间区间筛选
+  createTimeStart?: string | undefined
+  createTimeEnd?: string | undefined
   studentId?: number | undefined
   studentIds?: number[] | undefined
   onlyWrong?: boolean | undefined

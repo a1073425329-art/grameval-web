@@ -17,6 +17,7 @@ const loading = ref(false)
 const query = reactive({
   keyword: '',
   scoreFilter: '',
+  genderFilter: '' as '' | '1' | '2',
 })
 
 const load = async () => {
@@ -70,6 +71,11 @@ const filteredClassStudents = computed<ClassStudent[]>(() => {
     data = data.filter((s) => s.averageScore != null && s.averageScore >= 60 && s.averageScore < 80)
   } else if (query.scoreFilter === 'high') {
     data = data.filter((s) => s.averageScore != null && s.averageScore >= 80)
+  }
+
+  // [2026-10-31] 性别筛选
+  if (query.genderFilter) {
+    data = data.filter((s) => String(s.gender ?? '') === query.genderFilter)
   }
 
   // 按平均分降序，无成绩排末尾
@@ -287,6 +293,12 @@ onMounted(load)
           <el-option label="中等 (60-80)" value="mid" />
           <el-option label="优秀 (≥80)" value="high" />
         </el-select>
+        <!-- [2026-10-31] 性别筛选 -->
+        <el-select v-model="query.genderFilter" placeholder="性别" clearable style="width: 100px;">
+          <el-option label="全部" value="" />
+          <el-option label="男" value="1" />
+          <el-option label="女" value="2" />
+        </el-select>
         <el-button :icon="Refresh" @click="load" :loading="loading">刷新</el-button>
         <el-button :loading="exporting" @click="exportCsv">
           <el-icon><Download /></el-icon>导出 CSV
@@ -337,6 +349,10 @@ onMounted(load)
             <span :style="{ color: genderColor(row.gender) }">{{ genderLabel(row.gender) || '-' }}</span>
           </template>
         </el-table-column>
+        <!-- [2026-10-31] 补列：学号 / 练习次数 / 能力分 -->
+        <el-table-column label="学号" width="100">
+          <template #default="{ row }">{{ row.studentNo || '—' }}</template>
+        </el-table-column>
         <el-table-column label="考试次数" width="90" align="center">
           <template #default="{ row }">{{ row.examCount ?? 0 }}</template>
         </el-table-column>
@@ -358,6 +374,13 @@ onMounted(load)
           <template #default="{ row }">
             <span :class="{ 'wrong-num': (row.wrongCount ?? 0) > 0 }">{{ row.wrongCount ?? 0 }}</span>
           </template>
+        </el-table-column>
+        <!-- [2026-10-31] 补列：练习次数 / 能力分 -->
+        <el-table-column label="练习次数" width="90" align="center">
+          <template #default="{ row }">{{ row.practiceCount ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column label="能力分" width="85" align="center">
+          <template #default="{ row }">{{ row.abilityScore != null ? Number(row.abilityScore).toFixed(1) : '—' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="85">
           <template #default="{ row }">

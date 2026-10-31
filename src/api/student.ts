@@ -78,8 +78,8 @@ export const getQuestionDetail = (id: number) =>
   request.get<ApiResponse<Question>>(`/questions/${id}`)
 
 /** 学习模式（含答案+解析） */
-export const getQuestionStudyMode = (id: number) =>
-  request.get<ApiResponse<Question>>(`/questions/${id}/study-mode`)
+export const getQuestionStudyMode = (id: number, selfCheck = true) =>
+  request.get<ApiResponse<Question>>(`/questions/${id}/study-mode`, { params: { selfCheck } })
 
 /* ============================================================ *
  *  3. 专项练习
@@ -257,6 +257,18 @@ export const getStudentStatistics = (id: number, include?: string) =>
 /** 查询该场考试按考点标签/语法大类/难度/题型 的对错统计。 */
 export const getDimensionAnalysis = (examId: number) =>
   request.get<ApiResponse<DimensionAnalysis>>(`/students/exams/${examId}/dimension-analysis`)
+
+/**
+ * [2026-10-31 新增] 考试整卷 AI 解析（学生视角）
+ * POST /api/student/ai/exam-analysis/{examId}
+ * 每次实时调用大模型，返回本次考试表现的 AI 分析文本。
+ */
+export const getExamAiAnalysis = (examId: number) =>
+  request.post<ApiResponse<{ analysis: string }>>(
+    `/student/ai/exam-analysis/${examId}`,
+    null,
+    { timeout: 120_000 }
+  )
 
 /* ============================================================ *
  *  7. 学习进度

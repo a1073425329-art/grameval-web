@@ -83,6 +83,8 @@ const query = reactive({
   status: undefined as number | undefined,
   auditStatus: undefined as QuestionAuditStatus | undefined,
   createBy: undefined as number | undefined,
+  createTimeStart: '',
+  createTimeEnd: '',
   studentIds: [] as number[],
   onlyWrong: false,
   pageNum: 1,
@@ -287,6 +289,8 @@ const load = async () => {
       pageSize: query.pageSize,
       ...currentQuestionFilters(),
       auditStatus: query.auditStatus,
+      createTimeStart: query.createTimeStart || undefined,
+      createTimeEnd: query.createTimeEnd || undefined,
       // [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间的两个传参删除（后端从来不认）
     })
     list.value = res.data.records ?? []
@@ -307,6 +311,8 @@ const reset = () => {
   query.status = undefined
   query.auditStatus = undefined
   query.createBy = undefined
+  query.createTimeStart = ''
+  query.createTimeEnd = ''
   query.studentIds = []
   query.onlyWrong = false
   // [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间的两项重置删除
@@ -2046,6 +2052,24 @@ onMounted(async () => {
           <el-form-item v-if="query.studentIds && query.studentIds.length">
             <el-checkbox v-model="query.onlyWrong" label="仅看错题" border />
           </el-form-item>
+          <!-- [2026-10-31] 创建时间区间筛选 -->
+          <el-form-item label="创建时间">
+            <el-date-picker
+              v-model="query.createTimeStart"
+              type="datetime"
+              placeholder="开始"
+              value-format="YYYY-MM-DD HH:mm:ss"
+              style="width: 180px"
+            />
+            <span style="margin: 0 4px">至</span>
+            <el-date-picker
+              v-model="query.createTimeEnd"
+              type="datetime"
+              placeholder="结束"
+              value-format="YYYY-MM-DD HH:mm:ss"
+              style="width: 180px"
+            />
+          </el-form-item>
           <!-- [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间筛选框整块删除（后端从来不认该参数，属失效筛选）。
                保留记录：el-form-item 内两个 el-input-number（最低 ~ 最高），绑定 query 的同名 min/max 状态项。 -->
           <el-form-item>
@@ -2276,7 +2300,7 @@ onMounted(async () => {
             <el-tag
               v-for="tag in (row.knowledgePoints || []).slice(0, 3)"
               :key="tag"
-             
+
               type="info"
               effect="plain"
               class="kp-tag"
@@ -2288,6 +2312,13 @@ onMounted(async () => {
             </span>
             <span v-if="!(row.knowledgePoints || []).length" class="empty-dash">-</span>
           </template>
+        </el-table-column>
+        <!-- [2026-10-31] 补列：创建人 / 创建时间 -->
+        <el-table-column label="创建人" width="100" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.createByName || '—' }}</template>
+        </el-table-column>
+        <el-table-column label="创建时间" width="150" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.createTime?.slice(0, 16) || '—' }}</template>
         </el-table-column>
         <el-table-column label="创建人" width="92" show-overflow-tooltip>
           <template #default="{ row }">{{ row.createByName || '-' }}</template>

@@ -7,8 +7,9 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, PieChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import { getSessionStatistics } from '@/api/admin'
+import { getExamAiAnalysisForTeacher } from '@/api/system'
 import type { SessionStatistics } from '@/types/admin'
-import { Cpu } from '@element-plus/icons-vue'
+import { Cpu, Loading } from '@element-plus/icons-vue'
 
 use([CanvasRenderer, BarChart, PieChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
@@ -18,6 +19,10 @@ const sessionId = Number(route.params.sessionId)
 
 const stat = ref<SessionStatistics | null>(null)
 const loading = ref(false)
+// [2026-10-31 新增] AI 整卷解析
+const aiAnalysis = ref('')
+const aiLoading = ref(false)
+const aiError = ref('')
 
 const load = async () => {
   loading.value = true
@@ -28,6 +33,20 @@ const load = async () => {
 }
 
 onMounted(load)
+
+// [2026-10-31 新增] AI 整卷解析：每次点击实时调用大模型计算
+const loadAiAnalysis = async () => {
+  aiLoading.value = true
+  aiError.value = ''
+  try {
+    const res = await getExamAiAnalysisForTeacher(sessionId)
+    aiAnalysis.value = res.data?.analysis || 'AI 暂时无法生成分析，请稍后重试。'
+  } catch (e: any) {
+    aiError.value = e?.message || 'AI 分析请求失败，请稍后重试'
+  } finally {
+    aiLoading.value = false
+  }
+}
 
 /** [2026-10-30] 正确率配色：≥70 绿 / 40-70 橙 / <40 红 */
 const accColor = (rate?: number | null) => {
@@ -104,8 +123,8 @@ const passRateOption = computed(() => {
         >
           <el-icon><View /></el-icon>实时监控
         </el-button>
-        <el-button type="primary" @click="$router.push('/admin/ai-compose')">
-          <el-icon><Cpu /></el-icon>AI考试分析
+        <el-button type="primary" :loading="aiLoading" @click="loadAiAnalysis">
+          <el-icon><Cpu /></el-icon>{{ aiLoading ? 'AI 分析中…' : 'AI 整卷分析' }}
         </el-button>
       </div>
     </div>
@@ -248,6 +267,26 @@ const passRateOption = computed(() => {
         </div>
       </el-card>
     </template>
+
+    <!-- [2026-10-31 新增] AI 整卷解析结果 -->
+    <div class="ai-section" v-if="stat">
+      <div class="ai-header">
+        <h4 class="ai-title">🤖 AI 整卷分析</h4>
+      </div>
+      <div v-if="aiLoading" class="ai-loading">
+        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+        <span>AI 正在分析全班成绩，约需 10-30 秒，请稍候…</span>
+      </div>
+      <div v-else-if="aiError" class="ai-error">
+        <el-alert type="error" :title="aiError" :closable="false" />
+      </div>
+      <el-card v-else-if="aiAnalysis" shadow="never" class="ai-card">
+        <div class="ai-content">{{ aiAnalysis }}</div>
+      </el-card>
+      <div v-else class="ai-placeholder">
+        <el-text type="info">点击右上角「AI 整卷分析」，AI 将根据全班成绩生成教学分析与建议。</el-text>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -337,4 +376,13 @@ const passRateOption = computed(() => {
   color: #909399;
   font-size: 11px;
 }
+
+/* [2026-10-31 新增] AI 整卷分析 */
+.ai-section { margin-top: 16px; }
+.ai-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.ai-title { margin: 0; font-size: 16px; font-weight: 600; color: #303133; }
+.ai-loading { display: flex; align-items: center; gap: 10px; padding: 24px; color: #909399; font-size: 14px; }
+.ai-card { border-left: 3px solid #409eff; }
+.ai-content { font-size: 14px; line-height: 1.8; color: #303133; white-space: pre-wrap; }
+.ai-placeholder { padding: 20px; text-align: center; }
 </style>

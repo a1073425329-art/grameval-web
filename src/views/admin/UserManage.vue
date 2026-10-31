@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { List, Grid } from '@element-plus/icons-vue'
@@ -35,12 +35,48 @@ const list = ref<UserDetail[]>([])
 const total = ref(0)
 const loading = ref(false)
 
+/**
+ * [2026-10-31 用户拍板] 列表排序：演示主角最前，正式学生/老师次之，测试数据沉底。
+ * 张小明（user01）为演示主角；test、student0、demo_、loadtest、aligntest、perf 前缀账号视为测试数据。
+ */
+const isTestAccount = (u: UserDetail) => {
+  const name = (u.username || '').toLowerCase()
+  return /^(test|student0|demo_|loadtest|aligntest|perf)/.test(name)
+    || (u.realName || '').includes('测试')
+    || (u.realName || '').includes('演示')
+    || (u.realName || '').includes('压测')
+}
+const sortRank = (u: UserDetail) => {
+  if (u.username === 'user01') return 0 // 演示主角 张小明
+  if (/^user0\d$/.test(u.username || '')) return 1 // 演示学生 user02-05
+  if (u.username === 'teacher01' || u.username === 'admin') return 2
+  if (isTestAccount(u)) return 9
+  return 5
+}
+const sortedList = computed(() =>
+  [...list.value].sort((a, b) => {
+    const ra = sortRank(a)
+    const rb = sortRank(b)
+    if (ra !== rb) return ra - rb
+    return (a.id ?? 0) - (b.id ?? 0)
+  }),
+)
+
+/** [2026-10-31] 学生管理 / 老师管理 分开 */
+const roleTab = ref<'STUDENT' | 'ADMIN'>('STUDENT')
+const applyRoleTab = () => {
+  query.role = roleTab.value
+  query.pageNum = 1
+  load()
+}
+
 const load = async () => {
   loading.value = true
   try {
+    // [2026-10-31] 一次拉全量再排序：分页会让「张小明第一 / 测试号沉底」只在当前页内生效
     const res = await listUsers({
-      pageNum: query.pageNum,
-      pageSize: query.pageSize,
+      pageNum: 1,
+      pageSize: 1000,
       username: query.username || undefined,
       realName: query.realName || undefined,
       email: query.email || undefined,
@@ -62,7 +98,7 @@ const reset = () => {
   query.email = ''
   query.phone = ''
   query.gender = undefined
-  query.role = ''
+  query.role = roleTab.value
   query.status = undefined
   query.pageNum = 1
   load()
@@ -194,6 +230,12 @@ const onStatusChange = async (row: UserDetail, val: number) => {
 
 const genderText = (g?: number) => (g === 1 ? '男' : g === 2 ? '女' : '-')
 
+/** [2026-10-31] 学生默认头像 student.jpg；管理员/老师用 admin.jpeg，避免空头像 */
+const avatarSrc = (u: { avatar?: string | null | undefined; role?: string | undefined }) => {
+  if (u.avatar) return u.avatar
+  return u.role === 'ADMIN' ? '/avatars/admin.jpeg' : '/avatars/student.jpg'
+}
+
 /* ---------------- CSV 导出 ---------------- */
 const exporting = ref(false)
 const escapeCsv = (val: unknown): string => {
@@ -238,11 +280,21 @@ const exportCsv = () => {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  // [2026-10-31] 默认进入「学生管理」
+  query.role = 'STUDENT'
+  load()
+})
 </script>
 
 <template>
   <div class="page">
+    <!-- [2026-10-31] 学生 / 老师 分开管理 -->
+    <el-tabs v-model="roleTab" class="role-tabs" @tab-change="applyRoleTab">
+      <el-tab-pane label="学生管理" name="STUDENT" />
+      <el-tab-pane label="老师管理" name="ADMIN" />
+    </el-tabs>
+
     <el-card shadow="never" class="filter-card">
       <el-form :inline="true" :model="query">
         <el-row :gutter="8">
@@ -265,12 +317,6 @@ onMounted(load)
               <el-option label="男" :value="1" />
               <el-option label="女" :value="2" />
               <el-option label="未知" :value="0" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="角色">
-            <el-select v-model="query.role" clearable placeholder="全部" style="width:140px">
-              <el-option label="管理员" value="ADMIN" />
-              <el-option label="学生" value="STUDENT" />
             </el-select>
           </el-form-item>
           <el-form-item label="状态">
@@ -302,36 +348,41 @@ onMounted(load)
       </div>
 
       <!-- 表格布局 -->
-      <el-table v-if="viewMode === 'table'" :data="list" style="width:100%">
+      <el-table v-if="viewMode === 'table'" :data="sortedList" style="width:100%">
         <el-table-column type="index" label="#" width="60" />
-        <el-table-column label="头像" width="80" align="center">
+        <el-table-column label="头像" width="64" align="center">
           <template #default="{ row }">
-            <el-avatar :size="36" :src="row.avatar || ''">
-              <el-icon><User /></el-icon>
-            </el-avatar>
+            <!-- [2026-10-31] 基本信息收进头像悬浮，节省表格列宽 -->
+            <el-tooltip placement="right" effect="light" width="260">
+              <template #content>
+                <div class="avatar-tip">
+                  <div><b>{{ row.realName || row.username }}</b>（{{ row.username }}）</div>
+                  <div v-if="row.englishName">英文名：{{ row.englishName }}</div>
+                  <div>邮箱：{{ row.email || '—' }}</div>
+                  <div>手机：{{ row.phone || '—' }}</div>
+                  <div>{{ row.role === 'STUDENT' ? '学号' : '师号' }}：{{ row.role === 'STUDENT' ? (row.studentNumber || '—') : (row.teacherId || '—') }}</div>
+                  <div>性别：{{ genderText(row.gender) }} · 最后登录：{{ row.lastLoginTime || '—' }}</div>
+                </div>
+              </template>
+              <el-avatar :size="32" :src="avatarSrc(row)" style="cursor: help">
+                <el-icon><User /></el-icon>
+              </el-avatar>
+            </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column prop="username" label="用户名" width="120" />
-        <el-table-column prop="realName" label="姓名" width="100" />
+        <el-table-column prop="username" label="用户名" width="110" show-overflow-tooltip />
+        <el-table-column prop="realName" label="姓名" width="90" show-overflow-tooltip />
         <!-- [2026-10-31] 学号/师号仅展示，不做流程引用 -->
-        <el-table-column label="学号/师号" width="110">
+        <el-table-column label="学号/师号" width="95">
           <template #default="{ row }">
             <span v-if="row.role === 'STUDENT'">{{ row.studentNumber || '—' }}</span>
             <span v-else>{{ row.teacherId || '—' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="englishName" label="英文名" width="130" show-overflow-tooltip />
-        <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="phone" label="手机号" width="130" />
-        <el-table-column label="性别" width="80">
+        <el-table-column label="性别" width="56" align="center">
           <template #default="{ row }">{{ genderText(row.gender) }}</template>
         </el-table-column>
-        <el-table-column label="角色" width="100">
-          <template #default="{ row }">
-            <el-tag :type="row.role === 'ADMIN' ? 'danger' : 'success'">{{ row.role === 'ADMIN' ? '管理员' : '学生' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="72" align="center">
           <template #default="{ row }">
             <el-switch
               v-model="row.status"
@@ -341,11 +392,24 @@ onMounted(load)
             />
           </template>
         </el-table-column>
-        <el-table-column prop="lastLoginTime" label="最后登录" width="180" />
-        <el-table-column label="操作" width="160" align="center">
+        <!-- [2026-10-31] 学生名单统计（StudentListStatisticsService 实时聚合） -->
+        <el-table-column v-if="roleTab === 'STUDENT'" label="考试" width="62" align="right">
+          <template #default="{ row }">{{ row.examCount ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column v-if="roleTab === 'STUDENT'" label="练习" width="62" align="right">
+          <template #default="{ row }">{{ row.practiceCount ?? 0 }}</template>
+        </el-table-column>
+        <el-table-column v-if="roleTab === 'STUDENT'" label="平均分" width="72" align="right">
+          <template #default="{ row }">{{ row.averageScore != null ? Number(row.averageScore).toFixed(1) : '—' }}</template>
+        </el-table-column>
+        <el-table-column v-if="roleTab === 'STUDENT'" label="能力分" width="72" align="right">
+          <template #default="{ row }">{{ row.abilityScore != null ? Number(row.abilityScore).toFixed(1) : '—' }}</template>
+        </el-table-column>
+        <el-table-column prop="lastLoginTime" label="最后登录" min-width="130" show-overflow-tooltip />
+        <el-table-column label="操作" width="150" align="center">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="warning" @click="confirmResetPwd(row)">重置密码</el-button>
+            <el-button link type="warning" @click="confirmResetPwd(row)">重置</el-button>
             <el-button link type="danger" @click="confirmDelete(row)">禁用</el-button>
           </template>
         </el-table-column>
@@ -354,14 +418,14 @@ onMounted(load)
       <!-- 卡片网格布局 -->
       <div v-else class="user-grid">
         <el-card
-          v-for="item in list"
+          v-for="item in sortedList"
           :key="item.id"
           class="user-card"
           hover
         >
           <div class="card-header">
             <div class="avatar-wrap">
-              <el-avatar :size="44" :src="item.avatar || ''">
+              <el-avatar :size="44" :src="avatarSrc(item)">
                 <el-icon><User /></el-icon>
               </el-avatar>
             </div>
@@ -409,16 +473,9 @@ onMounted(load)
         </el-card>
       </div>
 
+      <!-- [2026-10-31] 一次拉全量排序，不再分页（保证张小明第一、测试号沉底是全局序） -->
       <div class="pagination">
-        <el-pagination
-          v-model:current-page="query.pageNum"
-          v-model:page-size="query.pageSize"
-          :total="total"
-          layout="total, sizes, prev, pager, next, jumper"
-          :page-sizes="[10, 20, 50, 100, 200, 500, 1000]"
-          @size-change="load"
-          @current-change="load"
-        />
+        <span class="total-text">共 {{ sortedList.length }} 人（已按：演示主角 → 正式用户 → 测试号排序）</span>
       </div>
     </el-card>
 
@@ -473,9 +530,26 @@ onMounted(load)
 
 <style scoped lang="scss">
 .page { display: flex; flex-direction: column; gap: 12px; }
+.role-tabs {
+  :deep(.el-tabs__header) { margin-bottom: 0; }
+}
+.avatar-tip {
+  line-height: 1.8;
+  font-size: 12px;
+  color: #303133;
+}
+.pagination {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+.total-text {
+  font-size: 12px;
+  color: #909399;
+}
 .filter-card :deep(.el-card__body) { padding-bottom: 0; }
 .toolbar { margin-bottom: 12px; }
-.pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
+
 
 .user-grid {
   display: grid;

@@ -51,7 +51,7 @@ const avatarUrl = computed(() => {
   const username = authStore.userInfo?.username
   if (username === 'admin') return '/avatars/admin.jpeg'
   if (username === 'teacher01') return '/avatars/teacher01.jpeg'
-  if (username === 'student01') return '/avatars/student01.jpg'
+  if (username === 'student01' || username === 'user01') return '/avatars/student.jpg'
   if (!username) return ''
   return authStore.role === 'ADMIN' ? '/avatars/admin.jpeg' : '/avatars/student.jpg'
 })

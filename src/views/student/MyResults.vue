@@ -487,6 +487,22 @@ onBeforeUnmount(() => {
         <el-table-column label="正确率" width="100" align="center">
           <template #default="{ row }">{{ row.correctRate != null ? Number(row.correctRate).toFixed(1) + '%' : '-' }}</template>
         </el-table-column>
+        <!-- [2026-10-31] 补列：对错题数 / 及格 -->
+        <el-table-column label="对/错" width="90" align="center">
+          <template #default="{ row }">
+            <span style="color:#67c23a">{{ row.correctCount ?? 0 }}</span>
+            <span style="color:#c0c4cc">/</span>
+            <span style="color:#f56c6c">{{ row.wrongCount ?? 0 }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="及格" width="70" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.totalScore != null && row.paperTotalScore" :type="row.totalScore >= row.paperTotalScore * 0.6 ? 'success' : 'danger'" size="small">
+              {{ row.totalScore >= row.paperTotalScore * 0.6 ? '及格' : '不及格' }}
+            </el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="用时" width="100" align="center">
           <template #default="{ row }">{{ durationText(row) }}</template>
         </el-table-column>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   CircleCheck,
@@ -51,6 +51,8 @@ interface SessionResultsState {
 }
 
 const router = useRouter()
+/** [2026-10-31] 三种成绩视图：按考试 / 按试卷 / 单条成绩流水 */
+const viewMode = ref<'exam' | 'paper' | 'record'>('exam')
 const query = reactive({
   sessionName: '',
   paperId: undefined as number | undefined,
@@ -60,6 +62,80 @@ const query = reactive({
   pageNum: 1,
   pageSize: 20,
 })
+
+/** 单条成绩视图的独立分页 */
+const recordQuery = reactive({
+  pageNum: 1,
+  pageSize: 20,
+  userName: '',
+  minScore: undefined as number | undefined,
+  maxScore: undefined as number | undefined,
+})
+const recordList = ref<ExamResultItem[]>([])
+const recordTotal = ref(0)
+const recordLoading = ref(false)
+
+const loadRecords = async () => {
+  recordLoading.value = true
+  try {
+    const res = await listAdminResults({
+      pageNum: recordQuery.pageNum,
+      pageSize: recordQuery.pageSize,
+      userName: recordQuery.userName.trim() || undefined,
+      minScore: recordQuery.minScore,
+      maxScore: recordQuery.maxScore,
+      paperId: query.paperId,
+      startTime: query.timeRange[0],
+      endTime: query.timeRange[1],
+    })
+    recordList.value = res.data.records ?? []
+    recordTotal.value = res.data.total ?? 0
+  } catch {
+    recordList.value = []
+    recordTotal.value = 0
+  } finally {
+    recordLoading.value = false
+  }
+}
+
+/** 按试卷聚合：把场次按 paperId 分组，算场次数/提交/均分 */
+const paperGroups = computed(() => {
+  const map = new Map<number, {
+    paperId: number
+    paperName: string
+    sessions: typeof sessions.value
+    sessionCount: number
+    submitted: number
+    avgScore: number | null
+    scores: number[]
+  }>()
+  for (const s of sessions.value) {
+    const key = s.paperId ?? 0
+    if (!map.has(key)) {
+      map.set(key, {
+        paperId: key,
+        paperName: s.paperName || `试卷 #${key}`,
+        sessions: [],
+        sessionCount: 0,
+        submitted: 0,
+        avgScore: null,
+        scores: [],
+      })
+    }
+    const g = map.get(key)!
+    g.sessions.push(s)
+    g.sessionCount += 1
+    g.submitted += s.submittedCount ?? 0
+    if (s.averageScore != null) g.scores.push(Number(s.averageScore))
+  }
+  return [...map.values()].map((g) => ({
+    ...g,
+    avgScore: g.scores.length
+      ? g.scores.reduce((a, b) => a + b, 0) / g.scores.length
+      : null,
+  })).sort((a, b) => b.sessionCount - a.sessionCount)
+})
+const expandedPaperIds = ref<number[]>([])
 
 const sessions = ref<ExamSession[]>([])
 const papers = ref<Paper[]>([])
@@ -146,8 +222,19 @@ const loadPickers = async () => {
 
 const searchSessions = () => {
   query.pageNum = 1
-  loadSessions()
+  recordQuery.pageNum = 1
+  if (viewMode.value === 'record') {
+    loadRecords()
+  } else {
+    loadSessions()
+  }
 }
+
+/** [2026-10-31] 切换视图时按需拉数 */
+watch(viewMode, (mode) => {
+  if (mode === 'record') loadRecords()
+  else if (mode === 'exam') loadSessions(true)
+})
 
 const resetSessionQuery = () => {
   query.sessionName = ''
@@ -496,8 +583,20 @@ onMounted(() => {
   <div class="page">
     <div class="page-heading">
       <h1>成绩管理</h1>
-      <span class="session-count">{{ total }} 场考试</span>
+      <span class="session-count">{{ viewMode === 'record' ? `${recordTotal} 条成绩` : `${total} 场考试` }}</span>
     </div>
+
+    <!-- [2026-10-31] 三种成绩视图切换 -->
+    <el-card shadow="never" class="filter-panel" style="margin-bottom: 0">
+      <el-radio-group v-model="viewMode" size="large">
+        <el-radio-button value="exam">按考试</el-radio-button>
+        <el-radio-button value="paper">按试卷</el-radio-button>
+        <el-radio-button value="record">单条成绩</el-radio-button>
+      </el-radio-group>
+      <span class="view-hint">
+        {{ viewMode === 'exam' ? '按考试场次展开查看每场成绩明细' : viewMode === 'paper' ? '按试卷聚合各场次的提交与均分' : '扁平化成绩流水，可按姓名/分数筛选' }}
+      </span>
+    </el-card>
 
     <!-- 顶部 6 列大盘指标看板（全库多表动态实时计算） -->
     <div class="stat-banner">
@@ -607,8 +706,8 @@ onMounted(() => {
       </el-form>
     </el-card>
 
-    <!-- 考试场次主列表 -->
-    <el-card shadow="never" v-loading="loading" class="session-list-panel">
+    <!-- 考试场次主列表（按考试视图） -->
+    <el-card v-if="viewMode === 'exam'" shadow="never" v-loading="loading" class="session-list-panel">
       <el-table
         :data="sessions"
         row-key="id"
@@ -838,6 +937,118 @@ onMounted(() => {
         @size-change="() => loadSessions()"
         @current-change="() => loadSessions()"
       />
+    </el-card>
+
+    <!-- [2026-10-31] 按试卷视图 -->
+    <el-card v-else-if="viewMode === 'paper'" shadow="never" v-loading="loading" class="session-list-panel">
+      <el-table :data="paperGroups" row-key="paperId" :expand-row-keys="expandedPaperIds">
+        <el-table-column type="expand" width="42">
+          <template #default="{ row }">
+            <div class="session-detail">
+              <el-table :data="row.sessions" size="small">
+                <el-table-column prop="sessionName" label="考试场次" min-width="200" show-overflow-tooltip />
+                <el-table-column label="状态" width="90" align="center">
+                  <template #default="{ row: s }">
+                    <el-tag size="small" :type="s.status === 2 ? 'info' : s.status === 1 ? 'success' : 'warning'">
+                      {{ s.status === 2 ? '已结束' : s.status === 1 ? '已发布' : '草稿' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="提交" width="80" align="center">
+                  <template #default="{ row: s }">{{ s.submittedCount ?? 0 }}</template>
+                </el-table-column>
+                <el-table-column label="平均分" width="90" align="center">
+                  <template #default="{ row: s }">{{ s.averageScore != null ? Number(s.averageScore).toFixed(1) : '-' }}</template>
+                </el-table-column>
+                <el-table-column prop="startTime" label="开始时间" width="150" />
+                <el-table-column label="操作" width="100" align="center">
+                  <template #default="{ row: s }">
+                    <el-button link type="primary" @click="viewMode = 'exam'; activeSessionId = s.id; expandedSessionIds = [s.id]">
+                      看成绩
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="paperName" label="试卷" min-width="220" show-overflow-tooltip />
+        <el-table-column label="场次数" width="90" align="center">
+          <template #default="{ row }">{{ row.sessionCount }}</template>
+        </el-table-column>
+        <el-table-column label="提交总数" width="100" align="center">
+          <template #default="{ row }">{{ row.submitted }}</template>
+        </el-table-column>
+        <el-table-column label="场均分" width="100" align="center">
+          <template #default="{ row }">
+            <span :style="{ color: sessionScoreColor(row.avgScore) }">
+              {{ row.avgScore != null ? row.avgScore.toFixed(1) : '-' }}
+            </span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-if="!paperGroups.length && !loading" description="暂无试卷成绩数据" />
+    </el-card>
+
+    <!-- [2026-10-31] 单条成绩视图 -->
+    <el-card v-else shadow="never" v-loading="recordLoading" class="session-list-panel">
+      <el-form :inline="true" class="result-filter" @submit.prevent>
+        <el-form-item label="学生">
+          <el-input v-model="recordQuery.userName" clearable placeholder="姓名" style="width:150px" @keyup.enter="searchSessions" />
+        </el-form-item>
+        <el-form-item label="最低分">
+          <el-input-number v-model="recordQuery.minScore" :min="0" :max="150" style="width:110px" />
+        </el-form-item>
+        <el-form-item label="最高分">
+          <el-input-number v-model="recordQuery.maxScore" :min="0" :max="150" style="width:110px" />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="searchSessions"><el-icon><Search /></el-icon>查询</el-button>
+          <el-button @click="recordQuery.userName = ''; recordQuery.minScore = undefined; recordQuery.maxScore = undefined; searchSessions()">
+            <el-icon><Refresh /></el-icon>重置
+          </el-button>
+        </el-form-item>
+      </el-form>
+      <el-table :data="recordList" stripe>
+        <el-table-column type="index" label="#" width="55" />
+        <el-table-column prop="sessionName" label="考试名称" min-width="150" show-overflow-tooltip />
+        <el-table-column prop="paperName" label="试卷" min-width="120" show-overflow-tooltip />
+        <el-table-column label="学生" width="110" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.userName || row.studentName || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="得分" width="100" align="center">
+          <template #default="{ row }">
+            <span :style="{ color: sessionScoreColor(row.totalScore), fontWeight: 600 }">{{ row.totalScore ?? '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="得分率" width="90" align="center">
+          <template #default="{ row }">{{ row.scorePercentage != null ? Number(row.scorePercentage).toFixed(1) + '%' : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.submitStatus === 1 ? 'success' : 'info'">
+              {{ row.submitStatus === 1 ? '已提交' : row.submitStatus === 2 ? '超时' : '缺考' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="submitTime" label="提交时间" width="150" />
+        <el-table-column label="操作" width="90" align="center">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openDetail(row, row.sessionId ?? 0)">详情</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <div class="pagination">
+        <el-pagination
+          v-model:current-page="recordQuery.pageNum"
+          v-model:page-size="recordQuery.pageSize"
+          :total="recordTotal"
+          layout="total, sizes, prev, pager, next"
+          :page-sizes="[20, 50, 100]"
+          @size-change="loadRecords"
+          @current-change="loadRecords"
+        />
+      </div>
     </el-card>
 
     <!-- 答题详情弹窗 -->
@@ -1147,6 +1358,12 @@ onMounted(() => {
 
 .filter-panel :deep(.el-card__body) {
   padding-bottom: 2px;
+}
+
+.view-hint {
+  margin-left: 14px;
+  font-size: 12px;
+  color: #909399;
 }
 
 .session-detail {

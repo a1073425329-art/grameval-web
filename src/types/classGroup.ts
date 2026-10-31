@@ -35,4 +35,17 @@ export interface ClassStudent {
   avatar?: string
   joinTime: string
   remark?: string
+  /** 与后端 ClassStudentVO 对齐：列表展示用统计/基本信息 */
+  classNames?: string[]
+  gender?: number | undefined
+  email?: string | undefined
+  phone?: string | undefined
+  status?: number | undefined
+  lastLoginTime?: string | undefined
+  examCount?: number | undefined
+  recentScore?: number | undefined
+  averageScore?: number | undefined
+  wrongCount?: number | undefined
+  practiceCount?: number | undefined
+  abilityScore?: number | undefined
 }

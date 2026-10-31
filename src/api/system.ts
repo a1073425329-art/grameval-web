@@ -272,6 +272,18 @@ export const generateStudyAdvice = (studentId: number) =>
     { timeout: 120_000 }
   )
 
+/**
+ * [2026-10-31 新增] 考试整卷 AI 解析（教师视角）
+ * POST /api/admin/ai-analysis/exam/{sessionId}
+ * 每次实时调用大模型，返回全班成绩分析文本。
+ */
+export const getExamAiAnalysisForTeacher = (sessionId: number) =>
+  request.post<ApiResponse<{ analysis: string }>>(
+    `/admin/ai-analysis/exam/${sessionId}`,
+    null,
+    { timeout: 120_000 }
+  )
+
 // ==================== 接口一键测试 ====================
 
 /** 接口发现结果 */

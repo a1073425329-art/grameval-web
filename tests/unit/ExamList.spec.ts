@@ -117,8 +117,9 @@ describe('考试列表页 (ExamList.vue)', () => {
     expect(w.text()).toContain('已参加的词汇测验')
     expect(w.text()).toContain('已提交')
     expect(w.text()).toContain('85.50')
-    // 未完成的不在已参加里
-    expect(w.text()).not.toContain('进行中的考试(已参加但未提交)')
+    // [2026-10-31 修] 口径变更：已参加 = 有答卷记录且非缺考，续考（未提交）也应出现在已参加里；
+    //   原断言「未完成的不在已参加里」对应旧口径（已参加会漏掉续考，导致与「参加场次」统计卡不一致）。
+    expect(w.text()).toContain('进行中的考试(已参加但未提交)')
 
     // 续考 Tab：未完成答卷 + 续考按钮
     const resumeTab = tabs.find((t) => t.text().includes('续考'))

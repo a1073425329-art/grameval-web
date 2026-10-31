@@ -23,6 +23,8 @@ use([
 ])
 
 const loading = ref(false)
+/** [2026-10-31] 工作台 / 掌握度+BKT 页签 */
+const dashTab = ref<'overview' | 'mastery'>('overview')
 const stats = ref<AdminDashboardData>({
   studentCount: 0, adminCount: 0, questionCount: 0,
   paperCount: 0, sessionCount: 0, examRecordCount: 0, practiceCount: 0,
@@ -329,6 +331,13 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
 
 <template>
   <div class="dashboard" v-loading="loading">
+    <!-- [2026-10-31] 顶部页签直达：掌握度/BKT 不再埋在页底 -->
+    <el-tabs v-model="dashTab" class="dash-tabs">
+      <el-tab-pane label="工作台概览" name="overview" />
+      <el-tab-pane label="知识掌握度 / BKT" name="mastery" />
+    </el-tabs>
+
+    <template v-if="dashTab === 'overview'">
     <!-- ==================== Stats Cards (12个) ==================== -->
     <el-row :gutter="16" class="stats-row">
       <el-col v-for="card in statsCards" :key="card.title" :xs="12" :sm="8" :md="6" :lg="4">
@@ -510,14 +519,12 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
         </el-card>
       </el-col>
     </el-row>
+    </template>
 
-    <!-- [2026-10-31] 知识点掌握度（老师查看，默认演示学生张小明/user01） -->
-    <el-card shadow="hover" class="mastery-card">
-      <template #header>
-        <div class="card-title">知识点掌握度（按学生查看）</div>
-      </template>
+    <!-- [2026-10-31] 知识点掌握度 + BKT（老师查看，默认演示学生张小明/user01） -->
+    <template v-else>
       <KnowledgeMasteryPage />
-    </el-card>
+    </template>
   </div>
 </template>
 

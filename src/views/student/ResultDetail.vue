@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getResultDetail, getDimensionAnalysis } from '@/api/student'
+import { getResultDetail, getDimensionAnalysis, getExamAiAnalysis } from '@/api/student'
 import type { ResultDetail as ResultDetailType } from '@/types/result'
 import { flattenAnswerUnits, type AnswerReviewItem } from '@/utils/questionUnits'
 import type { DimensionAnalysis } from '@/types/stats'
@@ -13,7 +13,7 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
-import { ArrowLeft, CircleCheck, CircleClose, Clock, PriceTag, Bell, Trophy, Aim } from '@element-plus/icons-vue'
+import { ArrowLeft, CircleCheck, CircleClose, Clock, PriceTag, Bell, Trophy, Aim, Loading } from '@element-plus/icons-vue'
 // [2026-10-28] 本行原还导入 EditPen 图标，随「修改 N 次」徽标一并移出（types 层 noUnusedLocals 会拦未使用导入）
 // [2026-10-28] 本行原还导入 Flag 图标，随「已标记」标签一并移出（同上）
 // [2026-10-28] 原「标记」相关展示整套下线：后端 answer_record.marked_flag 无写入点，恒为 0，
@@ -30,6 +30,10 @@ const answerItems = computed(() => flattenAnswerUnits(detail.value?.answers ?? [
 const dim = ref<DimensionAnalysis | null>(null)
 const loading = ref(false)
 const dimLoading = ref(false)
+// [2026-10-31 新增] AI 整卷解析
+const aiAnalysis = ref('')
+const aiLoading = ref(false)
+const aiError = ref('')
 
 const load = async () => {
   loading.value = true
@@ -58,6 +62,20 @@ onMounted(async () => {
   await load()
   loadDimension()
 })
+
+// [2026-10-31 新增] AI 整卷解析：每次点击实时调用大模型计算
+const loadAiAnalysis = async () => {
+  aiLoading.value = true
+  aiError.value = ''
+  try {
+    const res = await getExamAiAnalysis(detail.value?.id || resultId)
+    aiAnalysis.value = res.data?.analysis || 'AI 暂时无法生成分析，请稍后重试。'
+  } catch (e: any) {
+    aiError.value = e?.message || 'AI 分析请求失败，请稍后重试'
+  } finally {
+    aiLoading.value = false
+  }
+}
 
 const rate = computed(() => {
   const pct = detail.value?.scorePercentage
@@ -650,6 +668,33 @@ const dimDifficultyChartOption = computed(() => {
       </el-card>
     </div>
 
+    <!-- [2026-10-31 新增] AI 整卷解析 -->
+    <div class="ai-section" v-if="detail">
+      <div class="ai-header">
+        <h4 class="ai-title">🤖 AI 整卷解析</h4>
+        <el-button
+          type="primary"
+          :loading="aiLoading"
+          @click="loadAiAnalysis"
+        >
+          {{ aiLoading ? 'AI 分析中…' : aiAnalysis ? '重新分析' : '生成 AI 分析' }}
+        </el-button>
+      </div>
+      <div v-if="aiLoading" class="ai-loading">
+        <el-icon class="is-loading" :size="24"><Loading /></el-icon>
+        <span>AI 正在分析你的考试表现，约需 10-30 秒，请稍候…</span>
+      </div>
+      <div v-else-if="aiError" class="ai-error">
+        <el-alert type="error" :title="aiError" :closable="false" />
+      </div>
+      <el-card v-else-if="aiAnalysis" shadow="never" class="ai-card">
+        <div class="ai-content">{{ aiAnalysis }}</div>
+      </el-card>
+      <div v-else class="ai-placeholder">
+        <el-text type="info">点击「生成 AI 分析」，AI 将根据你的本次考试表现生成个性化分析与学习建议。</el-text>
+      </div>
+    </div>
+
     <el-empty v-else-if="!loading" description="暂无答题明细" />
   </div>
 </template>
@@ -657,6 +702,15 @@ const dimDifficultyChartOption = computed(() => {
 <style scoped lang="scss">
 .page-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
 .page-title { margin: 0; font-size: 20px; font-weight: 600; color: #303133; }
+
+/* [2026-10-31 新增] AI 整卷解析 */
+.ai-section { margin-top: 20px; }
+.ai-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.ai-title { margin: 0; font-size: 16px; font-weight: 600; color: #303133; }
+.ai-loading { display: flex; align-items: center; gap: 10px; padding: 24px; color: #909399; font-size: 14px; }
+.ai-card { border-left: 3px solid #409eff; }
+.ai-content { font-size: 14px; line-height: 1.8; color: #303133; white-space: pre-wrap; }
+.ai-placeholder { padding: 20px; text-align: center; }
 
 .title-block { display: flex; flex-direction: column; gap: 4px; }
 .title-sub {

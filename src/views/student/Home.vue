@@ -583,8 +583,9 @@ const sortedExams = computed(() => {
 
       <div class="sh-hero-metrics">
         <div class="sh-hm" @click="router.push('/student/results')">
-          <div class="sh-hm-num">{{ summary.totalCount }}</div>
-          <div class="sh-hm-lbl">考试次数</div>
+          <!-- [2026-10-31 修] 同上：改用 attendedCount，避免首页与两页统计口径分裂 -->
+          <div class="sh-hm-num">{{ summary.attendedCount ?? summary.totalCount }}</div>
+          <div class="sh-hm-lbl">参加场次</div>
         </div>
         <div class="sh-hm">
           <div class="sh-hm-num" :style="{ color: accuracyColor(summary.averageScore) }">{{ summary.averageScore?.toFixed(1) || '-' }}</div>

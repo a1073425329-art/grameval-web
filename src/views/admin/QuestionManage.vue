@@ -42,12 +42,18 @@ import {
   importQuestions,
   getQuestionUsageStats,
   getQuestionCoverage,
+  auditQuestions,
+  aiAuditQuestionsSequentially,
+  getQuestionAuditStats,
 } from '@/api/admin'
+import type { QuestionAuditStatsQuery } from '@/api/admin'
 import { listQuestionTags } from '@/api/tag'
+import type { QuestionTag } from '@/api/tag'
 import type { UploadInstance } from 'element-plus'
 import { validateQuestion, generateReading } from '@/api/ai'
 // [2026-10-30 合入] 阅读文章库内嵌到「阅读文章」页签，避免独立菜单项
 import ReadingPassageManage from './ReadingPassageManage.vue'
+import QuestionDocumentImport from '@/components/admin/QuestionDocumentImport.vue'
 import type {
   Question,
   QuestionOption,
@@ -55,6 +61,9 @@ import type {
   QuestionUsageStats,
   QuestionCoverage,
   QuestionCoverageQuery,
+  QuestionAuditStatus,
+  QuestionAuditStats,
+  AiQuestionAuditResult,
 } from '@/types/question'
 import type { Difficulty, QuestionType } from '@/types/common'
 import type { Category } from '@/types/category'
@@ -71,6 +80,8 @@ const query = reactive({
   questionType: undefined as QuestionType | undefined,
   difficulty: undefined as Difficulty | undefined,
   status: undefined as number | undefined,
+  auditStatus: undefined as QuestionAuditStatus | undefined,
+  createBy: undefined as number | undefined,
   studentIds: [] as number[],
   onlyWrong: false,
   pageNum: 1,
@@ -81,8 +92,59 @@ const list = ref<Question[]>([])
 const total = ref(0)
 const loading = ref(false)
 const categories = ref<Category[]>([])
-const tagOptions = ref<Array<{ id: number; tagName: string }>>([])
+const tagOptions = ref<QuestionTag[]>([])
 const selected = ref<Question[]>([])
+const auditStats = ref<QuestionAuditStats>({ all: 0, pending: 0, approved: 0, rejected: 0 })
+const auditStatsLoading = ref(false)
+const aiAuditLoading = ref(false)
+const aiAuditProgress = ref({ done: 0, total: 0 })
+const aiAuditResult = ref<AiQuestionAuditResult | null>(null)
+const aiAuditDialogVisible = ref(false)
+const auditCountOptions: Array<{
+  key: keyof QuestionAuditStats
+  label: string
+  status: QuestionAuditStatus | undefined
+}> = [
+  { key: 'all', label: '全部', status: undefined },
+  { key: 'pending', label: '待审核', status: 0 },
+  { key: 'approved', label: '已通过', status: 1 },
+  { key: 'rejected', label: '未通过', status: 2 },
+]
+const auditCount = (key: keyof QuestionAuditStats) => auditStats.value[key]
+
+const currentQuestionFilters = (): QuestionAuditStatsQuery => ({
+  keyword: query.keyword || undefined,
+  categoryId: query.categoryId,
+  questionType: query.questionType,
+  difficulty: query.difficulty,
+  status: query.status,
+  createBy: query.createBy,
+  studentIds: query.studentIds.length ? [...query.studentIds] : undefined,
+  onlyWrong: query.studentIds.length && query.onlyWrong ? true : undefined,
+})
+
+const auditStatusLabel = (status?: QuestionAuditStatus) => ({
+  0: '待审核',
+  1: '已通过',
+  2: '未通过',
+}[status ?? 0])
+const auditStatusType = (status?: QuestionAuditStatus) => ({
+  0: 'warning',
+  1: 'success',
+  2: 'danger',
+}[status ?? 0] as 'warning' | 'success' | 'danger')
+
+const loadAuditStats = async () => {
+  auditStatsLoading.value = true
+  try {
+    const res = await getQuestionAuditStats(currentQuestionFilters())
+    auditStats.value = res.data
+  } catch {
+    ElMessage.error('审核统计加载失败')
+  } finally {
+    auditStatsLoading.value = false
+  }
+}
 
 const studentOptions = ref<Array<{ id: number; username: string; realName?: string }>>([])
 const loadStudents = async () => {
@@ -165,7 +227,7 @@ const diffOptions: { label: string; value: Difficulty }[] = [
 /* 题型 Tabs：5 种题型 + 阅读文章
  * [2026-10-30 修复] 原「阅读理解题」页签必然为空：
  *   后端 QuestionService.page 硬编码排除 questionType=READING 与 passageId 非空的记录
- *   （注释：文章才是阅读单元，子题只能经 ReadingPassageService 查），
+ *   （注释：文章才是阅读题组，子题只能经 ReadingPassageService 查），
  *   所以前端再传 questionType=READING 只会得到 0 条。
  *   现改为「阅读文章」页签，直接内嵌文章库，符合后端设计。 */
 const typeTabOptions: { label: string; value: string }[] = [
@@ -220,11 +282,8 @@ const load = async () => {
     const res = await listAdminQuestions({
       pageNum: query.pageNum,
       pageSize: query.pageSize,
-      keyword: query.keyword || undefined,
-      categoryId: query.categoryId,
-      questionType: query.questionType,
-      difficulty: query.difficulty,
-      status: query.status,
+      ...currentQuestionFilters(),
+      auditStatus: query.auditStatus,
       // [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间的两个传参删除（后端从来不认）
     })
     list.value = res.data.records ?? []
@@ -235,7 +294,7 @@ const load = async () => {
 }
 const search = () => {
   query.pageNum = 1
-  load()
+  void Promise.all([load(), loadAuditStats()])
 }
 const reset = () => {
   query.keyword = ''
@@ -243,12 +302,14 @@ const reset = () => {
   query.questionType = undefined
   query.difficulty = undefined
   query.status = undefined
+  query.auditStatus = undefined
+  query.createBy = undefined
   query.studentIds = []
   query.onlyWrong = false
   // [2026-10-28] 后端 question.usage_count 列已清除，原「引用计数」区间的两项重置删除
   query.pageNum = 1
   typeTab.value = 'ALL'
-  load()
+  search()
 }
 
 /* ============================================================
@@ -1418,6 +1479,8 @@ const openCopy = async (row: Question) => {
 const onRowCommand = (cmd: string, row: Question) => {
   if (cmd === 'copy') void openCopy(row)
   else if (cmd === 'toggle') void toggleStatus(row)
+  else if (cmd === 'audit-approve') void reviewQuestion([row.id], 1)
+  else if (cmd === 'audit-reject') void reviewQuestion([row.id], 2)
   else if (cmd === 'delete') void confirmDelete(row)
 }
 
@@ -1452,6 +1515,50 @@ const batchToggle = async (status: 0 | 1) => {
   await batchStatusQuestions(selected.value.map((r) => r.id), status)
   ElMessage.success(status === 1 ? '已启用' : '已停用')
   load()
+}
+
+const reviewQuestion = async (ids: number[], auditStatus: 1 | 2) => {
+  if (!ids.length) return
+  const label = auditStatus === 1 ? '通过' : '不通过'
+  try {
+    await ElMessageBox.confirm(`确认将 ${ids.length} 道题标记为${label}？`, '人工审核', {
+      type: auditStatus === 1 ? 'success' : 'warning',
+    })
+  } catch {
+    return
+  }
+  try {
+    const res = await auditQuestions(ids, auditStatus)
+    ElMessage.success(`已更新 ${res.data.updated} 道题为${label}，跳过 ${res.data.skipped} 道`)
+    selected.value = []
+    await Promise.all([load(), loadAuditStats()])
+  } catch {
+    ElMessage.error('审核提交失败')
+  }
+}
+
+const runAiAudit = async () => {
+  if (!selected.value.length) {
+    ElMessage.warning('请先选择题目')
+    return
+  }
+  const ids = selected.value.map((item) => item.id)
+  aiAuditLoading.value = true
+  aiAuditProgress.value = { done: 0, total: ids.length }
+  aiAuditResult.value = null
+  try {
+    aiAuditResult.value = await aiAuditQuestionsSequentially(ids, (done, total) => {
+      aiAuditProgress.value = { done, total }
+    })
+    aiAuditDialogVisible.value = true
+    selected.value = []
+    void load()
+    void loadAuditStats()
+  } catch {
+    ElMessage.error('AI 审核流程异常，请稍后重试')
+  } finally {
+    aiAuditLoading.value = false
+  }
 }
 
 /**
@@ -1568,6 +1675,7 @@ const downloadTemplate = async () => {
 
 /* CSV 导入 */
 const importDialogVisible = ref(false)
+const documentImportVisible = ref(false)
 const importFile = ref<File | null>(null)
 const importing = ref(false)
 const importResult = ref<{ successCount: number; failedCount: number; errors?: string[] } | null>(null)
@@ -1578,6 +1686,10 @@ const openImportDialog = () => {
   importFile.value = null
   importResult.value = null
   importDialogVisible.value = true
+}
+
+const openDocumentImport = () => {
+  documentImportVisible.value = true
 }
 
 const handleFileChange = (file: { raw: File } | File) => {
@@ -1611,6 +1723,7 @@ const handleImport = async () => {
 onMounted(async () => {
   loadStudents()
   void loadQuestionCoverage()
+  void loadAuditStats()
   try {
     const c = await listCategoryTree()
     categories.value = c.data ?? []
@@ -1690,19 +1803,19 @@ onMounted(async () => {
           <div class="coverage-kpis">
             <div class="coverage-kpi">
               <strong>{{ coverageData.inventory.totalUnits }}</strong>
-              <span>当前库存单元</span>
+              <span>题目/阅读篇总数</span>
             </div>
             <div class="coverage-kpi">
               <strong>{{ coverageData.answers.attemptedUnits }}</strong>
-              <span>已触达单元</span>
+              <span>已作答题目/阅读篇</span>
             </div>
             <div class="coverage-kpi coverage-kpi--warning">
               <strong>{{ coverageData.answers.untouchedUnits }}</strong>
-              <span>未触达单元</span>
+              <span>未作答题目/阅读篇</span>
             </div>
             <div class="coverage-kpi">
               <strong>{{ formatCoverageRate(coverageData.answers.coverageRate, coverageData.inventory.totalUnits === 0 ? '无题目' : '—') }}</strong>
-              <span>库存覆盖率</span>
+              <span>题库覆盖率</span>
             </div>
             <div class="coverage-kpi">
               <strong>{{ coverageData.answers.attemptCount }}</strong>
@@ -1720,32 +1833,34 @@ onMounted(async () => {
             <span>文章 {{ coverageData.reading.passageCount }}</span>
             <span>完整 {{ coverageData.reading.fullyCoveredPassages }}</span>
             <span>部分 {{ coverageData.reading.partiallyCoveredPassages }}</span>
-            <span>未触达 {{ coverageData.reading.untouchedPassages }}</span>
-            <small>库存按整篇文章计 1 个单元；完整覆盖按当前有效子题均有答题明细判断；正确率按子题判分明细计算。</small>
+            <span>未作答 {{ coverageData.reading.untouchedPassages }}</span>
+            <small>题目按题计数，阅读理解按整篇计数；篇内所有有效子题都有作答记录时计为完整覆盖；正确率按子题已判分作答计算。</small>
           </div>
 
+          <!-- [2026-10-31 用户拍板] 「没有未触达题」提示无行动价值，隐藏展示；后端 alerts 已停发。旧块保留备查。
           <div v-if="coverageData.alerts.length" class="coverage-alerts">
             <el-alert
               v-for="alert in coverageData.alerts"
               :key="`${alert.scopeType}-${alert.scopeId ?? alert.label}`"
-              :title="`${alert.label}：${alert.reason}（库存 ${alert.totalUnits}，未触达 ${alert.untouchedUnits}）`"
+              :title="`${alert.label}：${alert.reason}（总量 ${alert.totalUnits}，未作答 ${alert.untouchedUnits}）`"
               type="warning"
               :closable="false"
               show-icon
             />
           </div>
+          -->
 
           <div v-if="coverageData.inventory.totalUnits === 0" class="coverage-empty">
-            <el-empty description="当前筛选范围没有可统计的题库单元" :image-size="72" />
+            <el-empty description="当前筛选范围没有可统计的题目或阅读文章" :image-size="72" />
           </div>
           <div v-else class="coverage-dimensions">
             <section class="coverage-dimension">
               <h3>按题型</h3>
               <el-table :data="coverageData.byType" size="small" max-height="260">
                 <el-table-column prop="label" label="题型" min-width="100" show-overflow-tooltip />
-                <el-table-column prop="totalUnits" label="库存" width="70" align="right" />
-                <el-table-column prop="attemptedUnits" label="已触达" width="78" align="right" />
-                <el-table-column prop="untouchedUnits" label="未触达" width="78" align="right" />
+                <el-table-column prop="totalUnits" label="题/篇" width="70" align="right" />
+                <el-table-column prop="attemptedUnits" label="已作答" width="78" align="right" />
+                <el-table-column prop="untouchedUnits" label="未作答" width="78" align="right" />
                 <el-table-column prop="attemptCount" label="人次" width="76" align="right" />
                 <el-table-column label="正确率" width="94" align="right">
                   <template #default="{ row }">
@@ -1762,12 +1877,13 @@ onMounted(async () => {
               <el-table :data="coverageData.byCategory" size="small" max-height="260">
                 <el-table-column label="分类" min-width="140" show-overflow-tooltip>
                   <template #default="{ row }">
-                    <span>{{ row.level === 1 ? '一级' : '二级' }} · {{ row.categoryName }}</span>
+                      <span v-if="row.level">{{ row.level === 1 ? '一级' : '二级' }} · {{ row.categoryName }}</span>
+                      <span v-else>{{ row.categoryName }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column prop="totalUnits" label="库存" width="70" align="right" />
-                <el-table-column prop="attemptedUnits" label="已触达" width="78" align="right" />
-                <el-table-column prop="untouchedUnits" label="未触达" width="78" align="right" />
+                <el-table-column prop="totalUnits" label="题/篇" width="70" align="right" />
+                <el-table-column prop="attemptedUnits" label="已作答" width="78" align="right" />
+                <el-table-column prop="untouchedUnits" label="未作答" width="78" align="right" />
                 <el-table-column prop="attemptCount" label="人次" width="76" align="right" />
                 <el-table-column label="正确率" width="94" align="right">
                   <template #default="{ row }">
@@ -1780,6 +1896,33 @@ onMounted(async () => {
             </section>
           </div>
         </template>
+      </div>
+    </section>
+
+    <section class="audit-summary" aria-label="题目审核状态">
+      <div class="audit-summary-header">
+        <h2>题目审核</h2>
+        <el-button
+          text
+          :loading="auditStatsLoading"
+          aria-label="刷新审核统计"
+          title="刷新审核统计"
+          @click="loadAuditStats"
+        >
+          <el-icon><Refresh /></el-icon>
+        </el-button>
+      </div>
+      <div class="audit-counts">
+        <button
+          v-for="item in auditCountOptions"
+          :key="item.key"
+          class="audit-count"
+          :class="{ 'is-active': query.auditStatus === item.status }"
+          @click="query.auditStatus = item.status; search()"
+        >
+          <span>{{ item.label }}</span>
+          <strong>{{ auditCount(item.key) }}</strong>
+        </button>
       </div>
     </section>
 
@@ -1851,6 +1994,18 @@ onMounted(async () => {
             >
               <el-option label="启用" :value="1" />
               <el-option label="停用" :value="0" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="审核状态">
+            <el-select
+              v-model="query.auditStatus"
+              clearable
+              placeholder="全部"
+              style="width: 120px"
+            >
+              <el-option label="待审核" :value="0" />
+              <el-option label="已通过" :value="1" />
+              <el-option label="未通过" :value="2" />
             </el-select>
           </el-form-item>
           <el-form-item label="作答学生">
@@ -1945,6 +2100,34 @@ onMounted(async () => {
         >
           <el-icon><Lightning /></el-icon>批量AI验证
         </el-button>
+        <el-button
+          type="success"
+          plain
+          :disabled="!selected.length"
+          @click="reviewQuestion(selected.map((item) => item.id), 1)"
+        >
+          批量审核通过
+        </el-button>
+        <el-button
+          type="danger"
+          plain
+          :disabled="!selected.length"
+          @click="reviewQuestion(selected.map((item) => item.id), 2)"
+        >
+          批量审核不通过
+        </el-button>
+        <el-button
+          type="primary"
+          plain
+          :disabled="!selected.length"
+          :loading="aiAuditLoading"
+          @click="runAiAudit"
+        >
+          AI 审核
+        </el-button>
+        <el-button type="primary" plain @click="openDocumentImport">
+          <el-icon><Upload /></el-icon>导入旧试卷
+        </el-button>
         <el-button :loading="exporting" @click="exportCsv">
           <el-icon><Download /></el-icon>导出 CSV
         </el-button>
@@ -1954,6 +2137,14 @@ onMounted(async () => {
         <el-button type="primary" plain @click="openImportDialog">
           <el-icon><Upload /></el-icon>导入 CSV
         </el-button>
+      </div>
+      <div v-if="aiAuditLoading" class="audit-progress" role="status">
+        <span>AI 审核进度 {{ aiAuditProgress.done }} / {{ aiAuditProgress.total }}</span>
+        <el-progress
+          :percentage="aiAuditProgress.total ? Math.round((aiAuditProgress.done / aiAuditProgress.total) * 100) : 0"
+          :show-text="false"
+          :stroke-width="8"
+        />
       </div>
 
       <!-- 表格布局 -->
@@ -2046,6 +2237,13 @@ onMounted(async () => {
             }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="审核" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag :type="auditStatusType(row.auditStatus)" size="small">
+              {{ auditStatusLabel(row.auditStatus) }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="知识点" min-width="150">
           <template #default="{ row }">
             <el-tag
@@ -2088,6 +2286,8 @@ onMounted(async () => {
                   <el-dropdown-item command="toggle">
                     {{ row.status === 1 ? '停用该题' : '启用该题' }}
                   </el-dropdown-item>
+                  <el-dropdown-item command="audit-approve">人工审核通过</el-dropdown-item>
+                  <el-dropdown-item command="audit-reject">人工审核不通过</el-dropdown-item>
                   <el-dropdown-item command="delete" divided>
                     <span class="danger-item">删除/停用</span>
                   </el-dropdown-item>
@@ -2123,6 +2323,9 @@ onMounted(async () => {
             <el-tag :type="item.status === 1 ? 'success' : 'info'">{{
               item.status === 1 ? '启用' : '停用'
             }}</el-tag>
+            <el-tag :type="auditStatusType(item.auditStatus)" size="small">
+              {{ auditStatusLabel(item.auditStatus) }}
+            </el-tag>
             <el-tag :type="diffTagType(item.difficulty)">{{
               diffLabel(item.difficulty)
             }}</el-tag>
@@ -2190,6 +2393,20 @@ onMounted(async () => {
               </el-button>
               <el-button link type="primary" @click.stop="openEdit(item)">
                 编辑
+              </el-button>
+              <el-button
+                link
+                type="success"
+                @click.stop="reviewQuestion([item.id], 1)"
+              >
+                通过
+              </el-button>
+              <el-button
+                link
+                type="danger"
+                @click.stop="reviewQuestion([item.id], 2)"
+              >
+                不通过
               </el-button>
               <el-button link type="primary" @click.stop="openCopy(item)">
                 <el-icon><CopyDocument /></el-icon>复制
@@ -2986,6 +3203,39 @@ onMounted(async () => {
       </template>
     </el-dialog>
 
+    <QuestionDocumentImport
+      v-model="documentImportVisible"
+      :categories="categories"
+      :tags="tagOptions"
+      @completed="load"
+    />
+
+    <el-dialog v-model="aiAuditDialogVisible" title="AI 审核结果" width="840px" top="6vh">
+      <template v-if="aiAuditResult">
+        <div class="ai-audit-summary">
+          <el-tag type="success">通过 {{ aiAuditResult.approved }}</el-tag>
+          <el-tag type="danger">不通过 {{ aiAuditResult.rejected }}</el-tag>
+          <el-tag type="warning">处理失败 {{ aiAuditResult.failed }}</el-tag>
+        </div>
+        <el-table :data="aiAuditResult.items" max-height="460" style="width: 100%">
+          <el-table-column prop="id" label="题目 ID" width="100" />
+          <el-table-column label="AI 建议" width="120">
+            <template #default="{ row }">
+              {{ row.auditStatus == null ? '未能判定' : auditStatusLabel(row.auditStatus) }}
+            </template>
+          </el-table-column>
+          <el-table-column label="逐题说明" min-width="260">
+            <template #default="{ row }">
+              {{ row.reason || (row.auditStatus == null ? '审核失败，题目保持待审核' : '已更新审核状态') }}
+            </template>
+          </el-table-column>
+        </el-table>
+      </template>
+      <template #footer>
+        <el-button @click="aiAuditDialogVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 批量 AI 验证结果 -->
     <el-dialog v-model="batchDialogVisible" title="批量 AI 验证结果" width="780px" top="6vh">
       <div class="batch-summary">
@@ -3029,6 +3279,65 @@ onMounted(async () => {
 }
 .filter-card :deep(.el-card__body) {
   padding-bottom: 0;
+}
+.audit-summary {
+  padding: 12px 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+}
+.audit-summary-header,
+.audit-counts,
+.ai-audit-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.audit-summary-header {
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.audit-summary-header h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.audit-counts {
+  flex-wrap: wrap;
+}
+.audit-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 110px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  background: #fff;
+  color: #606266;
+  cursor: pointer;
+}
+.audit-count strong {
+  color: #303133;
+  font-variant-numeric: tabular-nums;
+}
+.audit-count.is-active {
+  border-color: #409eff;
+  color: #337ecc;
+}
+.audit-progress {
+  display: grid;
+  grid-template-columns: auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  color: #606266;
+  font-size: 13px;
+}
+.ai-audit-summary {
+  flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 /* 题型 Tabs */
 .type-tabs {

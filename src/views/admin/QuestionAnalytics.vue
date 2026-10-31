@@ -6,10 +6,14 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, PieChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
 import { DataAnalysis, Histogram, Trophy, Warning, Menu, PieChart as PieIcon } from '@element-plus/icons-vue'
-import { getQuestionAnalytics, listCategoryTree } from '@/api/admin'
+import { getQuestionAnalytics, listCategoryTree, listUsers } from '@/api/admin'
+import { getAlgorithmQuestionQuality } from '@/api/algorithms'
 import type { QuestionAnalytics } from '@/types/admin'
 import type { Category } from '@/types/category'
 import type { QuestionType } from '@/types/common'
+import type { UserDetail } from '@/types/user'
+import type { AlgorithmDataStatus, AlgorithmQuestionQualityResult } from '@/types/algorithms'
+import { algorithmMetricDisplay, algorithmRateDisplay, algorithmStatusLabel } from '@/types/algorithms'
 
 use([CanvasRenderer, BarChart, PieChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
@@ -17,6 +21,32 @@ const categoryId = ref<number | undefined>(undefined)
 const categories = ref<Category[]>([])
 const data = ref<QuestionAnalytics | null>(null)
 const loading = ref(false)
+const mode = ref<'overview' | 'quality'>('overview')
+const quality = ref<AlgorithmQuestionQualityResult | null>(null)
+const qualityLoading = ref(false)
+const qualityError = ref(false)
+const students = ref<UserDetail[]>([])
+const studentIds = ref<number[]>([])
+const timeRange = ref<string[]>([])
+
+const loadQuality = async () => {
+  qualityLoading.value = true
+  qualityError.value = false
+  try {
+    const [startTime, endTime] = timeRange.value
+    const response = await getAlgorithmQuestionQuality({
+      categoryId: categoryId.value,
+      studentIds: studentIds.value.length ? studentIds.value : undefined,
+      startTime,
+      endTime,
+    })
+    quality.value = response.data
+  } catch {
+    qualityError.value = true
+  } finally {
+    qualityLoading.value = false
+  }
+}
 
 const load = async () => {
   loading.value = true
@@ -26,12 +56,24 @@ const load = async () => {
   } catch { /* handled */ } finally { loading.value = false }
 }
 
-watch(categoryId, () => load())
+watch(categoryId, () => {
+  load()
+  if (mode.value === 'quality') loadQuality()
+})
+
+watch([studentIds, timeRange], () => {
+  if (mode.value === 'quality') loadQuality()
+}, { deep: true })
+
+watch(mode, (value) => {
+  if (value === 'quality' && !quality.value) loadQuality()
+})
 
 onMounted(async () => {
   try {
-    const c = await listCategoryTree()
+    const [c, u] = await Promise.all([listCategoryTree(), listUsers({ pageNum: 1, pageSize: 200, role: 'STUDENT' })])
     categories.value = c.data ?? []
+    students.value = u.data?.records ?? []
   } catch { /* silent */ }
   load()
 })
@@ -46,6 +88,11 @@ const typeLabel = (t: QuestionType | string) =>
   ({ SINGLE: '单选', MULTIPLE: '多选', JUDGE: '判断', FILL: '填空', FILL_HINT: '填空', READING: '阅读' } as Record<string, string>)[t] || t
 const diffLabel = (d: number) => (d === 1 ? '简单' : d === 2 ? '中等' : '困难')
 const diffTagType = (d: number) => (d === 1 ? 'success' : d === 2 ? 'warning' : 'danger')
+const qualityStatusType = (status: string) => status === 'OK' ? 'success' : status === 'INCOMPLETE_DATA' ? 'danger' : 'warning'
+const qualityStatusText = (status: AlgorithmDataStatus) => algorithmStatusLabel(status)
+const qualityMetric = (value: number | null, status: AlgorithmDataStatus, percent = false) =>
+  value == null ? algorithmMetricDisplay(value, status) : `${value.toFixed(percent ? 1 : 3)}${percent ? '%' : ''}`
+const qualityRate = algorithmRateDisplay
 
 /* ---------------- 图表 ---------------- */
 const GRID = { left: 52, right: 24, bottom: 56, top: 46 }
@@ -162,7 +209,79 @@ const bestQuestions = computed(() => [...sortedByAcc.value].reverse().slice(0, 1
       />
     </div>
 
-    <el-empty v-if="!loading && !data?.kpi?.totalQuestions" description="暂无答题数据" />
+    <div class="analysis-switch">
+      <el-radio-group v-model="mode" size="default">
+        <el-radio-button value="overview">统计概览</el-radio-button>
+        <el-radio-button value="quality">题目测量质量</el-radio-button>
+      </el-radio-group>
+    </div>
+
+    <template v-if="mode === 'quality'">
+      <div class="quality-filters">
+        <el-select v-model="studentIds" multiple collapse-tags collapse-tags-tooltip clearable filterable
+          placeholder="全部学生" style="width: 260px" :max-collapse-tags="2">
+          <el-option v-for="student in students" :key="student.id" :label="student.realName || student.username" :value="student.id" />
+        </el-select>
+        <el-date-picker v-model="timeRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss"
+          start-placeholder="开始时间" end-placeholder="结束时间" range-separator="至" />
+        <el-button type="primary" :loading="qualityLoading" @click="loadQuality">查询质量分析</el-button>
+      </div>
+      <el-alert v-if="quality" :closable="false" :type="quality.coverage.status === 'OK' ? 'success' : quality.coverage.status === 'INCOMPLETE_DATA' ? 'error' : 'warning'">
+        <template #title>
+          正式考试答卷覆盖 {{ qualityRate(quality.coverage.coverageRate) }}
+          · 已观测 {{ quality.coverage.observedResponses }} / 应有 {{ quality.coverage.eligibleResponses }}
+          · 缺失明细 {{ quality.coverage.missingRows }}
+          · {{ qualityStatusText(quality.coverage.status) }}
+        </template>
+      </el-alert>
+      <el-alert v-if="qualityError" type="error" :closable="false" title="题目测量质量加载失败，请稍后重试。" />
+      <el-table v-if="quality && quality.items.length" v-loading="qualityLoading" :data="quality.items" row-key="questionId" stripe>
+        <el-table-column prop="questionId" label="题目 ID" width="100" />
+        <el-table-column label="题型" width="90"><template #default="{ row }">{{ typeLabel(row.questionType) }}</template></el-table-column>
+        <el-table-column label="样本量" width="90" align="right"><template #default="{ row }">{{ row.sampleCount }}</template></el-table-column>
+        <el-table-column label="P 得分率" width="110" align="right"><template #default="{ row }">{{ qualityMetric(row.p, row.status) }}</template></el-table-column>
+        <el-table-column label="D 区分度" width="110" align="right"><template #default="{ row }">{{ qualityMetric(row.d, row.status) }}</template></el-table-column>
+        <el-table-column label="点二列 / 题目-剩余分相关" min-width="200" align="right">
+          <template #default="{ row }">
+            <span>{{ qualityMetric(row.itemRestCorrelation, row.status) }}</span>
+            <el-tag v-if="row.correlationMethod" size="small" type="info" style="margin-left: 6px">{{ row.correlationMethod === 'POINT_BISERIAL' ? '点二列' : 'Pearson' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="质量" min-width="150">
+          <template #default="{ row }">
+            <el-tag :type="qualityStatusType(row.status)">{{ row.qualityLevel || qualityStatusText(row.status) }}</el-tag>
+            <span v-if="row.qualityScore != null" class="quality-score">{{ row.qualityScore.toFixed(1) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="选项分析" min-width="270">
+          <template #default="{ row }">
+            <div v-if="row.options.length" class="option-quality-list">
+              <el-tooltip v-for="option in row.options" :key="option.key"
+                :content="`选择 ${option.selectedCount} 人 · 高分组 ${qualityRate(option.highGroupRate)} · 低分组 ${qualityRate(option.lowGroupRate)}`">
+                <el-tag size="small" :type="option.isCorrect ? 'success' : 'info'">
+                  {{ option.key }} {{ qualityRate(option.selectionRate) }}
+                </el-tag>
+              </el-tooltip>
+            </div>
+            <span v-else class="muted">暂无选项数据</span>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-else-if="!qualityLoading && !qualityError" description="当前筛选下暂无题目质量样本" />
+      <el-card v-if="quality?.reliability.length" shadow="never" class="reliability-card">
+        <template #header><span class="card-title">试卷内部一致性（Cronbach α）</span></template>
+        <el-table :data="quality.reliability" stripe>
+          <el-table-column prop="paperId" label="试卷 ID" width="110" />
+          <el-table-column prop="sessionId" label="场次 ID" width="110" />
+          <el-table-column prop="sampleCount" label="完整答卷" width="110" align="right" />
+          <el-table-column prop="itemCount" label="题目数" width="90" align="right" />
+          <el-table-column label="Cronbach α" width="130" align="right"><template #default="{ row }">{{ qualityMetric(row.alpha, row.status) }}</template></el-table-column>
+          <el-table-column label="状态" width="120"><template #default="{ row }"><el-tag :type="qualityStatusType(row.status)">{{ qualityStatusText(row.status) }}</el-tag></template></el-table-column>
+        </el-table>
+      </el-card>
+    </template>
+
+    <el-empty v-else-if="!loading && !data?.kpi?.totalQuestions" description="暂无答题数据" />
 
     <template v-else-if="data">
       <!-- KPI -->
@@ -310,6 +429,12 @@ const bestQuestions = computed(() => [...sortedByAcc.value].reverse().slice(0, 1
 
 <style scoped lang="scss">
 .page { display: flex; flex-direction: column; gap: 14px; }
+.analysis-switch { display: flex; justify-content: flex-end; }
+.quality-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.option-quality-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.quality-score { margin-left: 8px; color: #606266; font-variant-numeric: tabular-nums; }
+.muted { color: #909399; }
+.reliability-card { margin-top: 14px; }
 
 .page-header {
   display: flex; align-items: center; justify-content: space-between; gap: 16px;

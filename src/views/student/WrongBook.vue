@@ -296,7 +296,7 @@ onMounted(async () => {
       </div>
 
       <div class="filter-summary">
-      共 <b>{{ total }}</b> 个错题单元<span v-if="list.length"> · 当前第 {{ (query.pageNum - 1) * query.pageSize + 1 }} - {{ Math.min(query.pageNum * query.pageSize, total) }} 项</span>
+      错题总数（阅读按篇计）：<b>{{ total }}</b><span v-if="list.length"> · 当前第 {{ (query.pageNum - 1) * query.pageSize + 1 }} - {{ Math.min(query.pageNum * query.pageSize, total) }} 项</span>
         <div class="filter-actions">
           <el-button type="primary" @click="startRedo" :loading="redoSubmitting">
             <el-icon><Refresh /></el-icon> 开始重做

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCategoryTree, getPracticeQuestions, submitPractice, listPractices, startPractice as openPracticeSession, answerInPractice, finishPractice, generateStudentQuestions } from '@/api/student'
+import { getAlgorithmAdaptiveNext, startAlgorithmAdaptivePractice, submitAlgorithmAdaptiveAnswer } from '@/api/algorithms'
+import { algorithmAdaptiveStopLabel, type AlgorithmAdaptivePracticeResult } from '@/types/algorithms'
+import type { QuestionUnit } from '@/types/reading'
 import type { Category } from '@/types/category'
 import type { QuickPracticeResult, PracticeRecord } from '@/types/question'
 import { flattenPracticeQuestionUnits, type PracticeQuestionItem } from '@/utils/questionUnits'
@@ -20,6 +23,11 @@ const activeCategoryId = ref<number | null>(null)
 const questions = ref<PracticeQuestionItem[]>([])
 const currentIndex = ref(0)
 const loading = ref(false)
+const adaptiveLoading = ref(false)
+const adaptiveError = ref(false)
+const practiceMode = ref<'RANDOM' | 'CAT'>('RANDOM')
+const adaptiveResult = ref<AlgorithmAdaptivePracticeResult | null>(null)
+const adaptiveClosedByStudent = ref(false)
 
 /** 学生输入的答案（值都是 string —— 多选前端 join 成 "A,B"） */
 const userAnswers = ref<Record<number, string | string[]>>({})
@@ -77,6 +85,21 @@ const activePracticeId = ref<number | null>(null)
 const persistedAnswerIds = ref<Set<number>>(new Set())
 /** 本次会话落库结束后的汇总（结束练习按钮提示用） */
 const finishedSummary = ref<{ correct: number; total: number } | null>(null)
+const adaptiveStopReasonLabel = computed(() => algorithmAdaptiveStopLabel(adaptiveResult.value?.stopReason ?? null))
+const adaptiveAnsweredCount = computed(() => Math.min(
+  adaptiveResult.value?.maxQuestionCount ?? 0,
+  (adaptiveResult.value?.answeredCount ?? 0) + persistedAnswerIds.value.size,
+))
+const adaptiveProgress = computed(() => {
+  const max = adaptiveResult.value?.maxQuestionCount ?? 0
+  return max > 0 ? Math.min(100, (adaptiveAnsweredCount.value / max) * 100) : 0
+})
+const displayQuestionNumber = computed(() => practiceMode.value === 'CAT'
+  ? (adaptiveResult.value?.answeredCount ?? 0) + currentIndex.value + 1
+  : currentIndex.value + 1)
+const displayQuestionTotal = computed(() => practiceMode.value === 'CAT'
+  ? adaptiveResult.value?.maxQuestionCount ?? questions.value.length
+  : questions.value.length)
 
 /** 结束当前练习会话（落库收尾 + 刷新侧栏） */
 const finishCurrentPractice = async () => {
@@ -273,6 +296,10 @@ const startPractice = async (catId: number) => {
   loading.value = true
   // 切换专题前先把上一个练习会话收尾落库
   await finishCurrentPractice()
+  practiceMode.value = 'RANDOM'
+  adaptiveResult.value = null
+  adaptiveClosedByStudent.value = false
+  adaptiveError.value = false
   try {
     const res = await getPracticeQuestions(catId, 10)
     questions.value = groupByPassage(flattenPracticeQuestionUnits(res.data ?? []))
@@ -293,6 +320,72 @@ const startPractice = async (catId: number) => {
     }
   } finally {
     loading.value = false
+  }
+}
+
+const applyAdaptiveResult = async (result: AlgorithmAdaptivePracticeResult) => {
+  practiceMode.value = 'CAT'
+  adaptiveResult.value = result
+  activePracticeId.value = result.practice?.id ?? null
+  currentIndex.value = 0
+  userAnswers.value = {}
+  feedbacks.value = {}
+  persistedAnswerIds.value = new Set()
+  finishedSummary.value = null
+  adaptiveClosedByStudent.value = false
+  const unit: QuestionUnit | null = result.question
+  questions.value = unit ? groupByPassage(flattenPracticeQuestionUnits([unit])) : []
+  if (result.finished || !unit) {
+    questions.value = []
+    const practiceId = activePracticeId.value
+    if (practiceId != null) {
+      try {
+        const done = await finishPractice(practiceId)
+        if (done.data && done.data.questionCount > 0) {
+          finishedSummary.value = { correct: done.data.correctCount, total: done.data.questionCount }
+        }
+        loadPracticeRecords()
+      } catch { /* the CAT state remains visible if finish recording fails */ }
+      activePracticeId.value = null
+    }
+  }
+}
+
+const startAdaptivePractice = async (catId: number) => {
+  activeCategoryId.value = catId
+  adaptiveLoading.value = true
+  adaptiveError.value = false
+  await finishCurrentPractice()
+  practiceMode.value = 'CAT'
+  adaptiveResult.value = null
+  adaptiveClosedByStudent.value = false
+  questions.value = []
+  try {
+    const res = await startAlgorithmAdaptivePractice(catId)
+    await applyAdaptiveResult(res.data)
+  } catch {
+    adaptiveError.value = true
+  } finally {
+    adaptiveLoading.value = false
+  }
+}
+
+const startAdaptiveForSelectedCategory = () => {
+  if (activeCategoryId.value != null) void startAdaptivePractice(activeCategoryId.value)
+}
+
+const loadAdaptiveNext = async () => {
+  const practiceId = activePracticeId.value
+  if (practiceId == null) return
+  adaptiveLoading.value = true
+  adaptiveError.value = false
+  try {
+    const res = await getAlgorithmAdaptiveNext(practiceId)
+    await applyAdaptiveResult(res.data)
+  } catch {
+    adaptiveError.value = true
+  } finally {
+    adaptiveLoading.value = false
   }
 }
 
@@ -317,13 +410,22 @@ const submit = async () => {
   if (!current.value) return
   const ans = formatAnswer(current.value.questionType, userAnswers.value[current.value.id])
   if (!ans) { ElMessage.warning('请先作答'); return }
+  if (practiceMode.value === 'CAT' && activePracticeId.value == null) {
+    ElMessage.error('CAT 练习会话已失效，请重新开始')
+    return
+  }
   submitting.value = true
   try {
-    const res = await submitPractice({ questionId: current.value.id, userAnswer: ans })
-    feedbacks.value = { ...feedbacks.value, [current.value.id]: res.data }
-    // 落库：练习会话中把本题答案写入 practice_answer 表（失败不影响答题体验）
     const pid = activePracticeId.value
-    if (pid != null && !persistedAnswerIds.value.has(current.value.id)) {
+    const answer = { questionId: current.value.id, userAnswer: ans }
+    const res = practiceMode.value === 'CAT' && pid != null
+      ? await submitAlgorithmAdaptiveAnswer(pid, answer)
+      : await submitPractice(answer)
+    feedbacks.value = { ...feedbacks.value, [current.value.id]: res.data }
+    // 普通练习沿用原落库行为；CAT 必须以会话答案接口成功作为推进条件。
+    if (practiceMode.value === 'CAT' && pid != null) {
+      persistedAnswerIds.value.add(current.value.id)
+    } else if (pid != null && !persistedAnswerIds.value.has(current.value.id)) {
       try {
         await answerInPractice(pid, { questionId: current.value.id, userAnswer: ans })
         persistedAnswerIds.value.add(current.value.id)
@@ -343,6 +445,10 @@ const finishPracticeSession = async () => {
     return
   }
   await finishCurrentPractice()
+  if (practiceMode.value === 'CAT') {
+    adaptiveClosedByStudent.value = true
+    questions.value = []
+  }
   const s = finishedSummary.value
   if (s) {
     ElMessage.success(`练习已完成：共 ${s.total} 题，答对 ${s.correct} 题`)
@@ -351,7 +457,18 @@ const finishPracticeSession = async () => {
   }
 }
 
-const next = () => { if (currentIndex.value < questions.value.length - 1) currentIndex.value++ }
+const next = async () => {
+  if (practiceMode.value === 'CAT') {
+    if (!currentFeedback.value) { ElMessage.warning('请先完成当前题目'); return }
+    if (currentIndex.value < questions.value.length - 1) {
+      currentIndex.value++
+      return
+    }
+    await loadAdaptiveNext()
+    return
+  }
+  if (currentIndex.value < questions.value.length - 1) currentIndex.value++
+}
 const prev = () => { if (currentIndex.value > 0) currentIndex.value-- }
 
 const answerText = (a: string | string[] | undefined, t?: QuestionType) => {
@@ -509,7 +626,12 @@ const submitAiGenerate = async () => {
       <div class="left-panel">
         <div class="panel-title">
           <span>选择语法专题</span>
-          <el-button type="primary" plain @click="openAiDialog">AI 补题</el-button>
+          <div class="practice-entry-actions">
+            <el-button type="success" plain :disabled="activeCategoryId == null || adaptiveLoading" @click="startAdaptiveForSelectedCategory">
+              {{ practiceMode === 'CAT' && activePracticeId != null ? '重新开始 CAT' : 'CAT 自适应' }}
+            </el-button>
+            <el-button type="primary" plain @click="openAiDialog">AI 补题</el-button>
+          </div>
         </div>
         <el-scrollbar height="calc(100vh - 300px)">
           <!-- [2026-10-16 改造] 原来是 127 个分类拍平成一个长列表（只靠 12px 缩进区分层级，
@@ -591,14 +713,33 @@ const submitAiGenerate = async () => {
       </div>
 
       <!-- 右侧：练习区 -->
-      <div class="right-panel" v-loading="loading">
-        <el-empty v-if="!questions.length" description="从左侧选一个专题开始练习" />
+      <div class="right-panel" v-loading="loading || adaptiveLoading">
+        <el-alert v-if="adaptiveError" type="error" :closable="false" title="CAT 请求失败，当前题目和练习进度已保留，可重试下一步或重新开始。" />
+        <el-alert v-if="practiceMode === 'CAT' && adaptiveResult" type="info" :closable="false" class="adaptive-status">
+          <template #title>
+            CAT · {{ adaptiveResult.modelVersion }} · 已完成 {{ adaptiveAnsweredCount }} / {{ adaptiveResult.maxQuestionCount }} 题
+            · SE {{ adaptiveResult.standardError == null ? '暂无数据' : adaptiveResult.standardError.toFixed(3) }}
+            / 目标 {{ adaptiveResult.targetStandardError.toFixed(2) }}
+            · {{ adaptiveResult.calibrationStatus }}（标定样本 {{ adaptiveResult.calibrationSampleCount }}）
+          </template>
+          <el-progress :percentage="adaptiveProgress" :show-text="false" :stroke-width="8" />
+          <div v-if="adaptiveResult.finished" class="adaptive-stop-reason">停止原因：{{ adaptiveStopReasonLabel || 'CAT 测验已结束' }}</div>
+        </el-alert>
+        <div v-if="practiceMode === 'CAT' && (adaptiveResult?.finished || adaptiveClosedByStudent)" class="adaptive-finished">
+          <el-icon><CircleCheck /></el-icon>
+          <div>
+            <strong>{{ adaptiveClosedByStudent ? 'CAT 练习已结束' : 'CAT 自适应练习完成' }}</strong>
+            <span v-if="adaptiveStopReasonLabel">{{ adaptiveStopReasonLabel }}</span>
+            <span v-if="finishedSummary">共 {{ finishedSummary.total }} 题，答对 {{ finishedSummary.correct }} 题</span>
+          </div>
+        </div>
+        <el-empty v-else-if="!questions.length" :description="adaptiveError ? 'CAT 暂无当前题目' : '从左侧选一个专题开始练习'" />
 
         <template v-else-if="current">
           <div class="q-header">
-            <span class="q-index">第 {{ currentIndex + 1 }} / {{ questions.length }} 题</span>
+            <span class="q-index">第 {{ displayQuestionNumber }} / {{ displayQuestionTotal }} 题</span>
             <el-progress
-              :percentage="((currentIndex + 1) / questions.length) * 100"
+              :percentage="practiceMode === 'CAT' ? adaptiveProgress : ((currentIndex + 1) / questions.length) * 100"
               :show-text="false"
               style="flex:1; margin: 0 16px"
             />
@@ -745,7 +886,7 @@ const submitAiGenerate = async () => {
                 v-if="activePracticeId != null"
                 type="warning"
                 plain
-                :disabled="!Object.keys(feedbacks).length"
+                :disabled="practiceMode === 'CAT' ? adaptiveAnsweredCount === 0 : !Object.keys(feedbacks).length"
                 @click="finishPracticeSession"
               >结束练习</el-button>
             </div>
@@ -753,7 +894,7 @@ const submitAiGenerate = async () => {
               <el-button v-if="!currentFeedback" type="primary" :loading="submitting" @click="submit">确认回答</el-button>
               <el-button
                 type="primary"
-                :disabled="currentIndex === questions.length - 1"
+                :disabled="practiceMode === 'CAT' ? !currentFeedback : currentIndex === questions.length - 1"
                 @click="next"
               >下一题<el-icon><ArrowRight /></el-icon></el-button>
             </div>
@@ -871,7 +1012,16 @@ const submitAiGenerate = async () => {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
 }
+.practice-entry-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; margin-left: auto; }
+.adaptive-status { margin-bottom: 4px; }
+.adaptive-status :deep(.el-alert__content) { width: 100%; }
+.adaptive-stop-reason { margin-top: 6px; color: #8a5a00; font-size: 12px; }
+.adaptive-finished { display: flex; align-items: flex-start; gap: 12px; margin: auto; padding: 24px; color: #438a4b; }
+.adaptive-finished > .el-icon { font-size: 26px; }
+.adaptive-finished > div { display: flex; flex-direction: column; gap: 6px; color: #606266; }
+.adaptive-finished strong { color: #303133; font-size: 16px; }
 .records-title { color: #409eff; }
 /* [2026-10-16] 专题列表改为两级分组后的样式：一级作分组标题（可折叠），二级缩进在组内 */
 .cat-group {

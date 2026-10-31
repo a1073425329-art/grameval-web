@@ -118,7 +118,7 @@ interface PassageGroup {
 interface VocabularyItem { word: string; phonetic?: string; meaning: string }
 type FeedItem = NormalItem | PassageGroup
 
-/** 题库按题目单元展示：独立题走题目接口，阅读理解走文章聚合接口 */
+/** 题库按题目与阅读文章展示：独立题走题目接口，阅读理解走文章聚合接口 */
 const feed = computed<FeedItem[]>(() => {
   if (unitKind.value === 'reading') {
     return passageList.value.map((passage) => ({
@@ -156,7 +156,7 @@ const stemSegments = (stem?: string): StemSeg[] => {
   return out
 }
 
-/** 多选答案 A,C → Set；单选为单元素 Set */
+/** 多选答案 A,C 转为集合；单选答案转为仅含一个值的集合 */
 const answerSet = (ans?: string): Set<string> =>
   new Set((ans || '').split(/[,，\s]+/).filter(Boolean))
 

@@ -1,6 +1,7 @@
 import request from '@/utils/request'
 import type { ApiResponse, PageQuery, PageResult } from '@/types/common'
 import type { PaperTemplate, PaperTemplateForm } from '@/types/paperTemplate'
+import type { AlgorithmPaperGenerateResult, AlgorithmPaperStrategy } from '@/types/algorithms'
 
 /* 请求 DTO, 可选字段放宽 undefined, 见 src/api/admin.ts 顶部说明 */
 export interface PaperTemplateQuery extends PageQuery {
@@ -49,6 +50,14 @@ export const checkTemplateAvailability = (id: number) =>
 // export const useTemplate = (id: number) =>
 //   request.post<ApiResponse<void>>(`/paper-templates/${id}/use`)
 
-/** 根据模板自动生成试卷 */
-export const generatePaperFromTemplate = (id: number, paperName?: string) =>
-  request.post<ApiResponse<{ paperId: number; paperName: string; totalScore: number; questionCount: number; status: string; warnings?: string[] }>>(`/paper-templates/${id}/generate`, null, { params: { paperName } })
+/** 根据模板生成试卷；缺省策略保持随机抽题。 */
+export const generatePaperFromTemplate = (
+  id: number,
+  paperName?: string,
+  strategy: AlgorithmPaperStrategy = 'RANDOM',
+) =>
+  request.post<ApiResponse<AlgorithmPaperGenerateResult>>(
+    `/paper-templates/${id}/generate`,
+    null,
+    { params: { paperName, strategy } },
+  )

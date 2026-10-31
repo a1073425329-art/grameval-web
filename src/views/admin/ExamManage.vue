@@ -782,7 +782,7 @@ const openExamPaperView = async (row: ExamSession) => {
               :key="unit.unitType === 'READING' ? `p-${unit.passageId || idx}` : `q-${unit.questionId || idx}`"
               class="d-q-card"
             >
-              <!-- 阅读理解单元 -->
+              <!-- 阅读理解题组 -->
               <template v-if="unit.unitType === 'READING'">
                 <div class="d-q-head">
                   <span class="d-q-no">第 {{ idx + 1 }} 题</span>

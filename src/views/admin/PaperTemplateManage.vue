@@ -12,6 +12,7 @@ import {
 import { listCategoryTree } from '@/api/admin'
 import CategoryMultiPicker from '@/components/CategoryMultiPicker.vue'
 import { directGenerate } from '@/api/ai'
+import type { AlgorithmPaperStrategy } from '@/types/algorithms'
 
 const router = useRouter()
 const tableData = ref<PaperTemplate[]>([])
@@ -258,6 +259,7 @@ const genForm = reactive({
   paperName: '',
   description: '',
   source: 'BANK' as GenerateSource,
+  strategy: 'RANDOM' as AlgorithmPaperStrategy,
 })
 const genRow = ref<PaperTemplate | null>(null)
 
@@ -268,6 +270,7 @@ const openGenerate = (row: PaperTemplate) => {
   genForm.paperName = `${row.templateName} · ${ymd}`
   genForm.description = `基于模板「${row.templateName}」生成。`
   genForm.source = row.generateSource || 'BANK'
+  genForm.strategy = 'RANDOM'
   genDialog.value = true
 }
 
@@ -303,9 +306,22 @@ const confirmGenerate = async () => {
       { confirmButtonText: '生成', type: shortage ? 'warning' : 'info' }
     )
     generating.value = true
-    const res = await generatePaperFromTemplate(row.id, genForm.paperName.trim())
+    const res = await generatePaperFromTemplate(row.id, genForm.paperName.trim(), genForm.strategy)
     ElMessage.success(`「${res.data?.paperName}」已生成，共 ${res.data?.questionCount} 题 / ${res.data?.totalScore} 分`)
-    const warns = res.data?.warnings ?? []
+    const optimization = res.data?.optimization
+    const warns = [...new Set([...(res.data?.warnings ?? []), ...(optimization?.warnings ?? [])])]
+    if (optimization) {
+      const summary = [
+        `策略：${optimization.strategy}`,
+        `硬约束：${optimization.constraintsSatisfied ? '全部满足' : '未全部满足'}`,
+        `难度分布偏差：${optimization.difficultyBandDeviation == null ? '无数据' : optimization.difficultyBandDeviation.toFixed(3)}`,
+        `平均区分度：${optimization.meanDiscrimination == null ? '无数据' : optimization.meanDiscrimination.toFixed(3)}`,
+        `知识点覆盖：${optimization.tagCoverage == null ? '无数据' : `${optimization.tagCoverage.toFixed(1)}%`}`,
+        `标定覆盖：${optimization.calibrationCoverage == null ? '无数据' : `${optimization.calibrationCoverage.toFixed(1)}%`}`,
+        `搜索迭代：${optimization.iterations}`,
+      ].join('\n')
+      await ElMessageBox.alert(summary, '组卷优化结果', { confirmButtonText: '知道了', type: optimization.constraintsSatisfied ? 'success' : 'warning' })
+    }
     if (warns.length) ElMessage.warning(warns.join('；'))
     genDialog.value = false
     router.push('/admin/papers')
@@ -715,6 +731,17 @@ const examTone = (v?: string) => {
             </button>
           </div>
           <p class="ed-hint">模板默认「{{ srcLabel(genRow?.generateSource) }}」，此处可临时覆盖。</p>
+        </el-form-item>
+        <el-form-item v-if="genForm.source !== 'AI'" label="组卷策略">
+          <el-radio-group v-model="genForm.strategy" size="large">
+            <el-radio-button value="RANDOM">随机抽题</el-radio-button>
+            <el-radio-button value="OPTIMIZED">多约束优化</el-radio-button>
+          </el-radio-group>
+          <p class="ed-hint">
+            {{ genForm.strategy === 'RANDOM'
+              ? '默认方式：从满足模板条件的题目中随机抽取。'
+              : '在题型、分值、去重和阅读文章整组约束内优化选题；不可行时显示后端返回的原因。' }}
+          </p>
         </el-form-item>
       </el-form>
       <template #footer>

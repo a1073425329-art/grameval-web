@@ -20,6 +20,8 @@ export interface PaperSubQuestionVO {
   options?: QuestionOptionVO[]
   categoryName?: string
   tagNames?: string[]
+  /** 审核标签（0待审/1通过/2未通过），仅展示，不参与流程约束 */
+  auditStatus?: number | null | undefined
 }
 
 export interface PaperQuestionVO {
@@ -40,6 +42,8 @@ export interface PaperQuestionVO {
   passageContent?: string
   passageWordCount?: number
   subQuestions?: PaperSubQuestionVO[]
+  /** 审核标签（0待审/1通过/2未通过），仅展示，不参与流程约束 */
+  auditStatus?: number | null | undefined
 }
 
 /** 试卷 —— 对齐后端 PaperVO */
@@ -107,6 +111,8 @@ export interface PaperForm {
   paperName: string
   description?: string | undefined
   passScore?: number | undefined
+  /** [2026-10-31 新增] 声明总分：填了后端必须与逐题分值合计一致才允许保存 */
+  totalScore?: number | undefined
   status?: 0 | 1 | 2 | undefined
   questionUnits: PaperQuestionUnitForm[]
 }

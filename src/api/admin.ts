@@ -11,6 +11,10 @@ import type {
   QuestionCoverageQuery,
   QuestionForm,
   QuestionUsageStats,
+  QuestionAuditStatus,
+  QuestionAuditStats,
+  QuestionAuditResult,
+  AiQuestionAuditResult,
 } from '@/types/question'
 import type { ReadingPassage, ReadingPassageForm, ReadingQuestionItem } from '@/types/reading'
 import type { Paper, PaperForm, PaperSummaryStats } from '@/types/paper'
@@ -94,9 +98,27 @@ export interface AdminQuestionQuery extends PageQuery {
   difficulty?: Difficulty | undefined
   keyword?: string | undefined
   status?: number | undefined
+  auditStatus?: QuestionAuditStatus | undefined
+  createBy?: number | undefined
+  studentId?: number | undefined
+  studentIds?: number[] | undefined
+  onlyWrong?: boolean | undefined
   // [2026-10-28] 后端 question.usage_count 列已清除，且这两个「引用次数区间」参数后端从来不认（失效筛选），已删除
   total?: number | undefined
 }
+
+export type QuestionAuditStatsQuery = Pick<
+  AdminQuestionQuery,
+  | 'keyword'
+  | 'categoryId'
+  | 'questionType'
+  | 'difficulty'
+  | 'status'
+  | 'createBy'
+  | 'studentId'
+  | 'studentIds'
+  | 'onlyWrong'
+>
 
 export const listAdminQuestions = (params: AdminQuestionQuery) =>
   request.get<ApiResponse<PageResult<Question>>>('/questions', { params })
@@ -117,6 +139,49 @@ export const batchStatusQuestions = (ids: number[], status: 0 | 1) =>
 /** 批量删除 —— POST /questions/batch-delete  body: { ids:[] } */
 export const batchDeleteQuestions = (ids: number[]) =>
   request.post<ApiResponse<void>>('/questions/batch-delete', { ids })
+
+/** 人工审核单条或批量题目。 */
+export const auditQuestions = (ids: number[], auditStatus: 1 | 2) =>
+  request.post<ApiResponse<QuestionAuditResult>>('/admin/questions/audit', { ids, auditStatus })
+
+/** AI 审核仅针对当前未审核记录。 */
+export const aiAuditQuestions = (ids: number[]) =>
+  request.post<ApiResponse<AiQuestionAuditResult>>('/admin/questions/audit/ai', { ids })
+
+export const aiAuditQuestionsSequentially = async (
+  ids: number[],
+  onProgress?: (done: number, total: number) => void,
+): Promise<AiQuestionAuditResult> => {
+  const result: AiQuestionAuditResult = { approved: 0, rejected: 0, failed: 0, items: [] }
+  let done = 0
+
+  for (const id of ids) {
+    try {
+      const response = await aiAuditQuestions([id])
+      const item = response.data.items?.find((candidate) => candidate.id === id)
+      if (item) {
+        result.items.push(item)
+        if (item.auditStatus === 1) result.approved += 1
+        else if (item.auditStatus === 2) result.rejected += 1
+        else result.failed += 1
+      } else {
+        result.failed += 1
+        result.items.push({ id, auditStatus: null, reason: '响应缺少该题审核结果，题目保持待审核' })
+      }
+    } catch {
+      result.failed += 1
+      result.items.push({ id, auditStatus: null, reason: '审核请求失败，题目保持待审核' })
+    } finally {
+      done += 1
+      onProgress?.(done, ids.length)
+    }
+  }
+
+  return result
+}
+
+export const getQuestionAuditStats = (params: QuestionAuditStatsQuery) =>
+  request.get<ApiResponse<QuestionAuditStats>>('/admin/questions/audit-stats', { params })
 
 /**
  * 单题使用统计（实时聚合，无统计表）

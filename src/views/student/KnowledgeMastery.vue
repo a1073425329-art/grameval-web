@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { getStudentMastery, getStudentInsights } from '@/api/knowledgeMastery'
+import { getAlgorithmBktForStudents, getMyAlgorithmBkt } from '@/api/algorithms'
+import { listUsers } from '@/api/admin'
 import type { KnowledgeMastery as KM, KnowledgeInsights } from '@/types/knowledgeMastery'
+import type { UserDetail } from '@/types/user'
+import type { AlgorithmBktBatchResult, AlgorithmBktItem, AlgorithmBktStudentResult } from '@/types/algorithms'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -19,11 +23,86 @@ const authStore = useAuthStore()
 const data = ref<KM[]>([])
 const insights = ref<KnowledgeInsights | null>(null)
 const loading = ref(false)
+const analyticsMode = ref<'legacy' | 'bkt'>('legacy')
+const bktLoading = ref(false)
+const bktError = ref(false)
+const bktData = ref<AlgorithmBktStudentResult | AlgorithmBktBatchResult | null>(null)
+const studentOptions = ref<UserDetail[]>([])
+const selectedStudentIds = ref<number[]>([])
+const bktTimeRange = ref<string[]>([])
+const role = computed(() => String(authStore.userInfo?.role ?? ''))
+const canSelectBktStudents = computed(() => role.value === 'ADMIN')
+/** [2026-10-31] admin 打开本页时历史上取的是自己 uid（掌握度 0 行）导致整页空白；改为可选学生，默认 user01 */
+const viewStudentId = ref<number | null>(null)
+const targetUserId = computed(() => {
+  if (role.value === 'ADMIN') return viewStudentId.value ?? authStore.userInfo?.id
+  return authStore.userInfo?.id
+})
+
+const loadBkt = async () => {
+  bktLoading.value = true
+  bktError.value = false
+  try {
+    const uid = authStore.userInfo?.id
+    const [startTime, endTime] = bktTimeRange.value
+    if (role.value === 'ADMIN') {
+      const res = await getAlgorithmBktForStudents({
+        studentIds: selectedStudentIds.value.length ? selectedStudentIds.value : undefined,
+        startTime,
+        endTime,
+      })
+      bktData.value = res.data
+    } else if (uid) {
+      const res = await getMyAlgorithmBkt(uid, { startTime, endTime })
+      bktData.value = res.data
+    } else {
+      bktData.value = null
+    }
+  } catch {
+    bktError.value = true
+  } finally {
+    bktLoading.value = false
+  }
+}
+
+const loadStudentOptions = async () => {
+  try {
+    const res = await listUsers({ pageNum: 1, pageSize: 200, role: 'STUDENT' })
+    studentOptions.value = res.data?.records ?? []
+  } catch { /* handled by interceptor */ }
+}
+
+const bktRows = computed<Array<AlgorithmBktItem & { userId: number; modelVersion: string }>>(() => {
+  const data = bktData.value
+  if (!data) return []
+  if ('students' in data) {
+    return data.students.flatMap((student) =>
+      student.items.map((item) => ({ ...item, userId: student.userId, modelVersion: student.modelVersion })),
+    )
+  }
+  return data.items.map((item) => ({ ...item, userId: data.userId, modelVersion: data.modelVersion }))
+})
+const bktModelVersion = computed(() => bktData.value?.modelVersion ?? '—')
+
+const studentLabel = (id: number) => {
+  const student = studentOptions.value.find((item) => item.id === id)
+  return student?.realName || student?.username || String(id)
+}
+const bktRowKey = (row: AlgorithmBktItem & { userId: number }) => `${row.userId}-${row.tagId}`
+const bktStatusLabels: Record<string, string> = {
+  OK: '样本可用', INSUFFICIENT_SAMPLE: '样本不足', NO_DATA: '暂无观测',
+}
+const bktStatusLabel = (status: string) => bktStatusLabels[status] ?? status
+const bktProbability = (value: number | null) => value == null ? '暂无数据' : `${(value * 100).toFixed(1)}%`
+const bktParameters = (item: AlgorithmBktItem) => {
+  const p = item.parameters
+  return `pL0 ${p.pL0.toFixed(2)} · pT ${p.pT.toFixed(2)} · pG ${p.pG.toFixed(2)} · pS ${p.pS.toFixed(2)} · 遗忘 ${p.forgettingLambda.toFixed(3)}/日 · 拟合序列 ${p.fitSequenceCount}`
+}
 
 const load = async () => {
   loading.value = true
   try {
-    const uid = authStore.userInfo?.id
+    const uid = targetUserId.value
     if (!uid) return
     const [m, i] = await Promise.all([
       getStudentMastery(uid),
@@ -34,7 +113,30 @@ const load = async () => {
   } finally { loading.value = false }
 }
 
-onMounted(load)
+onMounted(() => {
+  if (canSelectBktStudents.value) {
+    loadStudentOptions().then(() => {
+      // 演示主角 user01 有完整掌握度；admin 默认看他，避免空白页
+      const fallback = studentOptions.value.find((s) => s.id === 1)?.id
+        ?? studentOptions.value[0]?.id
+        ?? null
+      viewStudentId.value = fallback
+      // fallback 为空时 watch 不触发，这里兜底
+      if (fallback == null) load()
+      if (!bktData.value) loadBkt()
+    })
+  } else {
+    load()
+  }
+})
+
+watch(viewStudentId, (id) => {
+  if (id != null) load()
+})
+
+watch(analyticsMode, (mode) => {
+  if (mode === 'bkt' && !bktData.value) loadBkt()
+})
 
 /* ============================================================
  *  视图模式：分类视图（按语法专题分页签） / 拍平视图（全部平铺）
@@ -286,6 +388,27 @@ const accBg = (acc: number) => {
 
 <template>
   <div class="page-container" v-loading="loading">
+    <div class="algorithm-view-switch">
+      <el-radio-group v-model="analyticsMode">
+        <el-radio-button value="legacy">现有掌握度</el-radio-button>
+        <el-radio-button value="bkt">BKT 模型估计</el-radio-button>
+      </el-radio-group>
+      <el-select
+        v-if="canSelectBktStudents"
+        v-model="viewStudentId"
+        filterable
+        placeholder="选择学生"
+        style="width: 220px; margin-left: 12px"
+      >
+        <el-option
+          v-for="student in studentOptions"
+          :key="student.id"
+          :label="student.realName || student.username"
+          :value="student.id"
+        />
+      </el-select>
+    </div>
+    <div v-if="analyticsMode === 'legacy'">
     <!-- 说明 -->
     <el-alert type="info" :closable="false">
       <template #title>
@@ -698,6 +821,58 @@ const accBg = (acc: number) => {
         </el-card>
       </el-col>
     </el-row>
+    </div>
+
+    <section v-else class="bkt-panel" v-loading="bktLoading">
+      <header class="bkt-header">
+        <div>
+          <h2>BKT 知识追踪估计</h2>
+          <p>模型估计值单独展示，不覆盖现有掌握度；当前模型版本：{{ bktModelVersion }}</p>
+        </div>
+        <div class="bkt-filters">
+          <el-select v-if="canSelectBktStudents" v-model="selectedStudentIds" multiple filterable clearable collapse-tags collapse-tags-tooltip
+            :max-collapse-tags="2" placeholder="全部学生（授权范围）" style="width: 280px">
+            <el-option v-for="student in studentOptions" :key="student.id" :label="student.realName || student.username" :value="student.id" />
+          </el-select>
+          <el-date-picker v-model="bktTimeRange" type="datetimerange" value-format="YYYY-MM-DD HH:mm:ss"
+            start-placeholder="开始时间" end-placeholder="结束时间" range-separator="至" />
+          <el-button type="primary" :loading="bktLoading" @click="loadBkt">刷新估计</el-button>
+        </div>
+      </header>
+      <el-alert v-if="canSelectBktStudents && !selectedStudentIds.length" type="info" :closable="false"
+        title="当前查询管理员授权范围内的全体学生；选择学生后可筛选单人或多人。" />
+      <el-alert v-if="bktError" type="error" :closable="false" title="BKT 结果加载失败，请确认查询范围后重试。" />
+      <el-table v-if="bktRows.length" :data="bktRows" stripe :row-key="bktRowKey">
+        <el-table-column v-if="canSelectBktStudents" label="学生" min-width="150">
+          <template #default="{ row }">{{ studentLabel(row.userId) }}</template>
+        </el-table-column>
+        <el-table-column prop="tagName" label="知识点" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="categoryId" label="分类 ID" width="95" align="right" />
+        <el-table-column label="掌握概率（模型估计）" width="190" align="right">
+          <template #default="{ row }">
+            <span v-if="row.masteryProbability != null" class="bkt-probability">{{ bktProbability(row.masteryProbability) }}</span>
+            <span v-else class="muted">暂无数据</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="observations" label="观测次数" width="110" align="right" />
+        <el-table-column label="参数来源" width="130">
+          <template #default="{ row }">{{ row.parameterSource }}</template>
+        </el-table-column>
+        <el-table-column label="模型状态" width="135">
+          <template #default="{ row }">
+            <el-tag :type="row.status === 'OK' ? 'success' : row.status === 'NO_DATA' ? 'info' : 'warning'">{{ bktStatusLabel(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="参数 / 版本" min-width="330">
+          <template #default="{ row }">
+            <el-tooltip :content="bktParameters(row)" placement="top">
+              <span class="bkt-model-cell">{{ row.modelVersion }} · {{ row.lastAnswerTime || '无答题时间' }}</span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-empty v-else-if="!bktLoading && !bktError" description="当前范围没有 BKT 观测数据" />
+    </section>
   </div>
 </template>
 
@@ -716,6 +891,15 @@ export default {
 
 <style scoped lang="scss">
 .page-container { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+.algorithm-view-switch { display: flex; justify-content: flex-end; }
+.bkt-panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.bkt-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.bkt-header h2 { margin: 0; font-size: 18px; color: #303133; }
+.bkt-header p { margin: 6px 0 0; color: #909399; font-size: 13px; }
+.bkt-filters { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
+.bkt-probability { color: #1677a8; font-weight: 700; font-variant-numeric: tabular-nums; }
+.bkt-model-cell { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #606266; }
+.muted { color: #909399; }
 
 .section-card {
   border-radius: 8px;

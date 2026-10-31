@@ -20,7 +20,7 @@ import type { ArchTable, ArchColumn, ArchModule, SystemArchitecture } from '@/ap
 
 const loading = ref(false)
 const data = ref<SystemArchitecture | null>(null)
-const activeTab = ref<'tech' | 'tables' | 'er'>('tech')
+const activeTab = ref<'tech' | 'tables' | 'er' | 'algo'>('tech')
 const includeRows = ref(false)
 
 /** 表清单搜索关键字 */
@@ -43,6 +43,99 @@ const moduleFilter = ref('')
  * 默认进入「论文口径」，因为老师通常先问"你论文里设计了几张表"。
  */
 const tableView = ref<'paper' | 'all'>('paper')
+
+/**
+ * [2026-10-31] 非 AI 主流程算法举证（答辩用）。
+ * 四项来自《四算法实施总纲》（教育测量 / 模拟退火组卷 / BKT / CAT）；
+ * 第五项 StudentListStatistics 是 D36 统计实时化配套，不是教育测量算法。
+ */
+const algorithmCards = [
+  {
+    id: 'quality',
+    name: '教育测量 · 题目质量分析',
+    kind: '教育测量学',
+    paper: '扩展（论文未展开公式，答辩可引「区分度 / 难度」概念）',
+    goal: '从正式考试作答明细动态计算 P 值（难度）、D 值（区分度）、选项分布与信度，标记低质量题；不落统计表。',
+    formula: [
+      'P（难度）= 该题答对人数 / 有效作答人数，P∈[0,1]；P≥0.70 易、≥0.40 中、否则难',
+      'D（区分度）= 高分组正确率 − 低分组正确率（按总分上下 27% 分组）',
+      '信度：考试整体内部一致性（基于方差比）',
+      '缺样本标 INCOMPLETE_DATA，不拿练习数据冒充正式考试',
+    ],
+    data: 'answer_record + exam_record + question（只读正式考试明细）',
+    api: 'GET /api/admin/questions/quality',
+    ui: '管理端 · 题库质量分析',
+    impl: 'QuestionQualityCalculator / QuestionQualityService',
+  },
+  {
+    id: 'sa',
+    name: '模拟退火 · 多约束组卷',
+    kind: '组合优化',
+    paper: '扩展（对齐论文「智能组卷策略」改进点）',
+    goal: '在题型数、目标总分、题目不重复、阅读整组等硬约束下，优化难度分布、区分度、知识点覆盖与近期复用率。',
+    formula: [
+      '目标函数权重 (2.0, 1.5, 1.0, 0.6, 0.8)：难度 L1 偏差、平均 D 损失、知识点覆盖缺口、近 30 天复用率、未标定题占比',
+      '退火：20000 次迭代，T0=1，Tmin=1e-4，α=(Tmin/T0)^(1/iterations)',
+      '最大余数法分配难度档位初始配额；邻域 = 可行题目替换',
+      '硬约束不可行必须失败并返回 warnings，禁止静默违约出卷',
+    ],
+    data: 'question + question_tag_relation + paper_question（历史复用）',
+    api: 'POST /api/paper-templates/{id}/generate?strategy=OPTIMIZED',
+    ui: '组卷模板 · 生成试卷 · 组卷策略「多约束优化」',
+    impl: 'PaperTemplateOptimizer（挂接 PaperTemplateService）',
+  },
+  {
+    id: 'bkt',
+    name: 'BKT · 贝叶斯知识追踪',
+    kind: '知识追踪',
+    paper: '扩展（学生掌握度估计）',
+    goal: '按知识点标签估计学生掌握概率；与旧「掌握度」并列展示，不覆盖旧字段。',
+    formula: [
+      '先验 pL0=0.25；迁移 pT=0.18；猜对 pG=0.20；疏忽 pS=0.10；遗忘 λ=0.02/日',
+      '样本充足（≥20 条序列且每条 ≥4 次观测）时有界 MLE 拟合 pT/pG/pS，否则用版本化默认参数',
+      '掌握更新按相邻观测间隔施加指数遗忘',
+      '观测来源仅 practice_answer 最终作答行；不足 3 条标 INSUFFICIENT_SAMPLE，零观测 NO_DATA',
+    ],
+    data: 'practice_answer + question_tag_relation（不读 knowledge_mastery 汇总）',
+    api: 'GET /api/knowledge-mastery/student/{id}/bkt · GET /api/knowledge-mastery/bkt',
+    ui: '学生 · 知识点掌握度 · 「BKT 模型估计」页签',
+    impl: 'BktService / BktCalculator',
+  },
+  {
+    id: 'cat',
+    name: 'CAT · 自适应测验练习',
+    kind: '项目反应理论 IRT',
+    paper: '扩展（个性化练习路径）',
+    goal: '按当前能力动态选题，用更少题目达到目标测量精度；能力/SE 每次从本练习作答重算，不持久化。',
+    formula: [
+      'Rasch 1PL；能力 θ 用 N(0,1) 先验 MAP；Newton 更新，步长裁剪 ±1',
+      '选题 = 最大 Fisher 信息，并做题型均衡与主知识点覆盖',
+      'SE = 1/√(测验信息)；SE≤0.50 或 30 题停止',
+      '历史校准优先正式考试 P≥20；未标定题按人工难度映射并乘 0.6 信息折扣',
+    ],
+    data: 'practice_answer + answer_record + question（动态重算）',
+    api: 'POST /api/practices/adaptive/start/{categoryId} · GET /api/practices/{id}/adaptive/next',
+    ui: '学生 · 专项练习 · 练习模式「CAT 自适应」',
+    impl: 'AdaptivePracticeService',
+  },
+  {
+    id: 'list',
+    name: '学生名单统计（实时聚合）',
+    kind: 'D36 统计口径 · 非教育测量算法',
+    paper: '对齐 D36：统计值查询时从业务明细聚合，不读存量汇总列',
+    goal: '学生列表页批量计算考试次数、练习量、正确率、连续学习天数、能力分等，供教师/管理端名单展示。',
+    formula: [
+      '能力分 = 平均考试分 × 60% + 练习正确率 × 40%',
+      '全部指标从 exam_record / exam_score / practice_answer / answer_record 实时聚合',
+      '禁止把 question_count、correct_rate 等存量列当权威结果（D31/D36）',
+      '这不是题目质量/BKT/CAT 类「算法」，是列表统计服务',
+    ],
+    data: 'exam_record + exam_score + practice_answer + answer_record + class_student',
+    api: 'GET /api/admin/users（列表 VO 内嵌统计）',
+    ui: '管理端 · 我的学生 / 用户管理列表',
+    impl: 'StudentListStatisticsService',
+  },
+]
 
 // ==================== 加载 ====================
 
@@ -394,6 +487,56 @@ const focusTable = (name: string) => {
         </div>
       </el-tab-pane>
 
+      <!-- ========== 算法举证 ========== -->
+      <el-tab-pane name="algo">
+        <template #label>
+          <span class="tab-label"><el-icon><DataAnalysis /></el-icon> 算法举证（{{ algorithmCards.length }}）</span>
+        </template>
+        <el-alert type="info" :closable="false" class="er-tip">
+          <template #title>
+            <b>非 AI 主流程算法</b>：前 4 项为教育算法（题目质量 / 模拟退火组卷 / BKT / CAT），第 5 项是 D36 统计实时化配套服务。
+            全部查询时从明细聚合，不新增统计表或统计结果列。
+          </template>
+        </el-alert>
+        <div class="algo-grid">
+          <el-card v-for="a in algorithmCards" :key="a.id" shadow="hover" class="algo-card">
+            <template #header>
+              <div class="algo-head">
+                <span class="algo-name">{{ a.name }}</span>
+                <el-tag size="small" effect="plain">{{ a.kind }}</el-tag>
+              </div>
+              <div class="algo-goal">{{ a.goal }}</div>
+            </template>
+            <div class="algo-block">
+              <div class="algo-label">与论文关系</div>
+              <div class="algo-text">{{ a.paper }}</div>
+            </div>
+            <div class="algo-block">
+              <div class="algo-label">公式 / 规则</div>
+              <ul class="algo-list">
+                <li v-for="(f, i) in a.formula" :key="i">{{ f }}</li>
+              </ul>
+            </div>
+            <div class="algo-block">
+              <div class="algo-label">数据来源</div>
+              <div class="algo-text"><code>{{ a.data }}</code></div>
+            </div>
+            <div class="algo-block">
+              <div class="algo-label">接口</div>
+              <div class="algo-text"><code>{{ a.api }}</code></div>
+            </div>
+            <div class="algo-block">
+              <div class="algo-label">前端入口</div>
+              <div class="algo-text">{{ a.ui }}</div>
+            </div>
+            <div class="algo-block">
+              <div class="algo-label">实现类</div>
+              <div class="algo-text"><code>{{ a.impl }}</code></div>
+            </div>
+          </el-card>
+        </div>
+      </el-tab-pane>
+
       <!-- ========== 数据表 ========== -->
       <el-tab-pane name="tables">
         <template #label>
@@ -669,6 +812,63 @@ const focusTable = (name: string) => {
   padding: 16px 20px 28px;
   min-height: 100%;
   background: #f5f7fa;
+}
+
+/* ---------- 算法举证 ---------- */
+.algo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+.algo-card {
+  :deep(.el-card__header) {
+    padding: 12px 16px;
+    background: #fafbfc;
+  }
+}
+.algo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.algo-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: #303133;
+}
+.algo-goal {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #606266;
+  line-height: 1.55;
+}
+.algo-block {
+  margin-bottom: 10px;
+}
+.algo-label {
+  font-size: 11px;
+  color: #909399;
+  margin-bottom: 3px;
+}
+.algo-text {
+  font-size: 12px;
+  color: #303133;
+  line-height: 1.55;
+  code {
+    font-size: 11px;
+    background: #f0f2f5;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+}
+.algo-list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 12px;
+  color: #303133;
+  line-height: 1.65;
 }
 
 /* ---------- 页头 ---------- */

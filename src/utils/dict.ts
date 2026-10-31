@@ -198,10 +198,10 @@ export const isCorrectDict: DictOption[] = [
 // ========== 试卷满分档位相关 ==========
 // [2026-10-16 新增] 出题卷面满分必须是标准档位，对齐小初高 / 中考 / 高考 /
 // 大学英语四六级 / 托福 / 雅思，避免出现 101、110 这类非标准总分。
+// [2026-10-31 改] Q2 决策：全系统统一 100 分，便于平均分/及格率等指标直观可比；150 档位下线。
 // 与后端 AiGenerateParams.ALLOWED_TOTAL_SCORES 保持一致。
 export const paperScoreDict: DictOption[] = [
-  { value: 100, label: '100 分（100 题 · 每题 1 分）' },
-  { value: 150, label: '150 分（150 题 · 每题 1 分）' },
+  { value: 100, label: '100 分（题量 10~100，每题 1~10 分）' },
 ]
 
 /** 合法档位值列表（下拉 value 直接取该数组，避免与后端校验漂移） */
@@ -213,7 +213,7 @@ export const paperScoreValues: number[] = paperScoreDict.map((d) => Number(d.val
 export interface ExamTypePreset {
   value: string
   label: string
-  /** 卷面总分：100 或 150，1 题 1 分（题数 = 总分） */
+  /** 卷面总分：统一 100（[2026-10-31] 原 100/150 双档统一为 100） */
   totalScore: number
   /** 三档难度百分比，合计 100 */
   easyPct: number
@@ -232,15 +232,15 @@ export interface ExamTypePreset {
 export const examTypePresets: ExamTypePreset[] = [
   { value: "PRIMARY", label: "小学英语", totalScore: 100, easyPct: 70, mediumPct: 25, hardPct: 5, questionCount: 100, suggestDuration: 60 },
   { value: "JUNIOR", label: "初中英语", totalScore: 100, easyPct: 55, mediumPct: 35, hardPct: 10, questionCount: 100, suggestDuration: 90 },
-  { value: "ZHONGKAO", label: "中考英语", totalScore: 150, easyPct: 50, mediumPct: 40, hardPct: 10, questionCount: 150, suggestDuration: 90 },
-  { value: "SENIOR", label: "高中英语", totalScore: 150, easyPct: 35, mediumPct: 45, hardPct: 20, questionCount: 150, suggestDuration: 120 },
-  { value: "GAOKAO", label: "高考英语", totalScore: 150, easyPct: 30, mediumPct: 50, hardPct: 20, questionCount: 150, suggestDuration: 120 },
+  { value: "ZHONGKAO", label: "中考英语", totalScore: 100, easyPct: 50, mediumPct: 40, hardPct: 10, questionCount: 100, suggestDuration: 90 },
+  { value: "SENIOR", label: "高中英语", totalScore: 100, easyPct: 35, mediumPct: 45, hardPct: 20, questionCount: 100, suggestDuration: 120 },
+  { value: "GAOKAO", label: "高考英语", totalScore: 100, easyPct: 30, mediumPct: 50, hardPct: 20, questionCount: 100, suggestDuration: 120 },
   { value: "CET4", label: "大学英语四级", totalScore: 100, easyPct: 30, mediumPct: 50, hardPct: 20, questionCount: 100, suggestDuration: 125 },
   { value: "CET6", label: "大学英语六级", totalScore: 100, easyPct: 20, mediumPct: 50, hardPct: 30, questionCount: 100, suggestDuration: 130 },
   { value: "POSTGRAD", label: "考研英语", totalScore: 100, easyPct: 20, mediumPct: 50, hardPct: 30, questionCount: 100, suggestDuration: 180 },
   { value: "TEM4", label: "专四", totalScore: 100, easyPct: 25, mediumPct: 50, hardPct: 25, questionCount: 100, suggestDuration: 130 },
-  { value: "TOEFL", label: "托福", totalScore: 150, easyPct: 10, mediumPct: 40, hardPct: 50, questionCount: 150, suggestDuration: 180 },
-  { value: "IELTS", label: "雅思", totalScore: 150, easyPct: 10, mediumPct: 40, hardPct: 50, questionCount: 150, suggestDuration: 160 },
+  { value: "TOEFL", label: "托福", totalScore: 100, easyPct: 10, mediumPct: 40, hardPct: 50, questionCount: 100, suggestDuration: 180 },
+  { value: "IELTS", label: "雅思", totalScore: 100, easyPct: 10, mediumPct: 40, hardPct: 50, questionCount: 100, suggestDuration: 160 },
   { value: "CUSTOM", label: "自定义", totalScore: 100, easyPct: 30, mediumPct: 50, hardPct: 20, questionCount: 100 },
 ]
 

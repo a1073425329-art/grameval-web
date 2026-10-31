@@ -28,7 +28,7 @@ const dropdownLinks = computed<{ path: string; icon: string; label: string; supe
   return [
     { path: '/student/home', icon: 'HomeFilled', label: '首页' },
     { path: '/student/messages', icon: 'Bell', label: '消息中心' },
-    { path: '/student/stats', icon: 'TrendCharts', label: '学习分析' },
+    // [2026-10-31] 学习分析已并入首页 Tab，此处不再单列入口
     { path: '/student/profile', icon: 'User', label: '个人资料' },
   ]
 })

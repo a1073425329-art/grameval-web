@@ -42,7 +42,7 @@ export interface AiOverview {
   currentProfileBaseUrl?: string
 }
 
-/** 厂商模型档案（多厂商链路的最小配置单元） */
+/** 厂商模型档案（多厂商链路的最小配置项） */
 export interface AiVendorProfile {
   id: string
   vendor: string

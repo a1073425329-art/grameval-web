@@ -11,6 +11,76 @@ export interface QuestionOption {
   sortNo: number
 }
 
+export type QuestionAuditStatus = 0 | 1 | 2
+
+export interface QuestionAuditStats {
+  all: number
+  pending: number
+  approved: number
+  rejected: number
+}
+
+export interface QuestionAuditResult {
+  updated: number
+  skipped: number
+}
+
+export interface AiQuestionAuditResultItem {
+  id: number
+  auditStatus: QuestionAuditStatus | null
+  reason: string
+}
+
+export interface AiQuestionAuditResult {
+  approved: number
+  rejected: number
+  failed: number
+  items: AiQuestionAuditResultItem[]
+}
+
+export interface QuestionDocumentImportItem {
+  index: number
+  questionType: QuestionType
+  stem: string
+  standardAnswer: string
+  analysis: string | null
+  options: QuestionOption[]
+  difficulty: Difficulty
+  defaultScore: number
+  answerFormat: string | null
+  knowledgePoints: string[]
+  tagIds: number[]
+  primaryTagId: number | null
+  errors: string[]
+  warnings: string[]
+  passageGroupKey: string | null
+  passageTitle: string | null
+  passageContent: string | null
+  passageKnowledgePoints: string[]
+  childItems: QuestionDocumentImportItem[]
+}
+
+export interface QuestionDocumentImportPreview {
+  fileName: string
+  items: QuestionDocumentImportItem[]
+  warnings: string[]
+}
+
+export type QuestionDocumentImportCommitItem = Omit<
+  QuestionDocumentImportItem,
+  'index' | 'errors' | 'warnings' | 'childItems'
+> & {
+  childItems: QuestionDocumentImportCommitItem[]
+}
+
+export interface QuestionDocumentImportCommitResult {
+  createdCount: number
+  skippedCount: number
+  passageCount: number
+  questionIds: number[]
+  warnings: string[]
+}
+
 /**
  * 试题 —— 对齐后端 QuestionVO
  * 字段变更（vs 之前）：
@@ -23,6 +93,7 @@ export interface QuestionOption {
 export interface Question {
   id: number
   categoryId: number
+  auditStatus?: QuestionAuditStatus
   categoryName?: string
   questionType: QuestionType
   stem: string
@@ -207,10 +278,10 @@ export interface QuestionCoverageDimension {
 }
 
 export interface QuestionCoverageCategory extends Omit<QuestionCoverageDimension, 'key' | 'label'> {
-  categoryId: number
+  categoryId: number | null
   parentId: number | null
   categoryName: string
-  level: number
+  level: 1 | 2 | null
 }
 
 export interface QuestionCoverageAlert {

@@ -112,6 +112,8 @@ interface PickedSubQuestion {
   questionType: QuestionType
   difficulty: Difficulty
   score: number
+  /** 审核标签（仅展示，不参与流程约束） */
+  auditStatus?: number | null | undefined
 }
 
 interface PickedQuestion {
@@ -121,6 +123,8 @@ interface PickedQuestion {
   questionType: QuestionType
   difficulty: Difficulty
   score: number
+  /** 审核标签（仅展示，不参与流程约束） */
+  auditStatus?: number | null | undefined
 }
 
 interface PickedPassage {
@@ -140,6 +144,8 @@ const paperForm = reactive({
   paperName: '',
   description: '',
   passScore: 60 as number | undefined,
+  // [2026-10-31 新增] 声明总分（Q2：新建默认 100，须与逐题分值合计一致；编辑态只读回显）
+  declaredTotalScore: 100,
   // [2026-10-28] 原「随机乱序」初值：后端 exam_paper.shuffle_questions 在取题排序里不读，假开关 ⇒ 删除
   status: 0 as 0 | 1 | 2,
 })
@@ -153,6 +159,9 @@ const pickedQuestionCount = computed(() => picked.value.reduce(
   (sum, unit) => sum + (unit.unitType === 'QUESTION' ? 1 : unit.subQuestions.length),
   0,
 ))
+const pickedReadingPassageCount = computed(() =>
+  picked.value.filter((item) => item.unitType === 'READING').length,
+)
 const scoreValues = computed(() => picked.value.flatMap((unit) =>
   unit.unitType === 'QUESTION' ? [unit.score] : unit.subQuestions.map((question) => question.score),
 ))
@@ -173,7 +182,7 @@ const baseRules: FormRules = {
 }
 
 const resetPaperForm = () => {
-  Object.assign(paperForm, { id: 0, paperName: '', description: '', passScore: 60, status: 0 })
+  Object.assign(paperForm, { id: 0, paperName: '', description: '', passScore: 60, declaredTotalScore: 100, status: 0 })
   picked.value = []
   step.value = 0
 }
@@ -191,6 +200,8 @@ const openEdit = async (row: Paper) => {
   paperForm.paperName = row.paperName
   paperForm.description = row.description || ''
   paperForm.passScore = row.passScore
+  // [2026-10-31 新增] 编辑态回显试卷当前总分（只读展示，不再提交，避免改题后旧总分触发不一致拒绝）
+  paperForm.declaredTotalScore = Number(row.totalScore ?? 0)
   // [2026-10-28] 原此行把详情里的 shuffle_questions 回填到表单开关；该列后端不读（假开关），表单已无该项 ⇒ 删除
   paperForm.status = row.status
   dialogVisible.value = true
@@ -211,6 +222,7 @@ const openEdit = async (row: Paper) => {
             questionType: question.questionType,
             difficulty: question.difficulty,
             score: Number(question.questionScore),
+            auditStatus: question.auditStatus,
           })),
         }
       }
@@ -221,6 +233,7 @@ const openEdit = async (row: Paper) => {
         questionType: unit.questionType,
         difficulty: unit.difficulty ?? 2,
         score: Number(unit.questionScore),
+        auditStatus: unit.auditStatus,
       }
     })
   } catch { /* silent */ }
@@ -253,6 +266,18 @@ const diffOptions: { label: string; value: Difficulty }[] = [
 const typeLabel = (t?: QuestionType) => typeOptions.find((o) => o.value === t)?.label ?? t
 const diffLabel = (d?: Difficulty) => diffOptions.find((o) => o.value === d)?.label ?? String(d)
 const diffTagType = (d?: Difficulty) => (d === 1 ? 'success' : d === 2 ? 'warning' : 'danger')
+
+/* [2026-10-31] 审核只是标签：选题时展示，不拦截加入试卷 */
+const auditStatusLabel = (status?: number | null) => {
+  if (status == null) return '—'
+  return ({ 0: '待审核', 1: '已通过', 2: '未通过' } as Record<number, string>)[status] ?? '—'
+}
+const auditStatusType = (status?: number | null) =>
+  (({ 0: 'warning', 1: 'success', 2: 'danger' } as Record<number, string>)[status ?? 0] ?? 'info') as
+    | 'warning'
+    | 'success'
+    | 'danger'
+    | 'info'
 
 const loadBank = async () => {
   bankLoading.value = true
@@ -320,6 +345,7 @@ const addPassage = (passage: ReadingPassage) => {
       questionType: question.questionType,
       difficulty: question.difficulty,
       score: question.defaultScore ?? 2,
+      auditStatus: question.auditStatus,
     })),
   })
   ElMessage.success(`已加入阅读题组：${passage.title || '阅读理解'}（${questions.length} 道小题）`)
@@ -338,6 +364,7 @@ const addQuestion = (q: Question) => {
     questionType: q.questionType,
     difficulty: q.difficulty,
     score: q.defaultScore ?? 2,
+    auditStatus: q.auditStatus,
   })
   ElMessage.success(`已加入：${q.stem.slice(0, 20)}${q.stem.length > 20 ? '...' : ''}`)
 }
@@ -374,6 +401,22 @@ const prevStep = () => { if (step.value > 0) step.value-- }
 
 /* ---------------- 保存 ---------------- */
 const submit = async () => {
+  // [2026-10-31 新增] 新建试卷口径（Q2/Q3）：10~100 题、单题 1~10 分、声明总分须等于逐题合计。
+  // 只约束新建；存量试卷编辑不受影响（后端同样只在 create 边界校验）。
+  if (editMode.value === 'create') {
+    if (pickedQuestionCount.value < 10 || pickedQuestionCount.value > 100) {
+      ElMessage.warning(`新建试卷题量必须在 10~100 题之间（当前 ${pickedQuestionCount.value} 题）`)
+      return
+    }
+    if (scoreValues.value.some((score) => Number(score) < 1 || Number(score) > 10)) {
+      ElMessage.warning('新建试卷单题分值必须在 1~10 分之间')
+      return
+    }
+    if (Math.abs(Number(paperForm.declaredTotalScore) - totalScore.value) > 0.001) {
+      ElMessage.warning(`试卷总分（${paperForm.declaredTotalScore}）与题目分值合计（${totalScore.value}）不一致，请调整`)
+      return
+    }
+  }
   submitting.value = true
   let questionOrder = 1
   const questionUnits: PaperForm['questionUnits'] = picked.value.map((unit) => {
@@ -396,6 +439,10 @@ const submit = async () => {
     // [2026-10-28] 原此对象多带一个 shuffle_questions 提交项，后端不读该列（假开关），随表单一并删除
     status: paperForm.status,
     questionUnits,
+  }
+  // [2026-10-31 新增] 仅新建时声明总分；编辑态省略，由后端按逐题合计自动回算
+  if (editMode.value === 'create') {
+    payload.totalScore = Number(paperForm.declaredTotalScore)
   }
   try {
     if (editMode.value === 'create') {
@@ -500,6 +547,7 @@ const openView = async (row: Paper, defaultShowAnswers = false) => {
             questionType: question.questionType,
             difficulty: question.difficulty,
             score: Number(question.questionScore),
+            auditStatus: question.auditStatus,
           })),
         }
       }
@@ -510,6 +558,7 @@ const openView = async (row: Paper, defaultShowAnswers = false) => {
         questionType: unit.questionType,
         difficulty: unit.difficulty ?? 2,
         score: Number(unit.questionScore),
+        auditStatus: unit.auditStatus,
       }
     })
   } catch { /* silent */ } finally { viewLoading.value = false }
@@ -1034,6 +1083,13 @@ onMounted(async () => {
           <el-form-item label="及格分">
             <el-input-number v-model="paperForm.passScore" :min="0" :max="1000" />
           </el-form-item>
+          <!-- [2026-10-31 新增] 试卷总分：新建默认 100，须与逐题分值合计一致；编辑态只读回显 -->
+          <el-form-item label="试卷总分">
+            <el-input-number v-model="paperForm.declaredTotalScore" :min="1" :max="100" :disabled="editMode === 'edit'" />
+            <span style="margin-left:8px;color:#909399;font-size:12px">
+              {{ editMode === 'edit' ? '编辑时按逐题合计自动回算' : '现行统一 100 分口径，须与逐题分值合计一致' }}
+            </span>
+          </el-form-item>
           <!-- [2026-10-28] 原「随机乱序」el-form-item + el-switch 已删除：
                后端 exam_paper.shuffle_questions 在取题排序里完全不被读取，该开关拨了也不生效，属假功能 -->
           <el-form-item label="状态">
@@ -1049,15 +1105,15 @@ onMounted(async () => {
         <div v-else-if="step === 1">
           <div class="step2-header">
             <div>
-              已选 <b>{{ pickedQuestionCount }}</b> 道题（{{ picked.length }} 个单元），总分 <b style="color:#409eff">{{ totalScore }}</b>
+              已选 <b>{{ pickedQuestionCount }}</b> 道题（阅读文章 <b>{{ pickedReadingPassageCount }}</b> 篇），总分 <b style="color:#409eff">{{ totalScore }}</b>
             </div>
             <el-button type="primary" @click="openBank">
               <el-icon><Plus /></el-icon>从题库选题
             </el-button>
           </div>
           <el-table :data="picked" style="width:100%; margin-top:12px" empty-text="尚未选题，请点击右上角">
-            <el-table-column type="index" label="单元" width="70" />
-            <el-table-column label="题目单元" min-width="420">
+            <el-table-column type="index" label="序号" width="70" />
+            <el-table-column label="题目/阅读文章" min-width="420">
               <template #default="{ row }">
                 <template v-if="row.unitType === 'READING'">
                   <div class="picked-passage">
@@ -1075,12 +1131,28 @@ onMounted(async () => {
             <el-table-column label="题型" width="100">
               <template #default="{ row }">{{ row.unitType === 'READING' ? '阅读理解' : typeLabel(row.questionType) }}</template>
             </el-table-column>
+            <el-table-column label="审核" width="90" align="center">
+              <template #default="{ row }">
+                <template v-if="row.unitType === 'QUESTION'">
+                  <el-tag :type="auditStatusType(row.auditStatus)" size="small">{{ auditStatusLabel(row.auditStatus) }}</el-tag>
+                </template>
+                <template v-else>
+                  <el-tag
+                    v-for="sq in row.subQuestions"
+                    :key="sq.questionId"
+                    :type="auditStatusType(sq.auditStatus)"
+                    size="small"
+                    style="margin:1px 2px"
+                  >{{ auditStatusLabel(sq.auditStatus) }}</el-tag>
+                </template>
+              </template>
+            </el-table-column>
             <el-table-column label="难度" width="80">
               <template #default="{ row }">
                 <el-tag :type="diffTagType(row.difficulty)">{{ diffLabel(row.difficulty) }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="单元总分" width="150" align="center">
+            <el-table-column label="本题/篇总分" width="150" align="center">
               <template #default="{ row }">
                 <el-input-number v-if="row.unitType === 'QUESTION'" v-model="row.score" :min="0.5" :max="100" :step="0.5" />
                 <span v-else>{{ unitScore(row) }} 分 · {{ row.subQuestions.length }} 小题</span>
@@ -1088,7 +1160,7 @@ onMounted(async () => {
             </el-table-column>
             <el-table-column label="操作" width="95" align="center">
               <template #default="{ row }">
-                <el-button link type="danger" @click="removePicked(row)">移除单元</el-button>
+                <el-button link type="danger" @click="removePicked(row)">移除题目/文章</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -1099,7 +1171,8 @@ onMounted(async () => {
           <el-descriptions :column="2" border>
             <el-descriptions-item label="试卷名称">{{ paperForm.paperName }}</el-descriptions-item>
             <el-descriptions-item label="题量">{{ pickedQuestionCount }}</el-descriptions-item>
-            <el-descriptions-item label="总分">{{ totalScore }}</el-descriptions-item>
+            <el-descriptions-item label="试卷总分">{{ paperForm.declaredTotalScore }}</el-descriptions-item>
+            <el-descriptions-item label="逐题合计">{{ totalScore }}</el-descriptions-item>
             <el-descriptions-item label="及格分">{{ paperForm.passScore ?? '-' }}</el-descriptions-item>
             <!-- [2026-10-28] 原「随机乱序」预览行恒显示「否」（后端不读该列），随表单开关删除 -->
             <el-descriptions-item label="状态">{{ statusText(paperForm.status) }}</el-descriptions-item>
@@ -1108,7 +1181,7 @@ onMounted(async () => {
           <h4 style="margin-top:16px">题目列表</h4>
           <el-table :data="picked" style="width:100%">
             <el-table-column type="index" label="#" width="60" />
-            <el-table-column label="题目单元" min-width="420">
+            <el-table-column label="题目/阅读文章" min-width="420">
               <template #default="{ row }">
                 <template v-if="row.unitType === 'READING'">
                   <div class="picked-passage">
@@ -1126,7 +1199,23 @@ onMounted(async () => {
             <el-table-column label="题型" width="100">
               <template #default="{ row }">{{ row.unitType === 'READING' ? '阅读理解' : typeLabel(row.questionType) }}</template>
             </el-table-column>
-            <el-table-column label="单元总分" width="100" align="center">
+            <el-table-column label="审核" width="90" align="center">
+              <template #default="{ row }">
+                <template v-if="row.unitType === 'QUESTION'">
+                  <el-tag :type="auditStatusType(row.auditStatus)" size="small">{{ auditStatusLabel(row.auditStatus) }}</el-tag>
+                </template>
+                <template v-else>
+                  <el-tag
+                    v-for="sq in row.subQuestions"
+                    :key="sq.questionId"
+                    :type="auditStatusType(sq.auditStatus)"
+                    size="small"
+                    style="margin:1px 2px"
+                  >{{ auditStatusLabel(sq.auditStatus) }}</el-tag>
+                </template>
+              </template>
+            </el-table-column>
+            <el-table-column label="本题/篇总分" width="100" align="center">
               <template #default="{ row }">{{ unitScore(row) }}</template>
             </el-table-column>
           </el-table>
@@ -1188,6 +1277,11 @@ onMounted(async () => {
             <el-tag :type="diffTagType(row.difficulty)">{{ diffLabel(row.difficulty) }}</el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="审核" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag :type="auditStatusType(row.auditStatus)" size="small">{{ auditStatusLabel(row.auditStatus) }}</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="操作" width="100" align="center">
           <template #default="{ row }">
             <el-button type="primary" :disabled="pickedIds.has(row.id)" @click="addQuestion(row)">
@@ -1205,6 +1299,7 @@ onMounted(async () => {
             <div class="passage-choice-content">{{ row.content }}</div>
             <div v-for="(question, qi) in (row.questions ?? []).slice(0, 3)" :key="question.id" class="passage-choice-question">
               {{ qi + 1 }}. {{ question.stem }}
+              <el-tag :type="auditStatusType(question.auditStatus)" size="small" style="margin-left:6px">{{ auditStatusLabel(question.auditStatus) }}</el-tag>
             </div>
           </template>
         </el-table-column>
@@ -1232,7 +1327,7 @@ onMounted(async () => {
       </div>
       <template #footer>
         <div style="display:flex; justify-content:space-between; align-items:center; width:100%">
-          <span>已选 {{ pickedQuestionCount }} 道题（{{ picked.length }} 个单元），总分 {{ totalScore }}</span>
+          <span>已选 {{ pickedQuestionCount }} 道题（阅读文章 {{ pickedReadingPassageCount }} 篇），总分 {{ totalScore }}</span>
           <el-button type="primary" @click="bankVisible = false">完成</el-button>
         </div>
       </template>

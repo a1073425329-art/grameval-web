@@ -908,10 +908,11 @@ onMounted(async () => {
 
           <!-- [2026-10-16 新增] 题量与试卷满分档位并排：满分只能是 100 或 150（1 题 1 分），
                后端按「满分 ÷ 实际落库题量」精确分摊每题分值，卷面总分恒等于档位值 -->
+          <!-- [2026-10-31 改] Q2/Q3：满分统一 100，题量 10~100，分摊后每题 1~10 分 -->
           <el-row :gutter="16">
             <el-col :span="12">
               <el-form-item label="题量" prop="questionCount">
-                <el-slider v-model="form.questionCount" :min="20" :max="200" :step="5" show-input />
+                <el-slider v-model="form.questionCount" :min="10" :max="100" :step="5" show-input />
               </el-form-item>
             </el-col>
             <el-col :span="12">

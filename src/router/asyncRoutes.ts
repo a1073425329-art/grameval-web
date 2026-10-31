@@ -69,16 +69,18 @@ export const asyncRoutes: RouteRecordRaw[] = [
     meta: { title: '我的成绩', icon: 'Trophy', roles: ['STUDENT'], group: '考试中心' },
   },
   {
+    // [2026-10-31 用户拍板] 并入首页 Tab，侧边栏不再单列；路由保留供旧链接/书签
     path: 'student/knowledge-mastery',
     name: 'KnowledgeMastery',
     component: () => import('@/views/student/KnowledgeMastery.vue'),
-    meta: { title: '知识点掌握度', icon: 'TrendCharts', roles: ['STUDENT'], group: '学习中心' },
+    meta: { title: '知识点掌握度', icon: 'TrendCharts', roles: ['STUDENT', 'ADMIN'], group: '学习中心', hidden: true },
   },
   {
+    // [2026-10-31 用户拍板] 并入首页 Tab，侧边栏不再单列；路由保留供旧链接/书签
     path: 'student/stats',
     name: 'StudentStats',
     component: () => import('@/views/student/Stats.vue'),
-    meta: { title: '学习分析', icon: 'TrendCharts', roles: ['STUDENT'] },
+    meta: { title: '学习分析', icon: 'TrendCharts', roles: ['STUDENT'], hidden: true },
   },
   {
     path: 'student/score-curve',

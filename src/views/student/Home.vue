@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 // [2026-10-27] 打卡功能下线后 ElMessage 与 Check 图标在本页已无使用者
 import { Calendar, Cpu, TrendCharts, Odometer, DataLine, CircleClose } from '@element-plus/icons-vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { getMySummary, getAvailableExams, getStudentStatistics, getMyResults, listPractices, getMyLearningProgress, getWeakCategories, getMyProfile } from '@/api/student'
 import { getMyScoreTrend } from '@/api/scoreCurve'
+// [2026-10-31 用户拍板] 学习分析 / 知识点掌握度并入首页 Tab，侧边栏不再单列
+import StatsPage from '@/views/student/Stats.vue'
+import KnowledgeMasteryPage from '@/views/student/KnowledgeMastery.vue'
 import type { ResultSummary, ExamResultItem } from '@/types/result'
 import type { AvailableExam } from '@/types/exam'
 import type { StudentStatistics } from '@/types/stats'
@@ -22,6 +25,7 @@ import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from
 use([CanvasRenderer, LineChart, BarChart, PieChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 const loading = ref(false)
 
@@ -42,7 +46,7 @@ const shortcuts = [
   { title: '专项练习', desc: '选专题刷题即时反馈', path: '/student/practice', icon: 'EditPen', color: '#67c23a' },
   { title: '在线考试', desc: '参加考试并答题', path: '/student/exams', icon: 'Document', color: '#e6a23c' },
   { title: '错题本', desc: '去重错题按考点分类', path: '/student/wrong-book', icon: 'CircleClose', color: '#f56c6c' },
-  { title: '学习分析', desc: '趋势/雷达/班级对比/考点弱点', path: '/student/stats', icon: 'TrendCharts', color: '#409eff' },
+  { title: '学习分析', desc: '趋势/雷达/班级对比/考点弱点', path: '/student/home?tab=stats', icon: 'TrendCharts', color: '#409eff', tab: 'stats' as string | undefined },
   { title: '个人资料', desc: '查看和编辑个人信息', path: '/student/profile', icon: 'User', color: '#9c27b0' },
 ]
 
@@ -103,6 +107,15 @@ const activeTab = ref('overview')
 const myProfile = ref<MyProfileLite | null>(null)
 const scoreCurve = ref<ScoreCurve[]>([])
 
+/** [2026-10-31] 深链：/student/home?tab=stats|mastery|overview|study|exam */
+const applyTabFromQuery = () => {
+  const q = route.query.tab
+  if (typeof q === 'string' && ['overview', 'study', 'exam', 'stats', 'mastery'].includes(q)) {
+    activeTab.value = q
+  }
+}
+watch(() => route.query.tab, applyTabFromQuery)
+
 /**
  * 统一解包响应负载。
  * 响应拦截器已把 AxiosResponse 换成 ApiResponse（见 utils/request.ts），
@@ -146,7 +159,10 @@ const load = async () => {
   } finally { loading.value = false }
 }
 
-onMounted(load)
+onMounted(() => {
+  applyTabFromQuery()
+  load()
+})
 
 const accuracyColor = (v?: number) => {
   if (v == null) return '#909399'
@@ -578,7 +594,7 @@ const sortedExams = computed(() => {
         </div>
         <div class="sh-hero-actions">
           <el-button class="sh-hero-btn sh-hero-primary" @click="router.push('/student/practice')">继续练习</el-button>
-          <el-button class="sh-hero-btn sh-hero-ghost" @click="router.push('/student/stats')">学习分析</el-button>
+          <el-button class="sh-hero-btn sh-hero-ghost" @click="activeTab = 'stats'">学习分析</el-button>
         </div>
       </div>
     </div>
@@ -642,7 +658,7 @@ const sortedExams = computed(() => {
         <el-card shadow="never" class="sh-card">
           <template #header><span class="sh-card-title">快捷入口</span></template>
           <div class="sh-shortcut-grid">
-            <div v-for="s in shortcuts" :key="s.path" class="sh-shortcut" @click="router.push(s.path)">
+            <div v-for="s in shortcuts" :key="s.path" class="sh-shortcut" @click="s.tab ? (activeTab = s.tab) : router.push(s.path)">
               <div class="sh-sc-icon" :style="{ background: s.color + '18', color: s.color }">
                 <el-icon :size="20"><component :is="s.icon" /></el-icon>
               </div>
@@ -700,7 +716,7 @@ const sortedExams = computed(() => {
               <div class="sh-handoff-title">想看正确率、薄弱考点和难度分布？</div>
               <div class="sh-handoff-desc">这些属于诊断分析，统一在学习分析页按维度查看，避免和首页重复。</div>
             </div>
-            <el-button type="primary" plain @click="router.push('/student/stats')">
+            <el-button type="primary" plain @click="activeTab = 'stats'">
               去学习分析 →
             </el-button>
           </div>
@@ -780,12 +796,34 @@ const sortedExams = computed(() => {
           </el-card>
         </div>
       </el-tab-pane>
+
+      <!-- ============ Tab 4 学习分析（原 /student/stats 并入） ============ -->
+      <el-tab-pane label="学习分析" name="stats" lazy>
+        <div class="sh-embed">
+          <StatsPage />
+        </div>
+      </el-tab-pane>
+
+      <!-- ============ Tab 5 知识点掌握度（原 /student/knowledge-mastery 并入） ============ -->
+      <el-tab-pane label="知识点掌握度" name="mastery" lazy>
+        <div class="sh-embed">
+          <KnowledgeMasteryPage />
+        </div>
+      </el-tab-pane>
     </el-tabs>
   </div>
 </template>
 
 <style scoped lang="scss">
 .student-home { padding: 4px; }
+/* [2026-10-31] 嵌入分析子页时去掉双层 page-container 内边距 */
+.sh-embed {
+  :deep(.page-container) {
+    padding: 0;
+    min-height: auto;
+    background: transparent;
+  }
+}
 
 /* ============================================================
    以下为旧版首页样式（2026-10-16 改版后仍保留，供 legacy-home 备查）

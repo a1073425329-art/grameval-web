@@ -357,8 +357,10 @@ const sortedExams = computed(() => {
       <el-row :gutter="16" class="stat-row">
         <el-col :span="4">
           <div class="mini-stat" @click="router.push('/student/results')">
-            <div class="mini-num">{{ summary.totalCount }}</div>
-            <div class="mini-label">考试次数</div>
+            <!-- [2026-10-31 修] 原显示 summary.totalCount（仅已阅卷=15），与「在线考试·已参加」口径不一致；
+                 改为 attendedCount（答卷记录数=21），与「我的成绩」卡片同一口径 -->
+            <div class="mini-num">{{ summary.attendedCount ?? summary.totalCount }}</div>
+            <div class="mini-label">参加场次</div>
           </div>
         </el-col>
         <el-col :span="4">

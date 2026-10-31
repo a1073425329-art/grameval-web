@@ -724,15 +724,6 @@ onMounted(async () => {
 
 <template>
   <div class="page">
-    <!-- [2026-09-27 新增] 造卷双入口的主从说明：本页是手动/高级入口（C 项） -->
-    <el-alert type="info" :closable="false" show-icon>
-      <template #title>
-        <b>手动组卷 · 人工精挑</b>
-      </template>
-      从题库逐题挑选、排序并定分值，适合需要精确控制题序与分值的卷子；
-      若只需一份常规试卷，去「试卷模板」按配比自动生成更快。
-      论文 §4.2.3：试卷只保存可复用的题目结构，开放时间与场次由「考试管理」单独维护。
-    </el-alert>
     <!-- 顶部多维动态汇总看板（全部多表实时聚合，零库表字段） -->
     <div v-if="summaryStats" class="stat-banner" v-loading="summaryLoading">
       <el-row :gutter="12">

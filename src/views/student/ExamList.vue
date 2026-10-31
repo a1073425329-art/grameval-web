@@ -305,7 +305,7 @@ const fmtTime = (v: string) => (v || '').slice(0, 16)
       </el-col>
       <el-col :span="5">
         <div class="stat-card">
-          <div class="stat-label">已参加考试</div>
+          <div class="stat-label">参加场次</div>
           <div class="stat-value">{{ stats.attended }}</div>
           <div class="stat-sub">已提交 {{ stats.submittedCount }} 场</div>
         </div>

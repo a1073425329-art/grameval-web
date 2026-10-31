@@ -28,6 +28,8 @@ export interface QuestionAuditResult {
 export interface AiQuestionAuditResultItem {
   id: number
   auditStatus: QuestionAuditStatus | null
+  /** 审核说明（不通过原因等），仅展示 */
+  auditReason?: string | null
   reason: string
 }
 
@@ -94,6 +96,7 @@ export interface Question {
   id: number
   categoryId: number
   auditStatus?: QuestionAuditStatus
+  auditReason?: string | null | undefined
   categoryName?: string
   questionType: QuestionType
   stem: string

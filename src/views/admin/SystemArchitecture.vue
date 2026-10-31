@@ -56,13 +56,24 @@ const algorithmCards = [
     kind: '教育测量学',
     paper: '扩展（论文未展开公式，答辩可引「区分度 / 难度」概念）',
     goal: '从正式考试作答明细动态计算 P 值（难度）、D 值（区分度）、选项分布与信度，标记低质量题；不落统计表。',
+    design: [
+      '只读正式考试明细（answer_record + exam_record），练习数据不混入',
+      '按题目聚合：有效作答 N、答对 n、选项分布、高低分组',
+      '缺样本（N 不足或未阅卷）标 INCOMPLETE_DATA，不硬算指标',
+      '结果只在查询时返回，禁止写 question_analysis 类汇总表（D36）',
+    ],
+    preconditions: [
+      '存在已提交且已判分的正式考试作答',
+      '题目有标准答案；选择题有完整选项',
+      '同一场次有足够考生做高低分组（建议 ≥30 人）',
+    ],
     formula: [
-      'P（难度）= 该题答对人数 / 有效作答人数，P∈[0,1]；P≥0.70 易、≥0.40 中、否则难',
+      'P（难度）= 答对人数 / 有效作答人数，P∈[0,1]；分档 P≥0.70 易、≥0.40 中、否则难',
       'D（区分度）= 高分组正确率 − 低分组正确率（按总分上下 27% 分组）',
       '信度：考试整体内部一致性（基于方差比）',
-      '缺样本标 INCOMPLETE_DATA，不拿练习数据冒充正式考试',
+      '选项分布：错误选项占比过高 → 干扰项失效提示',
     ],
-    data: 'answer_record + exam_record + question（只读正式考试明细）',
+    data: 'answer_record + exam_record + question',
     api: 'GET /api/admin/questions/quality',
     ui: '管理端 · 题库质量分析',
     impl: 'QuestionQualityCalculator / QuestionQualityService',
@@ -73,13 +84,23 @@ const algorithmCards = [
     kind: '组合优化',
     paper: '扩展（对齐论文「智能组卷策略」改进点）',
     goal: '在题型数、目标总分、题目不重复、阅读整组等硬约束下，优化难度分布、区分度、知识点覆盖与近期复用率。',
+    design: [
+      '硬约束不满足直接失败，禁止静默出违约卷',
+      '邻域算子 = 单题替换（保持可行）',
+      '最大余数法分配难度档位初始配额',
+      '响应附 optimization 约束检查与 warnings',
+    ],
+    preconditions: [
+      '模板 question_config 为合法 JSON 数组（type/count/score）',
+      '题库各题型可抽数量 ≥ 模板要求',
+      '阅读题可按文章成组抽取',
+    ],
     formula: [
       '目标函数权重 (2.0, 1.5, 1.0, 0.6, 0.8)：难度 L1 偏差、平均 D 损失、知识点覆盖缺口、近 30 天复用率、未标定题占比',
       '退火：20000 次迭代，T0=1，Tmin=1e-4，α=(Tmin/T0)^(1/iterations)',
-      '最大余数法分配难度档位初始配额；邻域 = 可行题目替换',
-      '硬约束不可行必须失败并返回 warnings，禁止静默违约出卷',
+      '难度按实测 P 分档；缺数据回退人工 difficulty 并标注',
     ],
-    data: 'question + question_tag_relation + paper_question（历史复用）',
+    data: 'question + question_tag_relation + paper_question',
     api: 'POST /api/paper-templates/{id}/generate?strategy=OPTIMIZED',
     ui: '组卷模板 · 生成试卷 · 组卷策略「多约束优化」',
     impl: 'PaperTemplateOptimizer（挂接 PaperTemplateService）',
@@ -90,15 +111,25 @@ const algorithmCards = [
     kind: '知识追踪',
     paper: '扩展（学生掌握度估计）',
     goal: '按知识点标签估计学生掌握概率；与旧「掌握度」并列展示，不覆盖旧字段。',
+    design: [
+      '观测 = practice_answer 最终作答行（每题一次）',
+      '主标签优先；不读 knowledge_mastery 汇总做训练',
+      '结果与旧掌握度并列，不覆盖旧字段',
+      '参数/样本状态随响应返回，可解释',
+    ],
+    preconditions: [
+      '学生在某标签下有 ≥3 次练习观测（否则 NO_DATA / INSUFFICIENT_SAMPLE）',
+      '题目挂了 question_tag_relation 主标签',
+      '拟合需全局 ≥20 条有效序列且每条 ≥4 次观测',
+    ],
     formula: [
       '先验 pL0=0.25；迁移 pT=0.18；猜对 pG=0.20；疏忽 pS=0.10；遗忘 λ=0.02/日',
-      '样本充足（≥20 条序列且每条 ≥4 次观测）时有界 MLE 拟合 pT/pG/pS，否则用版本化默认参数',
+      '样本充足时有界 MLE 拟合 pT/pG/pS，否则版本化默认参数',
       '掌握更新按相邻观测间隔施加指数遗忘',
-      '观测来源仅 practice_answer 最终作答行；不足 3 条标 INSUFFICIENT_SAMPLE，零观测 NO_DATA',
     ],
-    data: 'practice_answer + question_tag_relation（不读 knowledge_mastery 汇总）',
+    data: 'practice_answer + question_tag_relation',
     api: 'GET /api/knowledge-mastery/student/{id}/bkt · GET /api/knowledge-mastery/bkt',
-    ui: '学生 · 知识点掌握度 · 「BKT 模型估计」页签',
+    ui: '首页 · 知识点掌握度 · 「BKT 模型估计」页签',
     impl: 'BktService / BktCalculator',
   },
   {
@@ -107,13 +138,23 @@ const algorithmCards = [
     kind: '项目反应理论 IRT',
     paper: '扩展（个性化练习路径）',
     goal: '按当前能力动态选题，用更少题目达到目标测量精度；能力/SE 每次从本练习作答重算，不持久化。',
-    formula: [
-      'Rasch 1PL；能力 θ 用 N(0,1) 先验 MAP；Newton 更新，步长裁剪 ±1',
-      '选题 = 最大 Fisher 信息，并做题型均衡与主知识点覆盖',
-      'SE = 1/√(测验信息)；SE≤0.50 或 30 题停止',
-      '历史校准优先正式考试 P≥20；未标定题按人工难度映射并乘 0.6 信息折扣',
+    design: [
+      '每次 next 从本练习 practice_answer 重算 θ/SE，不落库',
+      '选题 = 最大 Fisher 信息 + 题型均衡 + 主知识点覆盖',
+      '重复 next 返回同一题（推荐稳定）',
+      '终止后禁止继续答题',
     ],
-    data: 'practice_answer + answer_record + question（动态重算）',
+    preconditions: [
+      '分类下有足够候选题（题型与知识点可覆盖）',
+      '历史校准：优先正式考试 P≥20 的题；未标定题走人工难度映射',
+      'practice_mode 列可写 CAT 标记',
+    ],
+    formula: [
+      'Rasch 1PL；θ 用 N(0,1) 先验 MAP；Newton 更新，步长裁剪 ±1',
+      'SE = 1/√(测验信息)；SE≤0.50 或 30 题停止',
+      '未标定题信息 ×0.6 折扣；P 收缩至 [.03,.97]',
+    ],
+    data: 'practice_answer + answer_record + question',
     api: 'POST /api/practices/adaptive/start/{categoryId} · GET /api/practices/{id}/adaptive/next',
     ui: '学生 · 专项练习 · 练习模式「CAT 自适应」',
     impl: 'AdaptivePracticeService',
@@ -124,11 +165,20 @@ const algorithmCards = [
     kind: 'D36 统计口径 · 非教育测量算法',
     paper: '对齐 D36：统计值查询时从业务明细聚合，不读存量汇总列',
     goal: '学生列表页批量计算考试次数、练习量、正确率、连续学习天数、能力分等，供教师/管理端名单展示。',
-    formula: [
-      '能力分 = 平均考试分 × 60% + 练习正确率 × 40%',
-      '全部指标从 exam_record / exam_score / practice_answer / answer_record 实时聚合',
+    design: [
+      '一次 summarize(ids) 批量取页内学生，避免 N+1',
+      '全部指标从明细实时聚合（exam_record / exam_score / practice_answer / answer_record）',
       '禁止把 question_count、correct_rate 等存量列当权威结果（D31/D36）',
       '这不是题目质量/BKT/CAT 类「算法」，是列表统计服务',
+    ],
+    preconditions: [
+      '传入学生 id 列表非空',
+      '明细表有该生练习/考试记录（无记录则指标为 0）',
+    ],
+    formula: [
+      '能力分 = 平均考试分 × 60% + 练习正确率 × 40%',
+      '连续学习天数：从今天往回数连续有作答的自然日',
+      '练习正确率 = 练习答对题数 / 练习总题数',
     ],
     data: 'exam_record + exam_score + practice_answer + answer_record + class_student',
     api: 'GET /api/admin/users（列表 VO 内嵌统计）',
@@ -512,7 +562,19 @@ const focusTable = (name: string) => {
               <div class="algo-text">{{ a.paper }}</div>
             </div>
             <div class="algo-block">
-              <div class="algo-label">公式 / 规则</div>
+              <div class="algo-label">算法设计</div>
+              <ul class="algo-list">
+                <li v-for="(f, i) in a.design" :key="i">{{ f }}</li>
+              </ul>
+            </div>
+            <div class="algo-block">
+              <div class="algo-label">前置条件 / 数据要求</div>
+              <ul class="algo-list">
+                <li v-for="(f, i) in a.preconditions" :key="i">{{ f }}</li>
+              </ul>
+            </div>
+            <div class="algo-block">
+              <div class="algo-label">计算方式</div>
               <ul class="algo-list">
                 <li v-for="(f, i) in a.formula" :key="i">{{ f }}</li>
               </ul>
@@ -817,14 +879,18 @@ const focusTable = (name: string) => {
 /* ---------- 算法举证 ---------- */
 .algo-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  gap: 14px;
-  margin-top: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 16px;
+  margin-top: 14px;
 }
 .algo-card {
+  border-top: 3px solid #409eff;
   :deep(.el-card__header) {
-    padding: 12px 16px;
-    background: #fafbfc;
+    padding: 14px 18px 12px;
+    background: linear-gradient(180deg, #f0f7ff 0%, #fafbfc 100%);
+  }
+  :deep(.el-card__body) {
+    padding: 14px 18px 16px;
   }
 }
 .algo-head {
@@ -834,41 +900,50 @@ const focusTable = (name: string) => {
   gap: 8px;
 }
 .algo-name {
-  font-weight: 600;
-  font-size: 14px;
-  color: #303133;
+  font-weight: 700;
+  font-size: 15px;
+  color: #1f2d3d;
+  letter-spacing: 0.2px;
 }
 .algo-goal {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #606266;
-  line-height: 1.55;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: #5a6a7a;
+  line-height: 1.6;
+  border-left: 3px solid #409eff;
+  padding-left: 10px;
 }
 .algo-block {
-  margin-bottom: 10px;
+  margin-bottom: 12px;
+  &:last-child { margin-bottom: 0; }
 }
 .algo-label {
   font-size: 11px;
-  color: #909399;
-  margin-bottom: 3px;
+  font-weight: 600;
+  color: #409eff;
+  letter-spacing: 0.4px;
+  margin-bottom: 5px;
+  text-transform: none;
 }
 .algo-text {
-  font-size: 12px;
+  font-size: 12.5px;
   color: #303133;
-  line-height: 1.55;
+  line-height: 1.6;
   code {
     font-size: 11px;
     background: #f0f2f5;
-    padding: 1px 5px;
-    border-radius: 3px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    color: #2c3e50;
   }
 }
 .algo-list {
   margin: 0;
-  padding-left: 16px;
-  font-size: 12px;
+  padding-left: 18px;
+  font-size: 12.5px;
   color: #303133;
-  line-height: 1.65;
+  line-height: 1.7;
+  li { margin-bottom: 3px; }
 }
 
 /* ---------- 页头 ---------- */

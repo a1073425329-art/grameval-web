@@ -22,6 +22,7 @@ import {
   CopyDocument,
   Tickets,
   ArrowDown,
+  ArrowUp,
   EditPen,
 } from '@element-plus/icons-vue'
 import {
@@ -159,6 +160,8 @@ const coverageFilter = reactive({
   studentIds: [] as number[],
   dateRange: [] as string[],
 })
+/** [2026-10-31 用户要求] 覆盖面板默认收起，可展开 */
+const coverageCollapsed = ref(true)
 const coverageData = ref<QuestionCoverage | null>(null)
 const coverageLoading = ref(false)
 const coverageError = ref('')
@@ -1744,8 +1747,22 @@ onMounted(async () => {
   <div class="page">
     <section class="coverage-panel" aria-labelledby="coverage-title">
       <div class="coverage-header">
-        <h2 id="coverage-title">题库作答覆盖</h2>
-        <div class="coverage-actions">
+        <h2 id="coverage-title">
+          题库作答覆盖
+          <el-button
+            link
+            type="primary"
+            style="margin-left: 8px"
+            @click="coverageCollapsed = !coverageCollapsed"
+          >
+            {{ coverageCollapsed ? '展开' : '收起' }}
+            <el-icon style="margin-left: 2px">
+              <ArrowDown v-if="coverageCollapsed" />
+              <ArrowUp v-else />
+            </el-icon>
+          </el-button>
+        </h2>
+        <div class="coverage-actions" v-show="!coverageCollapsed">
           <el-select v-model="coverageFilter.source" aria-label="作答来源" style="width: 130px">
             <el-option label="全部来源" value="ALL" />
             <el-option label="正式考试" value="EXAM" />
@@ -1798,7 +1815,7 @@ onMounted(async () => {
         <el-button link type="primary" @click="loadQuestionCoverage">重试</el-button>
       </el-alert>
 
-      <div v-loading="coverageLoading" class="coverage-results">
+      <div v-show="!coverageCollapsed" class="coverage-results" v-loading="coverageLoading">
         <template v-if="coverageData">
           <div class="coverage-kpis">
             <div class="coverage-kpi">
@@ -2239,7 +2256,17 @@ onMounted(async () => {
         </el-table-column>
         <el-table-column label="审核" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="auditStatusType(row.auditStatus)" size="small">
+            <el-tooltip
+              v-if="row.auditReason"
+              :content="row.auditReason"
+              placement="top"
+              effect="light"
+            >
+              <el-tag :type="auditStatusType(row.auditStatus)" size="small" style="cursor: help">
+                {{ auditStatusLabel(row.auditStatus) }}
+              </el-tag>
+            </el-tooltip>
+            <el-tag v-else :type="auditStatusType(row.auditStatus)" size="small">
               {{ auditStatusLabel(row.auditStatus) }}
             </el-tag>
           </template>

@@ -53,6 +53,16 @@ export interface UserDetail {
   lastLoginIp?: string | undefined
   createTime: string
   updateTime?: string | undefined
+  /** 学号（学生展示用，不做流程引用） */
+  studentNumber?: string | undefined
+  /** 师号/工号（教师展示用，不做流程引用） */
+  teacherId?: string | undefined
+  schoolName?: string | undefined
+  className?: string | undefined
+  grade?: string | undefined
+  englishLevel?: string | undefined
+  subject?: string | undefined
+  teacherLevel?: string | undefined
 
   // ===== 所属老师信息（仅 STUDENT 角色返回） =====
   teacher?: TeacherInfo | undefined
@@ -88,6 +98,8 @@ export interface UserUpdateForm {
   phone?: string | undefined
   idCard?: string | undefined
   avatar?: string | undefined
+  studentNumber?: string | undefined
+  teacherId?: string | undefined
 }
 
 /** 修改密码 */
@@ -106,4 +118,7 @@ export interface UserCreateForm {
   email?: string | undefined | undefined
   phone?: string | undefined | undefined
   role?: Role | undefined | undefined
+  /** 学号（学生）/ 师号（教师），仅展示编辑，不进业务流程 */
+  studentNumber?: string | undefined
+  teacherId?: string | undefined
 }

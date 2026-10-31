@@ -299,8 +299,12 @@ onBeforeUnmount(() => {
     <el-row :gutter="12" class="stat-row">
       <el-col :span="4">
         <div class="stat-card">
-          <div class="stat-label">考试次数</div>
-          <div class="stat-value text-primary">{{ summary.totalCount }}</div>
+          <!-- [2026-10-31 修] 原「考试次数」直接用 summary.totalCount（=仅已阅卷数），
+               与下方列表 total（=答卷记录数）口径不同，学生看到 15 vs 21 对不上。
+               改为：主值=参加场次（attendedCount），副值=其中已出成绩。 -->
+          <div class="stat-label">参加场次</div>
+          <div class="stat-value text-primary">{{ summary.attendedCount ?? summary.totalCount }}</div>
+          <div class="stat-sub">已出成绩 {{ summary.totalCount }} 场</div>
         </div>
       </el-col>
       <el-col :span="4">
@@ -614,6 +618,7 @@ onBeforeUnmount(() => {
 }
 .stat-label { color: #909399; font-size: 13px; margin-bottom: 6px; }
 .stat-value { font-size: 26px; font-weight: 600; color: #303133; }
+.stat-sub { color: #909399; font-size: 12px; margin-top: 4px; }
 .filter-card :deep(.el-card__body) { padding-bottom: 0; }
 .pagination { display: flex; justify-content: flex-end; margin-top: 16px; }
 

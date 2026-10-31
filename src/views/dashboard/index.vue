@@ -13,6 +13,8 @@ import {
 } from 'echarts/components'
 import { getDashboard } from '@/api/admin'
 import type { AdminDashboardData } from '@/types/admin'
+// [2026-10-31 用户拍板] 老师侧也有知识点掌握度，收进工作台；组件内 admin 默认选 user01（张小明）
+import KnowledgeMasteryPage from '@/views/student/KnowledgeMastery.vue'
 
 use([
   CanvasRenderer,
@@ -508,6 +510,14 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- [2026-10-31] 知识点掌握度（老师查看，默认演示学生张小明/user01） -->
+    <el-card shadow="hover" class="mastery-card">
+      <template #header>
+        <div class="card-title">知识点掌握度（按学生查看）</div>
+      </template>
+      <KnowledgeMasteryPage />
+    </el-card>
   </div>
 </template>
 
@@ -536,5 +546,16 @@ const statusType = (s?: number): 'info' | 'success' | 'warning' => (s === 1 ? 's
     :deep(.el-card__body) { padding: 8px 16px 16px; }
   }
   .card-title { font-size: 15px; font-weight: 600; color: #303133; }
+  .mastery-card {
+    border-radius: 8px;
+    margin-top: 16px;
+    :deep(.el-card__header) { padding: 12px 20px; }
+    :deep(.el-card__body) { padding: 12px 16px 16px; }
+    :deep(.page-container) {
+      padding: 0;
+      min-height: auto;
+      background: transparent;
+    }
+  }
 }
 </style>

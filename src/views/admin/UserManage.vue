@@ -83,6 +83,8 @@ const form = reactive<UserCreateForm & { id: number; status?: number }>({
   email: '',
   phone: '',
   status: 1,
+  studentNumber: '',
+  teacherId: '',
 })
 
 const rules: FormRules = {
@@ -99,6 +101,7 @@ const openCreate = () => {
   Object.assign(form, {
     id: 0, username: '', password: '', realName: '',
     gender: 0, role: 'STUDENT', email: '', phone: '', status: 1,
+    studentNumber: '', teacherId: '',
   })
   dialogVisible.value = true
 }
@@ -115,6 +118,8 @@ const openEdit = (row: UserDetail) => {
     email: row.email || '',
     phone: row.phone || '',
     status: row.status,
+    studentNumber: row.studentNumber || '',
+    teacherId: row.teacherId || '',
   })
   dialogVisible.value = true
 }
@@ -133,6 +138,8 @@ const submitForm = async () => {
           role: form.role,
           email: form.email,
           phone: form.phone,
+          studentNumber: form.studentNumber || undefined,
+          teacherId: form.teacherId || undefined,
         })
         ElMessage.success('创建成功')
       } else {
@@ -143,6 +150,8 @@ const submitForm = async () => {
           email: form.email,
           phone: form.phone,
           status: form.status as 0 | 1,
+          studentNumber: form.studentNumber || undefined,
+          teacherId: form.teacherId || undefined,
         })
         ElMessage.success('更新成功')
       }
@@ -304,6 +313,13 @@ onMounted(load)
         </el-table-column>
         <el-table-column prop="username" label="用户名" width="120" />
         <el-table-column prop="realName" label="姓名" width="100" />
+        <!-- [2026-10-31] 学号/师号仅展示，不做流程引用 -->
+        <el-table-column label="学号/师号" width="110">
+          <template #default="{ row }">
+            <span v-if="row.role === 'STUDENT'">{{ row.studentNumber || '—' }}</span>
+            <span v-else>{{ row.teacherId || '—' }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="englishName" label="英文名" width="130" show-overflow-tooltip />
         <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
         <el-table-column prop="phone" label="手机号" width="130" />
@@ -432,6 +448,13 @@ onMounted(load)
             <el-option label="学生" value="STUDENT" />
             <el-option label="管理员" value="ADMIN" />
           </el-select>
+        </el-form-item>
+        <!-- [2026-10-31] 学号/师号仅展示编辑，不进业务流程 -->
+        <el-form-item v-if="form.role === 'STUDENT'" label="学号">
+          <el-input v-model="form.studentNumber" :maxlength="50" placeholder="选填，仅展示" />
+        </el-form-item>
+        <el-form-item v-else label="师号">
+          <el-input v-model="form.teacherId" :maxlength="50" placeholder="选填，仅展示" />
         </el-form-item>
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="form.email" :maxlength="FormLimits.email.max" />

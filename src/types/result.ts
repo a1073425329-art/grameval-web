@@ -3,7 +3,10 @@ import type { AnswerUnit } from './exam'
 
 /** 学生成绩汇总 —— StudentScoreSummaryVO */
 export interface ResultSummary {
+  /** 已出成绩次数（有成绩的答卷数） */
   totalCount: number
+  /** 参加场次（答卷记录数，含未提交）—— 与列表 total、「在线考试·已参加」同口径 */
+  attendedCount?: number
   averageScore: number
   highestScore: number
   lowestScore: number
